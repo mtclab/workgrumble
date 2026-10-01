@@ -1,4 +1,6 @@
 import { expect, type Page, test } from '@playwright/test';
+import type { Actor } from '../src/crawler/entities';
+import type { Hazard, Projectile } from '../src/crawler/combat';
 
 /**
  * The shipped path, played (Helldesk 0.2.0): one career's first week on the
@@ -20,7 +22,7 @@ import { expect, type Page, test } from '@playwright/test';
  * to face somebody (the mouse's aim, which a headless runner cannot do), or
  * skip a long wait (the boss's first nine-tenths, a shift's worth of hits);
  * none of them resolves, fixes, saves or loads anything. The in-page
- * presses are the induction spec's, for the same reason: a key sent from the
+ * presses follow the combat spec, for the same reason: a key sent from the
  * runner arrives hundreds of milliseconds late on a software renderer, past
  * a quarter-second parry window.
  *
@@ -67,15 +69,25 @@ interface Save {
   location: string;
   rep: number;
   sanity: number;
+  energy: number;
   loyly: number;
   consumables: Record<string, number>;
-  queue: { t: number; from: string }[];
+  queue: { t: number; from: string; sla: number; gold: boolean }[];
   weekend: { saunas: number };
   stats: { resolvedField: number; resolvedPeace: number; resolvedDesk: number; bosses: number; burnouts: number };
 }
 
 interface Crawler {
   screen: string;
+  time: number;
+  attackCd: number;
+  rootT: number;
+  charging: boolean;
+  blocking: boolean;
+  actors: readonly Actor[];
+  projectiles: readonly Projectile[];
+  hazards: readonly Hazard[];
+  boss: Actor | null;
   rmbT: number;
   chargeT: number;
   floorAwake: boolean;
@@ -89,7 +101,7 @@ interface Crawler {
   settings: { quality: string; inductionDone: boolean };
   renderer: { shadowMap: { enabled: boolean } };
   lights: { userData: { enabled?: boolean } }[];
-  derivedCache: { maxSanity: number; maxLoyly: number };
+  derivedCache: { maxSanity: number; maxLoyly: number; weapon: { range: number; arc?: number } };
   save: Save;
 }
 
@@ -108,7 +120,34 @@ interface Handles {
   wear: (left: number) => void;
 }
 
-type W = Window & { __crawler: Crawler; __helldesk: Handles };
+interface FightFrame {
+  time: number;
+  screen: string;
+  sanity: number;
+  energy: number;
+  id: number;
+  hp: number | null;
+  pending: string | null;
+  windup: number;
+  swings: number;
+  hostiles: { id: number; kind: string; hp: number; dist: number; aggro: boolean; docile: boolean; pending: string | null }[];
+  projectiles: { kind: string; owner: number | null; dist: number }[];
+  hazards: { kind: string | null; dist: number; radius: number }[];
+  queue: { t: number; sla: number; gold: boolean }[];
+}
+
+type W = Window & { __crawler: Crawler; __helldesk: Handles; __fightTrace?: FightFrame[] };
+
+test.afterEach(async ({ page }, info) => {
+  if (info.status === info.expectedStatus) return;
+  const trace = await page.evaluate(() => (window as unknown as W).__fightTrace ?? []).catch(() => []);
+  if (trace.length === 0) return;
+  const record = `\nFight record: ${JSON.stringify(trace)}`;
+  for (const error of info.errors) {
+    error.message = (error.message ?? '') + record;
+    if (error.stack !== undefined) error.stack += record;
+  }
+});
 
 // ---------------------------------------------------------------- reading the game
 
@@ -209,20 +248,128 @@ async function swing(page: Page): Promise<void> {
   await page.mouse.up();
 }
 
-/** Turn to `id` and walk at them with W until within `near` metres. */
-async function closeIn(page: Page, id: number, near = 1.7): Promise<void> {
-  const face = (): Promise<boolean> => page.evaluate((i) => (window as unknown as W).__helldesk.face(i), id);
-  await face();
-  const f = await foe(page, id);
-  if (f === null || f.resolved || f.dist <= near) return;
-  await page.keyboard.down('w');
-  await expect.poll(async () => {
-    await face();
-    const g = await foe(page, id);
-    return g === null || g.resolved || g.dist <= near;
-  }, { timeout: 20_000, intervals: [100] }).toBe(true).catch(() => undefined);
-  await page.keyboard.up('w');
-  await face();
+/** Read the tell, guard it, then walk up and swing in the opening, all on the game's frames. */
+async function fight(page: Page, kind: 'user' | 'boss'): Promise<{ id: number; whole: number; windup: boolean; hit: boolean }> {
+  return page.evaluate((k) => new Promise((done, reject) => {
+    const w = window as unknown as W;
+    const g = w.__crawler;
+    const h = w.__helldesk;
+    const canvas = document.querySelector('canvas.game-canvas');
+    if (canvas === null) { reject(new Error('no canvas')); return; }
+    // Return to the lift before staging the user. Existing
+    // projectiles survive stageDuel; SLA breaches can bring new managers.
+    const placed = k === 'user' ? h.standAt('elevator') : h.toBoss(1.8);
+    if (!placed) { reject(new Error('no place to fight')); return; }
+    g.input.locked = true;
+    const id = k === 'user' ? h.duel('user', 1.9) : g.boss?.id ?? -1;
+    if (id <= 0 || (k === 'boss' && !h.weakenBoss(40))) { reject(new Error('no foe')); return; }
+    const whole = h.foe(id)?.hp ?? 0;
+    const started = performance.now();
+    const gameStart = g.time;
+    const trace: FightFrame[] = [];
+    w.__fightTrace = trace;
+    let windup = false;
+    let hit = false;
+    let swings = 0;
+    let attackHeld = false;
+    let guardHeld = false;
+    let moving = '';
+    const key = (code: string, down: boolean): void => {
+      window.dispatchEvent(new KeyboardEvent(down ? 'keydown' : 'keyup', { code }));
+    };
+    const move = (code: string): void => {
+      if (code === moving) return;
+      if (moving !== '') key(moving, false);
+      moving = code;
+      if (code !== '') key(code, true);
+    };
+    const mouse = (button: number, down: boolean): void => {
+      if (down) canvas.dispatchEvent(new MouseEvent('mousedown', { button, bubbles: true }));
+      else window.dispatchEvent(new MouseEvent('mouseup', { button }));
+    };
+    const watch = (): void => {
+      const f = h.foe(id);
+      const dist = (p: { x: number; z: number }): number => Math.hypot(p.x - g.player.pos.x, p.z - g.player.pos.z);
+      trace.push({
+        time: g.time - gameStart, screen: g.screen, sanity: g.save.sanity, energy: g.save.energy, id,
+        hp: f?.hp ?? null, pending: f?.pending ?? null, windup: f?.windup ?? 0, swings,
+        hostiles: g.actors.filter((a) => a.id !== id && a.hostile && !a.resolved && dist(a.pos) <= 12).map((a) => ({
+          id: a.id, kind: a.kind, hp: a.hp, dist: dist(a.pos), aggro: a.aggro, docile: a.docile, pending: a.pending,
+        })),
+        projectiles: g.projectiles.filter((p) => p.hostile && dist(p.mesh.position) <= 12).map((p) => ({ kind: p.kind, owner: p.owner?.id ?? null, dist: dist(p.mesh.position) })),
+        hazards: g.hazards.filter((p) => dist(p) <= 12).map((p) => ({ kind: p.kind, dist: dist(p), radius: p.radius })),
+        queue: g.save.queue.map((q) => ({ t: q.t, sla: q.sla, gold: q.gold })),
+      });
+      hit ||= f !== null && f.hp < whole;
+      windup ||= f !== null && f.pending !== null && f.windup > 0;
+      if (f === null || f.resolved || g.screen === 'dead' || g.time - gameStart > 90 || performance.now() - started > 180_000) {
+        move('');
+        mouse(0, false);
+        mouse(2, false);
+        done({ id, whole, windup, hit });
+        return;
+      }
+      if (g.screen !== 'play') {
+        move('');
+        mouse(0, false);
+        mouse(2, false);
+        attackHeld = guardHeld = false;
+        // The highlighted answer is the same one settle/Enter chooses.
+        if (g.screen === 'dialogue') document.querySelector<HTMLButtonElement>('.dlg-opt.is-sel')?.click();
+        requestAnimationFrame(watch);
+        return;
+      }
+      g.input.locked = true;
+      const telling = g.actors.filter((a) => a.hostile && !a.resolved && a.pending !== null && dist(a.pos) <= 12)
+        .sort((a, b) => a.windup - b.windup)[0];
+      const flying = g.projectiles.filter((p) => p.hostile && dist(p.mesh.position) < 4)
+        .sort((a, b) => dist(a.mesh.position) - dist(b.mesh.position))[0];
+      const charging = k === 'boss' && (g.boss?.charging ?? 0) > 0;
+      const incoming = telling !== undefined || flying !== undefined || charging;
+      h.face(telling?.id ?? flying?.owner?.id ?? id);
+      // Let the user's first wind-up be seen before answering it. Guard
+      // Derek's slam and keep it up until his invitations have passed.
+      if (incoming || !windup) {
+        move(f.pending === 'boss.charge' || charging ? 'KeyD' : '');
+        if (attackHeld) { mouse(0, false); attackHeld = false; }
+        if (!guardHeld) { mouse(2, true); guardHeld = true; }
+      } else if (guardHeld) {
+        move('');
+        // A short RMB release shoves. Wait until this is a held guard.
+        if (g.rmbT > 0.3) { mouse(2, false); guardHeld = false; }
+      } else {
+        h.face(id);
+        const target = g.actors.find((a) => a.id === id);
+        // A stapler's arc can hit several people. Walk around a calm
+        // bystander rather than waking them with the user's swing.
+        const crowded = k === 'user' && target !== undefined && g.actors.some((a) => {
+          if (a.id === id || !a.hostile || a.resolved || a.aggro || dist(a.pos) > g.derivedCache.weapon.range + a.radius) return false;
+          const dx = target.pos.x - g.player.pos.x;
+          const dz = target.pos.z - g.player.pos.z;
+          const ax = a.pos.x - g.player.pos.x;
+          const az = a.pos.z - g.player.pos.z;
+          const arc = (g.derivedCache.weapon.arc ?? 1) / 2 + 0.25;
+          return dist(a.pos) <= 0.8 || (dx * ax + dz * az) / Math.max(0.0001, f.dist * dist(a.pos)) > Math.cos(arc);
+        });
+        move(crowded ? 'KeyD' : f.dist > 1.7 ? 'KeyW' : '');
+        if (crowded && attackHeld) {
+          mouse(2, true);
+          guardHeld = true;
+          mouse(0, false);
+          attackHeld = false;
+        } else if (attackHeld && g.charging) {
+          mouse(0, false);
+          attackHeld = false;
+        } else if (!crowded && !attackHeld && !g.charging && !g.blocking && g.rootT <= 0 && g.attackCd <= 0 && f.dist <= 2.1 && swings < (k === 'user' ? 20 : 40)) {
+          mouse(0, true);
+          attackHeld = true;
+          swings++;
+        }
+      }
+      requestAnimationFrame(watch);
+    };
+    requestAnimationFrame(watch);
+  }), kind);
 }
 
 /** A user from the floor, calm, in front of you, talked down with a chocolate digestive (E, and the line). */
@@ -415,30 +562,12 @@ test('first day: the keyboard from the title, the induction, a fight, a talk-dow
   await settle(page);
   await capture(page);
   const before = await save(page);
-  const id = await page.evaluate(() => (window as unknown as W).__helldesk.duel('user', 1.9));
+  const { id, whole, windup, hit } = await fight(page, 'user');
   expect(id).toBeGreaterThan(0);
-  const whole = (await foe(page, id))?.hp ?? 0;
   expect(whole).toBeGreaterThan(0);
-  await page.waitForFunction((i) => {
-    const f = (window as unknown as W).__helldesk.foe(i);
-    return f !== null && f.pending !== null && f.windup > 0;
-  }, id, { polling: 'raf', timeout: 60_000 });
-  let hit = false;
-  for (let go = 0; go < 20; go++) {
-    const f = await foe(page, id);
-    if (f === null || f.resolved) break;
-    await settle(page);
-    await capture(page);
-    await closeIn(page, id);
-    const hp = (await foe(page, id))?.hp ?? 0;
-    await swing(page);
-    // The hit lands (fewer hit points) or the swing whiffs and the next go comes.
-    await expect.poll(async () => {
-      const g = await foe(page, id);
-      return g === null || g.resolved || g.hp < hp;
-    }, { timeout: 6_000 }).toBe(true).then(() => { hit = true; }).catch(() => undefined);
-  }
+  expect(windup).toBe(true);
   expect(hit).toBe(true);
+  expect(await screen(page)).toBe('play');
   await expect.poll(async () => {
     const f = await foe(page, id);
     return f === null || f.resolved;
@@ -558,20 +687,11 @@ test('the week: the boss of floor 0, the lift to Friday, the sauna and the drive
 
   // The fight, in the corner office. Most of it is skipped (the boss starts
   // at a sliver of health); the hits that resolve Derek are the player's.
-  expect(await page.evaluate(() => (window as unknown as W).__helldesk.weakenBoss(40))).toBe(true);
-  for (let go = 0; go < 40 && !(await boss(page)).resolved; go++) {
-    await settle(page);
-    await capture(page);
-    const placed = await page.evaluate(() => (window as unknown as W).__helldesk.toBoss(1.8));
-    if (!placed && (await boss(page)).resolved) break;
-    expect(placed).toBe(true);
-    const hp = (await boss(page)).hp;
-    await swing(page);
-    await expect.poll(async () => {
-      const b = await boss(page);
-      return b.resolved || b.hp < hp;
-    }, { timeout: 6_000 }).toBe(true).catch(() => undefined);
-  }
+  const fought = await fight(page, 'boss');
+  expect(fought.whole).toBe(40);
+  expect(fought.windup).toBe(true);
+  expect(fought.hit).toBe(true);
+  expect(await screen(page)).toBe('play');
   const done = await boss(page);
   expect(done.resolved).toBe(true);
   // It was a fight: Derek knew about it (the title card, the music).
