@@ -345,11 +345,11 @@ function showBurnout(g: Game, line: string, lost: number): void {
   const spec = burnoutMenu();
   const act = {
     ...NO_ACTIONS,
-    clockin: () => {
+    clockin: () => showLoading(g, g.save.location === 'mokki' ? LOADING_MOKKI : LOADING_OFFICE, () => {
       g.rootT = 0;
       g.loadWorld(true);
       resume(g);
-    },
+    }),
     load: () => showLoadMenu(g, () => showBurnout(g, line, lost)),
     title: () => showTitle(g),
   };
@@ -413,4 +413,32 @@ export function transitionTo(g: Game, label: string, big: string, line: string, 
   setOverlay(g, `<div class="lift"><div class="lift-num">${big}</div>
     <div class="lift-name">${label}</div>
     <p class="title-blurb">${line}</p></div>`, [['Continue', then]]);
+}
+
+/** The loading card's line, by where you are going. */
+export const LOADING_OFFICE = 'Badging you in';
+export const LOADING_MOKKI = 'Unlocking the mökki';
+
+/**
+ * Run `fn` once the frame now being drawn has reached the screen: the next
+ * animation frame comes before that frame's paint, so the work waits a task
+ * past it.
+ */
+function afterPaint(fn: () => void): void {
+  requestAnimationFrame(() => window.setTimeout(fn, 0));
+}
+
+/**
+ * A short card while a floor (or the mökki) is built: generating the level
+ * and drawing its textures runs in one go and holds the page still, which
+ * looked exactly like a hung machine. The card goes up first and `work` runs
+ * after it has been painted; whatever `work` shows next replaces it.
+ */
+export function showLoading(g: Game, line: string, work: () => void): void {
+  g.screen = 'loading';
+  g.input.releaseLock();
+  setOverlay(g, `<div class="loading-card" data-testid="loading-card" role="status" aria-live="polite">
+    <div class="loading-badge" aria-hidden="true"></div>
+    <div class="lift-name">${line}...</div></div>`, []);
+  afterPaint(work);
 }

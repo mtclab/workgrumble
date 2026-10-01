@@ -213,7 +213,7 @@ describe('meters appear when they first matter', () => {
   });
 });
 
-const KEYS: CardKeys = { forward: 'W', left: 'A', back: 'S', right: 'D', interact: 'E', map: 'M', labelSlot: '2' };
+const KEYS: CardKeys = { forward: 'W', left: 'A', back: 'S', right: 'D', interact: 'E', map: 'M', labelSlot: '2', attack: 'Mouse0', block: 'Mouse2' };
 
 describe('the cards', () => {
   it.each(STEPS.map((s) => [s]))('%s: one or two sentences from Morag, and something to do with a key or the mouse drawn', (step) => {
@@ -233,6 +233,15 @@ describe('the cards', () => {
     expect(label.doing).toContainEqual({ key: '3' });
     expect(label.point).toBe('tool');
     expect(label.say).toMatch(/run out/);
+  });
+
+  it('draws attack and block as bound: the mouse while they are the buttons, the keycap once rebound to a key', () => {
+    expect(cardFor(at('swing'), KEYS).doing).toContainEqual({ mouse: 'left' });
+    expect(cardFor(at('block'), KEYS).doing).toContainEqual({ mouse: 'right' });
+    const swing = cardFor(at('swing'), { ...KEYS, attack: 'KeyK' });
+    expect(swing.doing).toContainEqual({ key: 'K' });
+    expect(swing.doing).not.toContainEqual({ mouse: 'left' });
+    expect(cardFor(at('parry'), { ...KEYS, block: 'Mouse4' }).doing).toContainEqual({ key: 'Mouse 5' });
   });
 
   it('Morag closes with the floor, the lift and the mökki, and tells about Sanity if no hit ever did', () => {

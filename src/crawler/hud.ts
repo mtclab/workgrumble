@@ -1,3 +1,4 @@
+import { edgeShadow, type EdgeKind, type FlashKind } from './a11y';
 import { TICKETS } from './content/tickets';
 import type { Actor } from './entities';
 import type { HudMeter } from './induction';
@@ -135,7 +136,11 @@ export class Hud {
   private readonly floorLabel: HTMLDivElement;
   private readonly oncall: HTMLDivElement;
   private vignetteT = 0;
-  private vignetteColor = 'rgba(255,0,0,';
+  private vignetteKind: FlashKind = 'hurt';
+  /** What the edge showed last frame ('' for nothing): the DOM is touched only when it changes. */
+  private vignetteShown = '';
+  /** Screen flashes (the Control Panel): off, a hit or a heal leaves the edge alone. */
+  flashes = true;
   private readonly hitArcs: HitArc[] = [];
   private readonly hitRing: HTMLDivElement;
   private hitRingT = 0;
@@ -286,9 +291,10 @@ export class Hud {
     this.tipT = 9;
   }
 
-  flash(kind: 'hurt' | 'heal' | 'meeting'): void {
+  flash(kind: FlashKind): void {
+    if (!this.flashes) return;
     this.vignetteT = 1;
-    this.vignetteColor = kind === 'hurt' ? 'rgba(255,0,0,' : kind === 'heal' ? 'rgba(80,255,140,' : 'rgba(80,140,255,';
+    this.vignetteKind = kind;
   }
 
   /** A hit from (dx, dz) away: an arc on the screen's edge that points at it and fades. */
@@ -425,8 +431,18 @@ export class Hud {
     this.vignetteT = Math.max(0, this.vignetteT - dt * 2.5);
     const lowPulse = s.sanity < d.maxSanity * 0.25 ? 0.25 + Math.sin(performance.now() / 250) * 0.1 : 0;
     const a = Math.max(this.vignetteT * 0.55, lowPulse);
-    const col = this.vignetteT > 0 ? this.vignetteColor : 'rgba(255,0,0,';
-    this.vignette.style.boxShadow = `inset 0 0 160px 40px ${col}${a.toFixed(3)})`;
+    // The flash has the edge while it lasts; the low-Sanity pulse otherwise.
+    // Each has its own shape (a11y.ts), so none is told by its colour alone.
+    const kind: EdgeKind = this.vignetteT > 0 ? this.vignetteKind : 'low';
+    const shown = a > 0.004 ? kind : '';
+    if (shown !== this.vignetteShown) {
+      this.vignetteShown = shown;
+      // Nothing to show is nothing on the screen, not a transparent frame.
+      this.vignette.style.display = shown === '' ? 'none' : 'block';
+      if (shown === '' || shown === 'low') delete this.vignette.dataset.flash;
+      else this.vignette.dataset.flash = shown;
+    }
+    if (shown !== '') this.vignette.style.boxShadow = edgeShadow(kind, a);
 
     this.drawFace(f.face, s.sanity / d.maxSanity, dt);
     this.drawMini(f);

@@ -1,12 +1,19 @@
-/** Keyboard + mouse, with pointer lock for mouse-look. */
+import { DEFAULT_KEYS, mouseCode } from './settings';
+
+/**
+ * Keyboard + mouse, with pointer lock for mouse-look. Mouse buttons are
+ * held and pressed under codes of their own ('Mouse0' the left, 'Mouse2' the
+ * right) in the same sets as the keys, so every action can be bound to
+ * either, attack and block included.
+ */
 export class Input {
   readonly keys = new Set<string>();
   private pressed = new Set<string>();
   mouseDX = 0;
   mouseDY = 0;
-  lmb = false;
-  rmb = false;
-  private lmbPressed = false;
+  /** What attack and block are bound to (`bind`): the left and right buttons until rebound. */
+  private attackCode = DEFAULT_KEYS.attack;
+  private blockCode = DEFAULT_KEYS.block;
   wheel = 0;
   locked = false;
   enabled = true;
@@ -26,8 +33,6 @@ export class Input {
     });
     window.addEventListener('blur', () => {
       this.keys.clear();
-      this.lmb = false;
-      this.rmb = false;
     });
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled) return;
@@ -35,15 +40,12 @@ export class Input {
         this.requestLock();
         return;
       }
-      if (e.button === 0) {
-        this.lmb = true;
-        this.lmbPressed = true;
-      }
-      if (e.button === 2) this.rmb = true;
+      const code = mouseCode(e.button);
+      if (!this.keys.has(code)) this.pressed.add(code);
+      this.keys.add(code);
     });
     window.addEventListener('mouseup', (e) => {
-      if (e.button === 0) this.lmb = false;
-      if (e.button === 2) this.rmb = false;
+      this.keys.delete(mouseCode(e.button));
     });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     window.addEventListener('mousemove', (e) => {
@@ -57,10 +59,8 @@ export class Input {
     }, { passive: true });
     document.addEventListener('pointerlockchange', () => {
       this.locked = document.pointerLockElement === this.canvas;
-      if (!this.locked) {
-        this.lmb = false;
-        this.rmb = false;
-      }
+      // The buttons only reach the game while the mouse is captured: let go of them all.
+      if (!this.locked) for (const k of this.keys) if (k.startsWith('Mouse')) this.keys.delete(k);
     });
   }
 
@@ -82,13 +82,29 @@ export class Input {
     return this.pressed.has(code);
   }
 
+  /** Attack and block follow the Control Panel (`Game.applySettings`). */
+  bind(attack: string, block: string): void {
+    this.attackCode = attack;
+    this.blockCode = block;
+  }
+
+  /** The attack button (LMB unless rebound) is held. */
+  get lmb(): boolean {
+    return this.keys.has(this.attackCode);
+  }
+
+  /** The block button (RMB unless rebound) is held. */
+  get rmb(): boolean {
+    return this.keys.has(this.blockCode);
+  }
+
+  /** The attack button went down this frame. */
   clicked(): boolean {
-    return this.lmbPressed;
+    return this.pressed.has(this.attackCode);
   }
 
   endFrame(): void {
     this.pressed.clear();
-    this.lmbPressed = false;
     this.mouseDX = 0;
     this.mouseDY = 0;
     this.wheel = 0;

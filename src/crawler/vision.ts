@@ -227,7 +227,8 @@ export class Vision {
     this.steamAt.set(this.at.x, 1.2, this.at.z);
     this.veil = veilFor(g.mount);
     this.veil.show(true);
-    this.veil.flash();
+    // The white frame is a screen flash: Screen flashes off, the crossing is the sound alone.
+    if (g.settings.flashes) this.veil.flash();
     this.veil.set(SUO_LINES.enter, 1);
     sfx.crossing(true);
     sfx.setAmbient('suo');
@@ -308,7 +309,7 @@ export class Vision {
     });
     this.veil.show(false);
     if (loud) {
-      this.veil.flash();
+      if (g.settings.flashes) this.veil.flash();
       sfx.crossing(false);
     }
     sfx.setAmbient(g.save.location === 'mokki' ? 'mokki' : 'office');

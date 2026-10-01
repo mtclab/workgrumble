@@ -196,6 +196,14 @@ describe('the controls card', () => {
     expect(grid).toContainEqual(['K', 'jump']);
     expect(grid[0]?.[0]).toBe('↑ A S D');
   });
+
+  it('shows attack and block as bound: the buttons by default, the new key once rebound', () => {
+    expect(controlsGrid(DEFAULT_KEYS)).toContainEqual(['LMB', 'tool (hold: heavy swing)']);
+    expect(controlsGrid(DEFAULT_KEYS)).toContainEqual(['RMB', 'block (tap: shove)']);
+    const grid = controlsGrid({ ...DEFAULT_KEYS, attack: 'KeyJ', block: 'Mouse3' });
+    expect(grid).toContainEqual(['J', 'tool (hold: heavy swing)']);
+    expect(grid).toContainEqual(['Mouse 4', 'block (tap: shove)']);
+  });
 });
 
 describe('the New Starter Form\'s words', () => {

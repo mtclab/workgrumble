@@ -74,7 +74,7 @@ const ACTOR_REACH = 2.6;
 const TERMINAL_REACH = 2.4;
 
 /** The bindings the cards draw. */
-const CARD_ACTIONS: readonly Action[] = ['forward', 'left', 'back', 'right', 'interact', 'map'];
+const CARD_ACTIONS: readonly Action[] = ['forward', 'left', 'back', 'right', 'interact', 'map', 'attack', 'block'];
 
 const GREEN = '#7dff9a';
 const PRACTICE = '#7dffea';
@@ -311,6 +311,7 @@ export class InductionDay {
     return {
       forward: keyName(s.forward), left: keyName(s.left), back: keyName(s.back), right: keyName(s.right),
       interact: keyName(s.interact), map: keyName(s.map), labelSlot: String(slot >= 0 ? slot + 1 : 2),
+      attack: s.attack, block: s.block,
     };
   }
 

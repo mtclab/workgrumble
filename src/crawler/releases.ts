@@ -80,16 +80,23 @@ export const HELLDESK_RELEASES: readonly ReleaseNote[] = Object.freeze([
       'The menus answer the keyboard. The arrow keys move between the buttons '
         + 'on the title, pause and other screens, Enter picks one and Esc goes '
         + 'back. The mouse remains supported, as a courtesy.',
-      'On its first launch the game looks at the machine it has been given and '
-        + 'picks the graphics quality itself, rather than assuming the best. '
-        + 'The Control Panel can overrule it, as it can most decisions made on '
-        + 'your behalf.',
-      'Building a floor now says that it is building a floor: a loading '
-        + 'indicator is up while it happens, instead of a still frame that '
-        + 'looks exactly like a hung machine.',
-      'The Control Panel has accessibility options, for the parts of the game '
-        + 'that were harder to see, read or keep up with than they needed to '
-        + 'be.',
+      'On its first launch the game times the title screen for a few seconds '
+        + 'and picks the graphics quality itself, a step down at a time until '
+        + 'the machine keeps up, rather than assuming the best. The Control '
+        + 'Panel says it was chosen for you, and can overrule it, as it can '
+        + 'most decisions made on your behalf. Players who already had settings '
+        + 'keep theirs.',
+      'Building a floor now says that it is building a floor: New career, '
+        + 'Continue, loading and every lift or drive put a "Badging you in" '
+        + 'card up first, instead of a still frame that looks exactly like a '
+        + 'hung machine.',
+      'The Control Panel has accessibility options. Camera shake off now means '
+        + 'none at all, not a fifth of it; screen flashes and the pause on a '
+        + 'landed hit can be turned off. Loot rarity carries a mark beside its '
+        + 'colour and a shape of its own on the carpet, being hurt and being '
+        + 'healed light the screen\'s edge in different shapes, and a charged '
+        + 'heavy swing throbs when it is ready. Attack and block can be moved '
+        + 'off the mouse buttons, or onto other ones.',
       'Helldesk has a version number, on the title screen and in Help, an '
         + 'Update History on every desk and in the backpack, and a note like '
         + 'this one the first time a newer build is opened.',

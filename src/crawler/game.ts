@@ -1,5 +1,7 @@
 import * as THREE from 'three';
+import { shakeScale } from './a11y';
 import { sfx } from './audio';
+import { autoPickDue, QualityPicker } from './autoquality';
 import { castShadows, setBlobShadows } from './characters';
 import { Pipeline } from './graphics';
 import { Particles } from './particles';
@@ -101,7 +103,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { latestSlot, readSlot, type SlotId, writeSlot } from './saves';
-import { type Action, loadSettings, type Settings, saveSettings } from './settings';
+import { type Action, loadSettings, type Settings, saveSettings, storedSettings } from './settings';
 import * as screens from './screens';
 import { castSpell, cycleSpell, domainAbility, domainCooldown, spellLabel } from './spells';
 import {
@@ -144,7 +146,7 @@ import {
 } from './teamwork';
 import { chargeShown, dropHold, TAP_TIME } from './windup';
 
-export type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition' | 'minigame';
+export type Screen = 'title' | 'chargen' | 'play' | 'os' | 'dialogue' | 'paused' | 'dead' | 'ending' | 'transition' | 'loading' | 'minigame';
 
 export type PromptTarget = { kind: 'interact'; it: Interactable } | { kind: 'actor'; a: Actor } | null;
 
@@ -192,6 +194,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly sun: THREE.DirectionalLight;
   save: SaveState;
   settings: Settings;
+  /** The first launch timing the machine to pick a graphics quality (`tickQualityPick`), or null. */
+  private qualityPicker: QualityPicker | null = null;
   level!: Level;
   actors: Actor[] = [];
   projectiles: Projectile[] = [];
@@ -298,7 +302,14 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
+    // Asked before anything saves the settings: `applySettings` below
+    // writes them, and from then on this browser has settings.
+    const pickQuality = autoPickDue(storedSettings());
     this.settings = loadSettings();
+    if (pickQuality) {
+      this.settings.qualitySource = 'sampling';
+      this.qualityPicker = new QualityPicker(this.settings.quality);
+    }
     this.renderer = new THREE.WebGLRenderer({
       // Every frame is drawn offscreen by the pass chain and only a full-screen
       // quad reaches the canvas, so canvas MSAA would smooth nothing; the
@@ -823,6 +834,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.loadSlot('quick');
   }
 
+  /**
+   * Continue, Load and F9. The slot is read and checked at once (an empty
+   * one says so and changes nothing); the floor is built behind the loading
+   * card, a frame later.
+   */
   loadSlot(id: SlotId): boolean {
     const slot = readSlot(id);
     const s = slot === null ? null : normalizeSave(slot.data);
@@ -830,15 +846,17 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.hud.toast('Nothing saved there.', 'bad');
       return false;
     }
-    this.save = s;
-    this.fixCache = new WeakMap();
     this.os.hide();
     this.dialogue.close();
-    this.derivedCache = derive(s);
-    this.resetTransient();
-    this.loadWorld(true);
-    screens.startPlay(this);
-    this.hud.toast(`Loaded: ${s.name}, ${this.title} (${this.floorName()}).`, 'good');
+    screens.showLoading(this, s.location === 'mokki' ? screens.LOADING_MOKKI : screens.LOADING_OFFICE, () => {
+      this.save = s;
+      this.fixCache = new WeakMap();
+      this.derivedCache = derive(s);
+      this.resetTransient();
+      this.loadWorld(true);
+      screens.startPlay(this);
+      this.hud.toast(`Loaded: ${s.name}, ${this.title} (${this.floorName()}).`, 'good');
+    });
     return true;
   }
 
@@ -892,7 +910,57 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     sfx.setMusicVolume(st.music);
     this.compass.visible = st.compass;
     this.player.view = st.view;
+    this.input.bind(st.keys.attack, st.keys.block);
+    this.hud.flashes = st.flashes;
     this.lightIn = 0;
+  }
+
+  /** The first launch is still timing the machine for its graphics quality. */
+  get pickingQuality(): boolean {
+    return this.qualityPicker !== null;
+  }
+
+  /**
+   * The first launch's quality pick (autoquality.ts), fed one frame time per
+   * frame. It times the title and the New Starter Form, where the real floor
+   * is drawn behind the menu; a level too slow goes one lower at once (and
+   * is saved, so a tab closed mid-way resumes from there). The Control Panel
+   * overrules it; play starting first settles it on the level reached.
+   */
+  private tickQualityPick(ms: number): void {
+    const p = this.qualityPicker;
+    if (p === null) return;
+    if (this.settings.qualitySource !== 'sampling') {
+      // The player picked in the Control Panel: theirs stands.
+      this.qualityPicker = null;
+      return;
+    }
+    if (this.screen !== 'title' && this.screen !== 'chargen') {
+      this.settleQualityPick();
+      return;
+    }
+    // A hidden tab draws nothing worth timing.
+    if (document.visibilityState !== 'visible') return;
+    const v = p.frame(ms);
+    if (v === null) return;
+    if (v === 'down') {
+      this.settings.quality = p.level;
+      this.applySettings();
+      this.os.syncQuality();
+      return;
+    }
+    this.settleQualityPick();
+  }
+
+  /** The pick is made: the level it reached is the machine's choice, noted as such in the Control Panel. */
+  private settleQualityPick(): void {
+    const p = this.qualityPicker;
+    if (p === null) return;
+    this.qualityPicker = null;
+    this.settings.quality = p.level;
+    this.settings.qualitySource = 'auto';
+    saveSettings(this.settings);
+    this.os.syncQuality();
   }
 
   /** A one-off hint, the first time something happens (if tips are on). */
@@ -974,7 +1042,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     screens.showChargen(this);
   }
 
+  /** The New Starter Form signed: the lobby is built behind the loading card, a frame later. */
   beginCareer(setup: CharacterSetup, skipInduction = false): void {
+    this.os.hide();
+    screens.showLoading(this, screens.LOADING_OFFICE, () => this.startCareer(setup, skipInduction));
+  }
+
+  private startCareer(setup: CharacterSetup, skipInduction: boolean): void {
     this.save = newSave(Date.now() >>> 0, setup);
     // Induction day: the meters come one at a time. Skipped, the floor is as it always was.
     if (!skipInduction) {
@@ -984,7 +1058,6 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.derivedCache = derive(this.save);
     this.resetTransient();
     this.fixCache = new WeakMap();
-    this.os.hide();
     this.loadFloor(0, false);
     this.journal(`Day one. ${this.save.name}, ${this.title}. The badge photo is terrible.`);
     screens.startPlay(this);
@@ -1082,9 +1155,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   private readonly frame = (now: number): void => {
     requestAnimationFrame(this.frame);
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    const frameMs = now - this.last;
+    const dt = Math.min(0.05, frameMs / 1000);
     this.last = now;
     if (this.headless) return;
+    this.tickQualityPick(frameMs);
     if (this.screen !== 'play') this.dropMeleeHold();
     if (this.screen === 'play') {
       if (this.hitStop > 0) {
@@ -1103,9 +1178,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.player.update(this.level, this.screen === 'play' ? dt : 0, sway);
     if (this.screen === 'title' || this.screen === 'chargen') this.titleCamera(now / 1000);
     if (this.shakeAmt > 0) {
-      const k = this.settings.shake ? 0.15 : 0.03;
-      this.camera.position.x += fx.range(-1, 1) * this.shakeAmt * k;
-      this.camera.position.y += fx.range(-1, 1) * this.shakeAmt * k;
+      const k = shakeScale(this.settings.shake);
+      if (k > 0) {
+        this.camera.position.x += fx.range(-1, 1) * this.shakeAmt * k;
+        this.camera.position.y += fx.range(-1, 1) * this.shakeAmt * k;
+      }
       this.shakeAmt = Math.max(0, this.shakeAmt - dt * 2);
     }
     this.cullHidden();
@@ -1855,7 +1932,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   goToMokki(): void {
     const s = this.save;
-    screens.transitionTo(this, 'Friday 17:00 - to the mökki', '🌲', 'Three hours up the motorway, the last one on gravel. The phone loses signal at the petrol station. Mostly.', () => {
+    screens.transitionTo(this, 'Friday 17:00 - to the mökki', '🌲', 'Three hours up the motorway, the last one on gravel. The phone loses signal at the petrol station. Mostly.', () => screens.showLoading(this, screens.LOADING_MOKKI, () => {
       // Last week's blessings wear off on the drive; the weekend can grant new ones.
       s.saunaBuff = false;
       s.makkara = false;
@@ -1882,7 +1959,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.chainDialogues(queue);
       this.tip('mokki');
       this.autosave();
-    });
+    }));
   }
 
   goToWork(): void {
@@ -1890,13 +1967,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const next = s.floor + 1;
     s.week += 1;
     const theme = THEMES[next % THEMES.length];
-    screens.transitionTo(this, theme?.name ?? '', String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => {
+    screens.transitionTo(this, theme?.name ?? '', String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => screens.showLoading(this, screens.LOADING_OFFICE, () => {
       endOnCall(this);
       this.loadFloor(next, false);
       screens.resume(this);
       this.hud.toast(`Welcome to ${this.floorName()}.`, 'epic');
       if (s.upgrades.includes('dog')) this.achieve('dog');
-    });
+    }));
   }
 
   finishStory(): void {
@@ -1962,7 +2039,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       hangover: s.hangover > 0 && !d.ultra ? 1 : 0,
       crash: s.crash > 0 && !d.ultra ? 1 : 0,
       ultra: d.ultra ? 1 : 0,
-      hurt: this.hurtFlash,
+      // The red flash on a hit is a screen flash too: off with the others.
+      hurt: this.settings.flashes ? this.hurtFlash : 0,
     }, this.time, this.moodTint);
     if (this.screen !== 'play') return;
     // Dust in the light, and the white shimmer of the ascended.

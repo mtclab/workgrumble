@@ -14,6 +14,8 @@
  * screen and the wiring into the game are in `inductionday.ts`.
  */
 
+import { keyName } from './settings';
+
 // ================================================================== the steps
 
 /** In order. The spec's eight parts, with "look and move" and "block and parry" as two steps each. */
@@ -253,6 +255,12 @@ export interface CardKeys {
   readonly map: string;
   /** The number key that picks the label maker. */
   readonly labelSlot: string;
+  /**
+   * Attack and block as bound: codes, not names ('Mouse0', 'KeyK'), so a
+   * mouse button is drawn as the mouse and a key as a keycap.
+   */
+  readonly attack: string;
+  readonly block: string;
 }
 
 export interface Card {
@@ -277,6 +285,8 @@ export const SANITY_LINE = 'Sanity is your health. At zero you burn out.';
 
 const t = (text: string): CardBit => ({ text });
 const k = (key: string): CardBit => ({ key });
+/** A binding as drawn: the left or right button as the mouse, anything else as its keycap. */
+const bound = (code: string): CardBit => code === 'Mouse0' ? { mouse: 'left' } : code === 'Mouse2' ? { mouse: 'right' } : k(keyName(code));
 
 export function cardFor(st: InductionState, keys: CardKeys): Card {
   const plain = (say: string, doing: readonly CardBit[], point: Card['point'] = null, note: string | null = null): Card => ({ say, doing, point, note });
@@ -289,15 +299,15 @@ export function cardFor(st: InductionState, keys: CardKeys): Card {
     case 'talk':
       return plain('Sam from Sales has volunteered to complain at you. It is practice; whatever you say will work.', [k(keys.interact), t('Talk to the colleague marked PRACTICE, then pick a reply.')]);
     case 'swing':
-      return plain('Facilities lent us a training dummy. It has been through worse than you.', [{ mouse: 'left' }, t('Tap to swing at the dummy.')]);
+      return plain('Facilities lent us a training dummy. It has been through worse than you.', [bound(keys.attack), t('Tap to swing at the dummy.')]);
     case 'heavy':
-      return plain('Now properly. A heavy swing costs energy, so it had better land.', [{ mouse: 'left' }, t('Hold until the ring fills, then let go on the dummy.')]);
+      return plain('Now properly. A heavy swing costs energy, so it had better land.', [bound(keys.attack), t('Hold until the ring fills, then let go on the dummy.')]);
     case 'label':
-      return plain('The label maker is for things you would rather not stand next to. Labels run out: Internal IT sells more, and some turn up on the floor.', [k(keys.labelSlot), t('or'), { mouse: 'wheel' }, t('Switch to the label maker, then'), { mouse: 'left' }, t('fire at the dummy.')], 'tool', 'Your labels are counted under TOOL.');
+      return plain('The label maker is for things you would rather not stand next to. Labels run out: Internal IT sells more, and some turn up on the floor.', [k(keys.labelSlot), t('or'), { mouse: 'wheel' }, t('Switch to the label maker, then'), bound(keys.attack), t('fire at the dummy.')], 'tool', 'Your labels are counted under TOOL.');
     case 'block':
-      return plain('The dummy has been told to swing back. Watch it wind up.', [{ mouse: 'right' }, t('Hold to block its swing. Face it.')], sanity === null ? null : 'sanity', sanity);
+      return plain('The dummy has been told to swing back. Watch it wind up.', [bound(keys.block), t('Hold to block its swing. Face it.')], sanity === null ? null : 'sanity', sanity);
     case 'parry':
-      return plain('Good. Now raise the block late, in the last moment of the wind-up: that is a parry.', [{ mouse: 'right' }, t('Press just before the swing lands.')], sanity === null ? null : 'sanity', sanity);
+      return plain('Good. Now raise the block late, in the last moment of the wind-up: that is a parry.', [bound(keys.block), t('Press just before the swing lands.')], sanity === null ? null : 'sanity', sanity);
     case 'ticket':
       return plain('Real work now. One ticket is waiting on the lobby computer, and it is an easy one.', [k(keys.interact), t('Log on at the lobby computer and fix the ticket.')]);
     case 'map':

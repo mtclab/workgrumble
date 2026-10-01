@@ -7,7 +7,7 @@ import {
   type ItemDef,
   WEAPONS,
 } from './items';
-import { affixText, baseOf, type GearInstance, RARITY_INFO, sellValue, slotOf, uniqueSpecial } from './loot';
+import { affixText, baseOf, type GearInstance, RARITY_INFO, RARITY_MARK, sellValue, slotOf, uniqueSpecial } from './loot';
 import { spellById } from './magic';
 import { TREE_PERKS } from './perks';
 import { currentObjective, EVIDENCE, isActive, MAIN, QUEST_ITEMS, questById, withName } from './quests';
@@ -35,7 +35,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { fx } from './rng';
-import { ACTION_LABEL, ACTIONS, DEFAULT_KEYS, keyName, type Settings } from './settings';
+import { ACTION_LABEL, ACTIONS, DEFAULT_KEYS, keyName, mouseCode, type Settings } from './settings';
 import {
   ACTION_ITEM_KG,
   canTakePerk,
@@ -284,6 +284,22 @@ export class Os {
   releasePanel(): void {
     this.cancelRebind?.();
     this.loose = null;
+  }
+
+  /**
+   * The first launch's quality pick moved on (`Game.tickQualityPick`): the
+   * Quality control and its note follow it where they are showing, in place,
+   * so a control in use is not redrawn from under the player.
+   */
+  syncQuality(): void {
+    const st = this.host.settings;
+    for (const scope of [this.loose, this.root]) {
+      if (scope === null) continue;
+      const sel = scope.querySelector<HTMLSelectElement>('select[data-setting="quality"]');
+      if (sel !== null) sel.value = st.quality;
+      const note = scope.querySelector<HTMLElement>('[data-testid="quality-note"]');
+      if (note !== null) note.textContent = qualityNote(st.qualitySource);
+    }
   }
 
   /** Help without its controls list (the title's Controls & help draws its own, with the player's keys). */
@@ -593,7 +609,8 @@ export class Os {
     const base = baseOf(g);
     const special = uniqueSpecial(g.unique);
     const card = el('div', { class: `os-item${equipped ? ' is-equipped' : ''}` },
-      el('b', { class: `rarity-${g.rarity}` }, g.name),
+      // The mark says the rarity without the colour (RARITY_MARK); the words under it say it too.
+      el('b', { class: `rarity-${g.rarity}` }, RARITY_MARK[g.rarity] === '' ? null : el('span', { class: 'rarity-mark', 'aria-hidden': 'true' }, RARITY_MARK[g.rarity]), g.name),
       el('p', { class: 'os-meta' }, `${RARITY_INFO[g.rarity].name} ${slotOf(g) ?? ''} · ${base?.weight ?? 0} kg${equipped ? ' · EQUIPPED' : ''}`),
       el('p', {}, base?.desc ?? ''),
       ...g.affixes.map((a) => el('p', { class: 'os-affix' }, affixText(a))),
@@ -882,17 +899,29 @@ export class Os {
     };
     const toggle = (label: string, value: boolean, onChange: (v: boolean) => void): HTMLElement =>
       select(label, value ? 'on' : 'off', [['on', 'On'], ['off', 'Off']], (v) => onChange(v === 'on'));
+    // A quality the player picks is theirs: it overrules (and ends) the first launch's automatic pick.
+    const quality = select('Quality', st.quality, [['low', 'Low (fast)'], ['medium', 'Medium'], ['high', 'High']], (v) => {
+      st.quality = v === 'low' ? 'low' : v === 'medium' ? 'medium' : 'high';
+      st.qualitySource = 'player';
+      this.syncQuality();
+    });
+    quality.querySelector('select')?.setAttribute('data-setting', 'quality');
     body.append(
       el('h4', {}, 'Camera and controls'),
       el('div', { class: 'os-equip' },
         select('Camera (V)', st.view, [['third', 'Third person'], ['first', 'First person']], (v) => { st.view = v === 'first' ? 'first' : 'third'; }),
         range('Field of view', st.fov, 55, 110, 1, (v) => { st.fov = v; }, (v) => `${v}°`),
         range('Mouse sensitivity', st.sensitivity, 0.2, 3, 0.1, (v) => { st.sensitivity = v; }, (v) => v.toFixed(1)),
-        toggle('Invert mouse Y', st.invertY, (v) => { st.invertY = v; }),
-        toggle('Camera shake', st.shake, (v) => { st.shake = v; })),
+        toggle('Invert mouse Y', st.invertY, (v) => { st.invertY = v; })),
+      el('h4', {}, 'Accessibility'),
+      el('div', { class: 'os-equip' },
+        toggle('Camera shake', st.shake, (v) => { st.shake = v; }),
+        toggle('Screen flashes', st.flashes, (v) => { st.flashes = v; }),
+        toggle('Hit pause', st.hitPause, (v) => { st.hitPause = v; })),
       el('h4', {}, 'Graphics'),
       el('div', { class: 'os-equip' },
-        select('Quality', st.quality, [['low', 'Low (fast)'], ['medium', 'Medium'], ['high', 'High']], (v) => { st.quality = v === 'low' ? 'low' : v === 'medium' ? 'medium' : 'high'; }),
+        quality,
+        el('p', { class: 'os-meta', 'data-testid': 'quality-note' }, qualityNote(st.qualitySource)),
         range('Render scale', st.renderScale, 0.5, 1.5, 0.05, (v) => { st.renderScale = v; }, (v) => `${Math.round(v * 100)}%`),
         toggle('Bloom (glow)', st.bloom, (v) => { st.bloom = v; }),
         toggle('Damage numbers', st.damageNumbers, (v) => { st.damageNumbers = v; })),
@@ -900,7 +929,7 @@ export class Os {
       el('div', { class: 'os-equip' },
         range('Music', st.music, 0, 1, 0.05, (v) => { st.music = v; }, (v) => `${Math.round(v * 100)}%`),
         range('Effects', st.sfx, 0, 1, 0.05, (v) => { st.sfx = v; }, (v) => `${Math.round(v * 100)}%`)),
-      el('h4', {}, 'Keys (click one, then press the new key)'),
+      el('h4', {}, 'Keys and buttons (click one, then press the new key, or click it again with the mouse button you want)'),
       this.keyBinder(body),
       el('h4', {}, 'Interface'),
       el('div', { class: 'os-equip' },
@@ -922,6 +951,8 @@ export class Os {
     const grid = el('div', { class: 'os-keys' });
     for (const a of ACTIONS) {
       const b = el('button', { class: 'os-btn os-key' }, keyName(st.keys[a]));
+      // The right button is a binding here, not a menu.
+      b.addEventListener('contextmenu', (e) => e.preventDefault());
       b.addEventListener('click', () => {
         // One rebind at a time: a second click takes over from the first,
         // or one key press would land on two actions at once.
@@ -929,6 +960,7 @@ export class Os {
         b.textContent = 'press a key…';
         const stop = (): void => {
           window.removeEventListener('keydown', onKey, true);
+          window.removeEventListener('mousedown', onMouse, true);
           if (this.cancelRebind === cancel) this.cancelRebind = null;
         };
         const cancel = (): void => {
@@ -947,17 +979,48 @@ export class Os {
           e.preventDefault();
           e.stopImmediatePropagation();
           stop();
-          if (e.code !== 'Escape' && e.code !== 'F5' && e.code !== 'F9') {
+          commit(e.code !== 'Escape' && e.code !== 'F5' && e.code !== 'F9' ? e.code : null);
+        };
+        // A mouse button binds when it is pressed on this button (the one
+        // waiting). Pressed anywhere else it is the player moving on - to
+        // another key, the close box, a slider - so the wait ends, as it
+        // does for a second rebind click, and the press does what it does.
+        const onMouse = (e: MouseEvent): void => {
+          if (!b.isConnected || !(e.target instanceof Node) || !b.contains(e.target)) {
+            cancel();
+            return;
+          }
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          stop();
+          // The click this press makes lands on the redrawn grid: it must
+          // not start a rebind of whatever button is drawn under it now.
+          const swallow = (ev: Event): void => {
+            ev.preventDefault();
+            ev.stopImmediatePropagation();
+            done();
+          };
+          const done = (): void => {
+            window.removeEventListener('click', swallow, true);
+            window.removeEventListener('mousedown', done, true);
+          };
+          window.addEventListener('click', swallow, true);
+          window.addEventListener('mousedown', done, true);
+          commit(mouseCode(e.button));
+        };
+        const commit = (code: string | null): void => {
+          if (code !== null) {
             // Swap with whatever had the key, so nothing is left unbound.
-            const clash = ACTIONS.find((x) => x !== a && st.keys[x] === e.code);
+            const clash = ACTIONS.find((x) => x !== a && st.keys[x] === code);
             if (clash !== undefined) st.keys[clash] = st.keys[a];
-            st.keys[a] = e.code;
+            st.keys[a] = code;
             this.host.applySettings();
           }
           body.replaceChildren();
           this.renderSettings(body);
         };
         window.addEventListener('keydown', onKey, true);
+        window.addEventListener('mousedown', onMouse, true);
         this.cancelRebind = cancel;
       });
       grid.append(el('label', {}, el('span', {}, ACTION_LABEL[a]), b));
@@ -1026,4 +1089,11 @@ export class Os {
     for (const note of helldeskReleasesNewestFirst()) list.append(releaseEntry(note));
     body.append(list);
   }
+}
+
+/** The line under Quality: who chose it, when it was not the player. */
+function qualityNote(source: Settings['qualitySource']): string {
+  if (source === 'auto') return 'Chosen automatically for this computer on its first launch. Pick another to overrule it.';
+  if (source === 'sampling') return 'Timing this computer to choose one...';
+  return '';
 }

@@ -3,25 +3,38 @@
  * game and are shared by every save slot.
  */
 export const ACTIONS = [
-  'forward', 'back', 'left', 'right', 'sprint', 'jump', 'interact', 'quickuse', 'cast', 'nextspell',
+  'forward', 'back', 'left', 'right', 'sprint', 'jump', 'attack', 'block', 'interact', 'quickuse', 'cast', 'nextspell',
   'ability', 'sneak', 'rest', 'view', 'map', 'journal', 'backpack',
 ] as const;
 export type Action = (typeof ACTIONS)[number];
 
 export const ACTION_LABEL: Record<Action, string> = {
   forward: 'Move forward', back: 'Move back', left: 'Strafe left', right: 'Strafe right', sprint: 'Sprint', jump: 'Jump',
-  interact: 'Use / talk', quickuse: 'Quick supplies', cast: 'Cast rune', nextspell: 'Next rune', ability: 'Domain ability',
+  attack: 'Use tool (hold: heavy swing)', block: 'Block (tap: shove)', interact: 'Use / talk', quickuse: 'Quick supplies', cast: 'Cast rune', nextspell: 'Next rune', ability: 'Domain ability',
   sneak: 'Sneak', rest: 'Rest', view: 'First / third person', map: 'Map', journal: 'Journal', backpack: 'Backpack',
 };
 
 export const DEFAULT_KEYS: Record<Action, string> = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', sprint: 'ShiftLeft', jump: 'Space',
-  interact: 'KeyE', quickuse: 'KeyQ', cast: 'KeyF', nextspell: 'KeyX', ability: 'KeyG',
+  attack: 'Mouse0', block: 'Mouse2', interact: 'KeyE', quickuse: 'KeyQ', cast: 'KeyF', nextspell: 'KeyX', ability: 'KeyG',
   sneak: 'KeyC', rest: 'KeyT', view: 'KeyV', map: 'KeyM', journal: 'KeyJ', backpack: 'Tab',
 };
 
-/** 'KeyE' → 'E', 'ShiftLeft' → 'Left Shift'. */
+/**
+ * A mouse button as a binding: 'Mouse0' is the left, 'Mouse2' the right
+ * (`MouseEvent.button`). The mouse and the keyboard share one namespace, so
+ * any action can take either and a clash swaps the same way.
+ */
+export function mouseCode(button: number): string {
+  return `Mouse${button}`;
+}
+
+/** 'KeyE' → 'E', 'ShiftLeft' → 'Left Shift', 'Mouse0' → 'LMB'. */
 export function keyName(code: string): string {
+  if (code === 'Mouse0') return 'LMB';
+  if (code === 'Mouse1') return 'Middle mouse';
+  if (code === 'Mouse2') return 'RMB';
+  if (/^Mouse\d+$/.test(code)) return `Mouse ${Number(code.slice(5)) + 1}`;
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   const map: Record<string, string> = { ShiftLeft: 'Left Shift', ShiftRight: 'Right Shift', ControlLeft: 'Left Ctrl', ControlRight: 'Right Ctrl', AltLeft: 'Left Alt', Space: 'Space', Tab: 'Tab', CapsLock: 'Caps Lock', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→' };
@@ -36,7 +49,19 @@ export interface Settings {
   renderScale: number;
   bloom: boolean;
   quality: 'low' | 'medium' | 'high';
+  /**
+   * Who set `quality`: the player, the machine on its first launch ('auto':
+   * the Control Panel says so), or nobody yet ('sampling': the first launch
+   * is still timing it; `autoPickDue` resumes a pick cut short). Settings
+   * saved before this existed read as the player's.
+   */
+  qualitySource: 'player' | 'auto' | 'sampling';
+  /** Camera shake on hits. Off is none at all. */
   shake: boolean;
+  /** Full-screen flashes: the hurt and heal edges, and SUO's white frames. */
+  flashes: boolean;
+  /** The split-second freeze when a melee hit lands. */
+  hitPause: boolean;
   damageNumbers: boolean;
   tips: boolean;
   compass: boolean;
@@ -65,7 +90,10 @@ export const DEFAULT_SETTINGS: Settings = {
   renderScale: 1,
   bloom: true,
   quality: 'high',
+  qualitySource: 'player',
   shake: true,
+  flashes: true,
+  hitPause: true,
   damageNumbers: true,
   tips: true,
   compass: true,
@@ -78,6 +106,15 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 const KEY = 'workgrumble-helldesk-settings';
+
+/** The settings exactly as this browser kept them: null when nothing is kept (or nothing can be). */
+export function storedSettings(): string | null {
+  try {
+    return localStorage.getItem(KEY);
+  } catch {
+    return null;
+  }
+}
 
 export function loadSettings(): Settings {
   try {

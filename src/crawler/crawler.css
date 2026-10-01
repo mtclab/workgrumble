@@ -42,7 +42,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 
 /* ---------------- HUD ---------------- */
 .hud { position: absolute; inset: 0; pointer-events: none; user-select: none; }
-.hud-vignette { position: absolute; inset: 0; }
+.hud-vignette { position: absolute; inset: 0; display: none; }
 .hud-crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font: bold 22px monospace; color: rgba(255,255,255,0.85); text-shadow: 0 0 3px #000; }
 .hud-prompt { position: absolute; left: 50%; top: 58%; transform: translateX(-50%); background: var(--hud-panel); border: 1px solid var(--hud-edge); padding: 6px 14px; font-size: 15px; border-radius: 3px; }
 .hud-effects { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; max-width: 80vw; }
@@ -124,6 +124,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .lift { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .lift-num { font: bold 120px "Courier New", monospace; color: #ff8a00; text-shadow: 0 0 20px rgba(255,138,0,0.7); background: #111; padding: 0 30px; border: 4px solid #444; }
 .lift-name { font: bold 28px Tahoma, sans-serif; color: #e8e0d0; }
+/* Building a floor: a badge swiped at a reader, so the still frame reads as work, not a hang. */
+.loading-card { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+.loading-badge { width: 44px; height: 60px; border: 3px solid #e8e0d0; border-radius: 6px; background: linear-gradient(#3aa295 0 28%, transparent 28%); animation: badge-swipe 0.9s ease-in-out infinite; }
+@keyframes badge-swipe { 0%, 100% { transform: translateX(-14px) rotate(-8deg); } 50% { transform: translateX(14px) rotate(8deg); } }
 /* The version, small, under the title: there for whoever asks, not for everyone. */
 .title-version { font: 12px Tahoma, sans-serif; color: #8a8272; letter-spacing: 1px; }
 /* "What's new": a desk window in the corner of the title, not a wall in front of it. */
@@ -298,7 +302,9 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .hud-card-sub { font: bold 16px Tahoma, sans-serif; color: #f0e8d8; letter-spacing: 4px; text-transform: uppercase; text-shadow: 0 0 4px #000; }
 .hud-charge { position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%; display: none; pointer-events: none;
   background: conic-gradient(#ffd98a var(--p, 0%), rgba(0,0,0,0.25) 0); -webkit-mask: radial-gradient(circle, transparent 15px, #000 16px); mask: radial-gradient(circle, transparent 15px, #000 16px); }
-.hud-charge.is-full { background: conic-gradient(#ff7a3a 100%, transparent 0); filter: drop-shadow(0 0 6px #ff7a3a); }
+.hud-charge.is-full { background: conic-gradient(#ff7a3a 100%, transparent 0); filter: drop-shadow(0 0 6px #ff7a3a); animation: charge-ready 0.4s ease-in-out infinite alternate; }
+/* Ready is a beat as well as a colour: the full ring throbs until you let go. */
+@keyframes charge-ready { from { transform: scale(1); opacity: 1; } to { transform: scale(1.22); opacity: 0.6; } }
 .hud-block { position: absolute; left: 50%; top: calc(50% + 28px); transform: translateX(-50%); font: bold 12px monospace; color: #9ad0ff; text-shadow: 0 0 3px #000; display: none; }
 /* Where a hit came from: an arc on a ring round the middle of the screen, turned toward it, with a notch on its outer edge. The shape carries it, not the colour. */
 .hud-hit { position: absolute; left: 50%; top: 50%; width: min(62vh, 62vw); height: min(62vh, 62vw); border-radius: 50%; border: 9px solid transparent; border-top-color: rgba(255, 90, 60, 0.9); filter: drop-shadow(0 0 3px #000); display: none; pointer-events: none; }
@@ -317,6 +323,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .rarity-fine { color: #1f7a36; }
 .rarity-rare { color: #2f6fbf; }
 .rarity-legendary { color: #c96a00; }
+.rarity-mark { margin-right: 0.35em; }
 .os-item .os-affix { font-size: 11px; color: #1c665e; margin: 1px 0; }
 .os-item .os-special { font-size: 11px; color: #9a5a00; font-style: italic; }
 .os-item.is-equipped { outline: 2px solid var(--os-accent-bright); }
@@ -427,4 +434,8 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
   .hud-cell.is-pointed, .hud-cell.is-pulse, .hud-cell.is-new, .hud-track.is-new { animation: none; }
   /* Still says it heard you, without the movement. */
   .hud-rooted.is-pulse { animation: none; border-color: #ffd98a; }
+  /* Ready still blinks, in place. */
+  .hud-charge.is-full { animation: charge-ready-still 0.4s steps(2) infinite alternate; }
+  .loading-badge { animation: none; }
 }
+@keyframes charge-ready-still { from { opacity: 1; } to { opacity: 0.45; } }

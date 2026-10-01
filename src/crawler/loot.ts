@@ -17,6 +17,27 @@ export const RARITY_INFO: Record<Rarity, { name: string; color: string; affixes:
   legendary: { name: 'Legendary', color: '#ffae42', affixes: 0, value: 6 },
 };
 
+/**
+ * Rarity without its colour, for anyone who cannot tell green from orange:
+ * a mark beside the name in the backpack (more marks, rarer; a star for a
+ * legendary), and a shape for the drop on the carpet (more faces, rarer).
+ */
+export const RARITY_MARK: Record<Rarity, string> = {
+  common: '',
+  fine: '◆',
+  rare: '◆◆',
+  legendary: '★',
+};
+
+export type DropShape = 'tetra' | 'octa' | 'dodeca' | 'icosa';
+
+export const RARITY_SHAPE: Record<Rarity, DropShape> = {
+  common: 'tetra',
+  fine: 'octa',
+  rare: 'dodeca',
+  legendary: 'icosa',
+};
+
 export type AffixStat =
   | 'armor' | 'speed' | 'maxSanity' | 'maxLoyly' | 'damage' | 'stealth' | 'heal' | 'auraResist' | 'attackSpeed'
   | Attribute

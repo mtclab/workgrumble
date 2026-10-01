@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { hitPauseFor } from './a11y';
 import { sfx } from './audio';
 import { RESOLVED_LINES } from './content/lines';
 import { TICKETS } from './content/tickets';
@@ -18,7 +19,7 @@ import {
 import { type Game, POWER_TIME } from './game';
 import { AMMO, type AmmoKind, BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES, type WeaponDef } from './items';
 import { lineOfSight, toCell, WALL_H } from './level';
-import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, rollGear, uniqueInstance, WORLD_UNIQUES } from './loot';
+import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, RARITY_SHAPE, rollGear, uniqueInstance, WORLD_UNIQUES } from './loot';
 import { questItemMesh } from './meshes';
 import { MAIN, TRANSIENT_ITEMS } from './quests';
 import { fx } from './rng';
@@ -316,7 +317,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
         if (!power) sfx.swing();
         sfx.hit();
         g.shake(power ? 0.45 : 0.15);
-        g.hitStop = power ? 0.09 : 0.035;
+        g.hitStop = hitPauseFor(power, g.settings.hitPause);
       } else {
         // A miss answers too: a whiff, and a puff of dust where the swing ran out.
         sfx.whiff();
@@ -884,7 +885,13 @@ export function dropLoot(g: Game, at: THREE.Vector3, rich: boolean): void {
 
 export function dropGear(g: Game, at: THREE.Vector3, inst: GearInstance): void {
   const col = parseInt(RARITY_INFO[inst.rarity].color.slice(1), 16);
-  const mesh = new THREE.Mesh(new THREE.OctahedronGeometry(0.28), new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.4 }));
+  // The shape says the rarity as well as the colour does (RARITY_SHAPE).
+  const shape = RARITY_SHAPE[inst.rarity];
+  const geo = shape === 'tetra' ? new THREE.TetrahedronGeometry(0.3)
+    : shape === 'octa' ? new THREE.OctahedronGeometry(0.28)
+      : shape === 'dodeca' ? new THREE.DodecahedronGeometry(0.26)
+        : new THREE.IcosahedronGeometry(0.3);
+  const mesh = new THREE.Mesh(geo,new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.4 }));
   placeDrop(g, at, mesh, { kind: 'gear', id: inst.base, amount: 1, gear: inst, permanent: true });
 }
 

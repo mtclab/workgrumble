@@ -157,7 +157,9 @@ Red Pen marks, Sir Reginald's hat keeps managers docile, the Nokia 3310
 survives a burnout once a floor, the Koskenkorva Flask widens the Ballmer
 Peak, and four more). Each boss carries its legendary; the rest turn up in
 supply closets and on elites. Internal IT sells plain kit and buys anything
-back.
+back. Rarity is never colour alone: the backpack puts a mark before the name
+(◆ Fine, ◆◆ Rare, ★ Legendary) and a drop on the carpet has its own shape
+(tetrahedron, octahedron, dodecahedron, icosahedron: more faces, rarer).
 
 ## Quests
 
@@ -408,8 +410,32 @@ An autosave, a quicksave (F5, F9 to load) and three slots, all in this
 browser. v2 saves are migrated. Options (the title's Settings, before any
 game exists; the backpack's Control Panel; or the pause menu):
 first/third person, field of view, sensitivity, invert Y, render scale,
-bloom, quality (lights), screen shake, damage numbers, tips, compass, music
-and effects volume, autosave.
+bloom, quality (lights), damage numbers, tips, compass, music and effects
+volume, autosave; under Accessibility, camera shake (off is none at all),
+screen flashes (the hurt, heal and meeting edges, the red flash on a hit and
+SUO's white frames) and hit pause (the freeze on a melee hit). Every key and
+both mouse buttons can be rebound, attack and block included: click the
+action, then press a key or click the same button again with the mouse
+button you want; a clash swaps the two. The screen's edge differs by shape
+as well as colour (a hit is a hard rim, a heal a wide soft glow; `a11y.ts`),
+and a fully charged heavy swing's ring throbs as well as turning orange.
+
+**First launch** (docs/SPEC_FIRST_LAUNCH.md). A browser with no settings
+picks its own graphics quality: the title (with the real floor behind it)
+is timed, the first half second skipped, for three seconds; a median frame
+over 20 ms (~50 fps) steps one level down and times again, down to Low.
+The pick is saved and the Control Panel says it was made automatically;
+choosing a quality yourself overrules it (and clears the note). It is
+`qualitySource` in the settings: 'sampling' while it times (a tab closed
+mid-way resumes), then 'auto', or 'player'; settings from before it read as
+the player's, so it never runs again once settings exist. Starting play
+before it has decided keeps the level reached. The rules are pure
+(`autoquality.ts`); the game only feeds it frame times.
+
+**Loading.** New career, Continue, Load, F9, clocking back in after a
+burnout and every lift or drive put a short card up ("Badging you in",
+"Unlocking the mökki") and build the floor a frame later, once it has been
+painted (`showLoading` in `screens.ts`).
 
 ## Version and what changed
 
@@ -435,7 +461,7 @@ in the same commit.
 ## Controls
 
 WASD move · Mouse look · LMB tool (hold: heavy swing) · RMB block (tap:
-shove) · Shift sprint · Space jump · E use / talk · F cast · X next rune ·
+shove) (both can be rebound) · Shift sprint · Space jump · E use / talk · F cast · X next rune ·
 G domain ability · C sneak · T rest · Q quick supplies · 1-9 / wheel tools ·
 V first/third person · Tab backpack · J journal · M map · F5/F9 quicksave /
 quickload · Esc pause.
@@ -542,7 +568,9 @@ runtime:
 | `quests.ts` | Side quests, Project Phoenix, quest stages and turn-in dialogue. |
 | `upgrades.ts` | Mökki upgrades, fish, achievements, tips. |
 | `state.ts` | The save (v3), migration from v2, derived stats, skills and level-up. |
-| `saves.ts`, `settings.ts` | Save slots; global options. |
+| `saves.ts`, `settings.ts` | Save slots; global options, the bindings (keys and mouse buttons). |
+| `autoquality.ts` | The first launch's graphics-quality pick (pure): when a launch picks, the timing window, the verdict per level. |
+| `a11y.ts` | Comfort and accessibility rules (pure): shake and hit pause when off, the screen edge's shape per kind. |
 | `story.ts` | Every other conversation: talk-downs, managers, office ladies, helpers, the Saunatonttu, the per-floor stories, the Auditor, HR, reviews, level-up. |
 | `game.ts` | The Game: world loading, the loop, saves, settings, and the host interfaces the rest call into. |
 | `combat.ts` | Attacks (heavy, block, parry), projectiles, damage both ways, resolving people, loot on the floor, hazards and landing markers, effects. |
@@ -557,7 +585,7 @@ runtime:
 | `oncall.ts`, `pager.ts` | The on-call rota: who is on call which weekend, the page schedule and clock, the drink modifiers, payouts and the incidents (pure); the Friday notice, pages going off, the page dialogue (`PagerHost`), the terminal and the village drive, misses and the HUD badge (in the game). |
 | `desk.ts` | The ticket queue and mail tasks. |
 | `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
-| `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts. |
+| `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts, the loading card. |
 | `level.ts`, `mokki.ts` | Seeded floors and the cottage plot (grid collision, line of sight, flow fields). |
 | `entities.ts` | Every NPC: stats, elites, AI, boss patterns and phases. |
 | `os.ts` | WorkgrumbleOS: tickets, mail, KB, Internal IT (buy/sell), inventory, character and perks, HR, journal, achievements, settings, help. |
@@ -604,3 +632,11 @@ rooted card. `e2e/helldesk-menus.spec.ts` plays them on the page: a
 keyboard-only walk from the title through the form, pause, the backpack and
 Character; burnout to a loaded save; Enter and Esc in dialogue; Settings
 from a fresh browser's title; and a manager's meeting with the rooted card.
+`autoquality.test.ts` covers the quality pick (a fast machine keeps High, a
+slow one steps to Medium, a very slow one to Low and never below, the
+warm-up, stalls, and that no launch picks once settings exist);
+`a11y.test.ts` the comfort rules and rarity without colour; `input.test.ts`
+attack and block as bindings. `e2e/helldesk-firstlaunch.spec.ts` plays a
+first launch and the next one, a player's own pick, the loading card being
+painted, shake and flashes on and off through a real hit, and attack rebound
+to a key and to the right button.
