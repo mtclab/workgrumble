@@ -96,7 +96,7 @@ interface Crawler {
   vision: unknown;
   saunaT: number;
   input: { locked: boolean };
-  player: { pos: { x: number; z: number } };
+  player: { pos: { x: number; z: number }; yaw: number };
   level: { start: { x: number; z: number } };
   settings: { quality: string; inductionDone: boolean };
   renderer: { shadowMap: { enabled: boolean } };
@@ -380,7 +380,21 @@ async function talkDown(page: Page): Promise<void> {
   const id = await page.evaluate(() => (window as unknown as W).__helldesk.duel('user', 1.6));
   expect(id).toBeGreaterThan(0);
   await page.evaluate(() => (window as unknown as W).__helldesk.calm());
-  await expect(page.locator('.hud-prompt')).toContainText('talk them down');
+  // Look at them, as a player would: they step up beside you, and E goes to what you face.
+  await expect.poll(async () => {
+    await page.evaluate((i) => (window as unknown as W).__helldesk.face(i), id);
+    return (await page.locator('.hud-prompt').textContent()) ?? '';
+  }, { message: `talk-down prompt; ${await page.evaluate((i) => {
+    const g = (window as unknown as W).__crawler;
+    const a = g.actors.find((x) => x.id === i);
+    const t = (g as unknown as { promptTarget: { kind: string; a?: { id: number; kind: string }; it?: { kind: string; x: number; z: number } } | null }).promptTarget;
+    return JSON.stringify({
+      foe: a === undefined ? null : { kind: a.kind, role: a.role, hostile: a.hostile, talked: a.talked, enragedT: a.enragedT, resolved: a.resolved, x: a.pos.x, z: a.pos.z },
+      player: { x: g.player.pos.x, z: g.player.pos.z, yaw: g.player.yaw },
+      target: t === null ? null : { kind: t.kind, a: t.a?.id, it: t.it === undefined ? undefined : { kind: t.it.kind, x: t.it.x, z: t.it.z } },
+      day: (g as unknown as { inductionDay: unknown }).inductionDay !== null,
+    });
+  }, id)}`, timeout: 15_000, intervals: [200] }).toContain('talk them down');
   await pressE(page, 'dialogue');
   const biscuit = page.locator('.dlg-opt', { hasText: 'chocolate digestive' });
   await expect(biscuit).toBeVisible();

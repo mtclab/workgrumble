@@ -1184,6 +1184,14 @@ export function stageDuel(g: Game, kind: ActorKind, dist: number): number {
     const rz = pp.z - Math.sin(yaw) * 3;
     if (!walkClear(lv, pp.x, pp.z, ex, ez) || !walkClear(lv, pp.x, pp.z, rx, rz) || !walkClear(lv, ex, ez, rx, rz)) continue;
     if (!lineOfSight(lv, pp.x, pp.z, ex, ez) || lv.solid[toCell(ez) * lv.w + toCell(ex)] !== 0 || lv.solid[toCell(rz) * lv.w + toCell(rx)] !== 0) continue;
+    // Nothing to press E on ahead of you and nearer than they are (the lift
+    // doors, a terminal): a duel is the two of you.
+    const between = lv.interactables.some((it) => {
+      const d = Math.hypot(it.x - pp.x, it.z - pp.z);
+      const ahead = ((it.x - pp.x) * -Math.sin(yaw) + (it.z - pp.z) * -Math.cos(yaw)) / Math.max(d, 1e-4);
+      return d < dist + 1 && ahead > 0;
+    });
+    if (between) continue;
     const a = g.spawnAt(kind, ex, ez, lv.roomOf[toCell(ez) * lv.w + toCell(ex)] ?? -1, true);
     if (a === null) continue;
     g.player.yaw = yaw;
