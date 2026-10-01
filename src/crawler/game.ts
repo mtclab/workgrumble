@@ -161,6 +161,11 @@ export const POWER_TIME = 0.65;
 /** How far away people are still drawn and simulated at leisure, in metres. */
 const ACTOR_RANGE = 45;
 
+/** A domain ability (G) to print in the HUD: from the fifth rung, once a domain is chosen. */
+function hasDomainAbility(s: SaveState): boolean {
+  return s.rung >= 4 && s.domain !== null;
+}
+
 /** Half a person's width, for the sight lines past a door frame. */
 const SHOULDER = 0.45;
 
@@ -302,7 +307,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   /** Induction day's props and card, while it runs on floor 0 (the step itself is in the save). */
   inductionDay: InductionDay | null = null;
   /** What the meter reveal looks at, refilled in place each frame (no allocation while meters wait). */
-  private readonly meterFacts: { -readonly [K in keyof MeterFacts]: MeterFacts[K] } = { step: null, loyly: 0, maxLoyly: 0, runes: 0, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
+  private readonly meterFacts: { -readonly [K in keyof MeterFacts]: MeterFacts[K] } = { step: null, loyly: 0, maxLoyly: 0, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
@@ -1210,6 +1215,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
         f.loyly = s.loyly;
         f.maxLoyly = this.derivedCache.maxLoyly;
         f.runes = s.spells.length;
+        f.ability = hasDomainAbility(s);
         f.bac = s.bac;
         f.stomach = s.stomach;
         f.caffeine = s.caffeine;
@@ -1233,7 +1239,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   private hudFrame(): HudFrame {
     const s = this.save;
     const sp = s.spell === null ? undefined : spellById(s.spell);
-    const domainReady = s.rung >= 4 && s.domain !== null;
+    const domainReady = hasDomainAbility(s);
     const tol = s.caffeineTol;
     const factor = effectiveCaffeine(1, tol);
     const band = caffeineBand(s.caffeine, tol);
@@ -1882,7 +1888,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   addActionItem(from: string): void { host.addActionItem(this, from); }
   clearActionItems(from: string): number { return host.clearActionItems(this, from); }
   resolvePeacefully(a: Actor, how: 'fix' | 'ticket' | 'scared' | 'charmed' | 'meeting' | 'bribe'): void { host.resolvePeacefully(this, a, how); }
-  enrage(a: Actor): void { host.enrage(this, a); }
+  enrage(a: Actor): boolean { return host.enrage(this, a); }
   recruitedHelper(): Actor | null { return host.recruitedHelper(this); }
   dismiss(a: Actor): void { host.dismiss(this, a); }
   spawnHostile(kind: 'user' | 'manager' | 'reply' | 'customer', n: number, name?: string): void { host.spawnHostile(this, kind, n, name); }

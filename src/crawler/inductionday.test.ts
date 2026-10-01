@@ -5,9 +5,11 @@ import type { FixEntry } from './desk';
 import { breach, fixOptions } from './desk';
 import { type Actor, createActor, type SpawnOpts } from './entities';
 import type { Game } from './game';
-import { type InductionState, isPracticeTicket, LABELS_FOR_STEP, PRACTICE_SANITY_FLOOR, PRACTICE_TICKET_FROM, type StepId } from './induction';
+import { type InductionState, isPracticeTicket, LABELS_FOR_STEP, MAP_LOOK_SECONDS, PRACTICE_SANITY_FLOOR, PRACTICE_TICKET_FROM, type StepId } from './induction';
 import { INDUCTION_TERMINAL_ID, InductionDay } from './inductionday';
+import { enrage } from './hosts';
 import { findPrompt } from './interact';
+import { maybeStaff } from './questing';
 import { generateLevel, type Interactable, type Level, toCell } from './level';
 import { Rng } from './rng';
 import { DEFAULT_KEYS, DEFAULT_SETTINGS } from './settings';
@@ -168,12 +170,49 @@ describe('the label step can always be done', () => {
   });
 });
 
-describe('the map closes before Morag\'s last words', () => {
-  it('pressing M at the map step: the closing dialogue opens over a closed map', () => {
+describe('the map lesson shows the map, then Morag', () => {
+  it.each([false, true])('M at the map step (map open before: %s): the map is up for a moment, then closes as the closing dialogue opens', (wasOpen) => {
     const h = host('map');
-    (h.g.hud as { mapOpen: boolean }).mapOpen = true;
+    const hud = h.g.hud as { mapOpen: boolean };
+    // The press toggles first (game.ts), then the induction hears it.
+    hud.mapOpen = !wasOpen;
     h.day.event({ type: 'map' });
+    expect(hud.mapOpen).toBe(true);
+    expect(h.dialogues).toEqual([]);
+    h.day.update(MAP_LOOK_SECONDS / 2);
+    expect(hud.mapOpen).toBe(true);
+    expect(h.dialogues).toEqual([]);
+    h.day.update(MAP_LOOK_SECONDS);
     expect(h.dialogues).toEqual([{ mapOpen: false }]);
+    // Once.
+    h.day.update(1);
+    expect(h.dialogues).toHaveLength(1);
+  });
+});
+
+describe('nobody on the floor is set on a new starter by a talk or a phone', () => {
+  it('a failed talk-down mid-induction ends the talk, not in a fight; once the floor is awake it does', () => {
+    const h = host('talk');
+    const g = h.g as unknown as { floorAwake: boolean };
+    const user = (h.g as unknown as { spawnAt: (k: string, x: number, z: number, r: number, ag: boolean) => Actor }).spawnAt('user', 5, 5, 0, false);
+    g.floorAwake = false;
+    expect(enrage(h.g, user)).toBe(false);
+    expect(user.aggro).toBe(false);
+    expect(user.enragedT).toBe(0);
+    expect(user.talked).toBe(true);
+    g.floorAwake = true;
+    const other = (h.g as unknown as { spawnAt: (k: string, x: number, z: number, r: number, ag: boolean) => Actor }).spawnAt('user', 6, 6, 0, false);
+    expect(enrage(h.g, other)).toBe(true);
+    expect(other.aggro).toBe(true);
+  });
+
+  it('no in-person staffing mid-induction', () => {
+    const h = host('swing');
+    const g = h.g as unknown as { pendingStaff: null; afterDialogue: (() => void) | null };
+    g.pendingStaff = null;
+    g.afterDialogue = null;
+    maybeStaff(h.g, 'Derek', 1);
+    expect(g.afterDialogue).toBeNull();
   });
 });
 

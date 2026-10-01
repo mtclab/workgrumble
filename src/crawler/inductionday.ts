@@ -28,6 +28,7 @@ import {
   PRACTICE_TICKET_FROM,
   isPracticeTicket,
   LABELS_FOR_STEP,
+  MAP_LOOK_SECONDS,
   SANITY_LINE,
 } from './induction';
 import { itemById } from './items';
@@ -252,6 +253,8 @@ export class InductionDay {
   private readonly shownKeys: string[] = [];
   private shownGear = -1;
   private complainIn = 1;
+  /** Seconds left of looking at the map before Morag's closing words (-1: not yet). */
+  private closingIn = -1;
   private disposed = false;
 
   constructor(g: Game, st: InductionState) {
@@ -320,6 +323,16 @@ export class InductionDay {
     if (this.disposed) return;
     const g = this.g;
     const st = this.st;
+    // The map step is done and the map is up: a moment to look at it, then Morag.
+    if (this.closingIn > 0) {
+      this.closingIn -= dt;
+      if (this.closingIn <= 0) {
+        // Morag talks to you, not to the floor plan.
+        g.hud.mapOpen = false;
+        g.openDialogue(said(MORAG, closingLines(st), 'good', 'Get to work'), () => g.endInduction());
+      }
+      return;
+    }
     if (st.step === 'look') {
       const sens = 0.0022 * g.settings.sensitivity;
       const amount = (Math.abs(g.input.mouseDX) + Math.abs(g.input.mouseDY)) * sens;
@@ -374,9 +387,10 @@ export class InductionDay {
         this.ensureTicket();
         break;
       case 'done':
-        // Morag talks to you, not to the floor plan.
-        g.hud.mapOpen = false;
-        g.openDialogue(said(MORAG, closingLines(this.st), 'good', 'Get to work'), () => g.endInduction());
+        // Whichever way M toggled it, the lesson is the map: it stays up a
+        // moment, then Morag closes it for her last words (in update).
+        g.hud.mapOpen = true;
+        this.closingIn = MAP_LOOK_SECONDS;
         break;
       default:
         break;

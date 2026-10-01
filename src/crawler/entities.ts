@@ -1023,6 +1023,8 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
     return;
   }
 
+  // Poison bleeds hp outside hurtActor: a boss that is not to be touched yet sheds it.
+  if (a.poisonT > 0 && shrugsOff(ctx, a)) a.poisonT = 0;
   if (a.poisonT > 0) {
     a.poisonT -= dt;
     a.hp -= a.poisonDps * dt;
@@ -1140,7 +1142,25 @@ export function isFoe(a: Actor): boolean {
   return a.hostile && a.kind !== 'dummy';
 }
 
-/** Does something summoned now (a breach's manager, a nap's visitor) arrive already after you? Not while the floor sleeps. */
+/**
+ * A boss nobody may touch yet: before the floor wakes (the induction), one
+ * that has not started takes no damage by any road - a hit, a splash,
+ * poison - and starts no fight.
+ */
+export function shrugsOff(ctx: Pick<GameCtx, 'floorAwake'>, a: Actor): boolean {
+  return a.kind === 'boss' && !a.bossActive && !ctx.floorAwake;
+}
+
+/**
+ * Allies (the IT crowd, clones, Musti, their shots) leave alone: the dummy
+ * always (it is the player's lesson, and a guard's stuns would stop it ever
+ * swinging), and while the floor sleeps anyone who has not come after you.
+ */
+export function allyIgnores(ctx: Pick<GameCtx, 'floorAwake'>, o: Actor): boolean {
+  return o.kind === 'dummy' || (!ctx.floorAwake && !o.aggro);
+}
+
+/** Does something summoned now (a breach's manager, a nap's visitor, a manager's reinforcements) arrive already after you? Not while the floor sleeps. */
 export function spawnsAggro(ctx: Pick<GameCtx, 'floorAwake'>): boolean {
   return ctx.floorAwake;
 }
@@ -1258,13 +1278,13 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
         say(a, 'Adding everyone on this thread.', 2.5);
         for (let i = 0; i < 2; i++) {
           const s = ctx.spawn('reply', a.pos.x + fx.range(-1, 1), a.pos.z + fx.range(-1, 1), a.room);
-          if (s !== null) s.aggro = true;
+          if (s !== null) s.aggro = spawnsAggro(ctx);
         }
       } else {
         a.summonIn = fx.range(12, 18);
         say(a, 'I will get someone from my team to raise it with you.', 3);
         const s = ctx.spawn('user', a.pos.x + fx.range(-1, 1), a.pos.z + fx.range(-1, 1), a.room);
-        if (s !== null) s.aggro = true;
+        if (s !== null) s.aggro = spawnsAggro(ctx);
       }
     }
   }
@@ -1277,7 +1297,7 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
       const t = ctx.spawn('turret', a.pos.x + fx.range(-1.2, 1.2), a.pos.z + fx.range(-1.2, 1.2), a.room);
       if (t !== null) {
         t.owner = a.id;
-        t.aggro = true;
+        t.aggro = spawnsAggro(ctx);
       }
     }
     a.blinkIn -= dt;
@@ -1822,7 +1842,7 @@ function nearestHostile(ctx: GameCtx, a: Actor, range: number): Actor | null {
   let best: Actor | null = null;
   let bestD = range;
   for (const o of ctx.actors) {
-    if (!o.hostile || o.resolved || (o.docile && !o.aggro)) continue;
+    if (!o.hostile || o.resolved || (o.docile && !o.aggro) || allyIgnores(ctx, o)) continue;
     // Helpers never start a boss fight you have not started yourself.
     if (o.kind === 'boss' && !o.bossActive) continue;
     const d = Math.hypot(o.pos.x - a.pos.x, o.pos.z - a.pos.z);
@@ -2071,7 +2091,7 @@ export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vect
   // The corner office does not open for a new starter mid-induction: a hit is
   // shrugged off (no damage, no fight) until the floor is awake. Otherwise a
   // stapler at step 3 was a back door into the whole boss fight.
-  if (a.kind === 'boss' && !a.bossActive && !ctx.floorAwake) {
+  if (shrugsOff(ctx, a)) {
     if (a.bubble === null) say(a, 'Not now. Finish your induction first.', 2.5);
     return;
   }

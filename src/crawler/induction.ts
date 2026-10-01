@@ -169,6 +169,9 @@ export function practiceDamage(dmg: number, sanity: number): number {
   return Math.max(0, Math.min(dmg, sanity - PRACTICE_SANITY_FLOOR));
 }
 
+/** Seconds of play the map stays up after the map step, before Morag's closing words: the lesson is to see it. */
+export const MAP_LOOK_SECONDS = 2.5;
+
 /** Labels the label step guarantees, so the step can always be done. */
 export const LABELS_FOR_STEP = 10;
 
@@ -204,6 +207,11 @@ export interface MeterFacts {
   readonly maxLoyly: number;
   /** Runes known: a background that arrives with runes needs the Löyly meter at once. */
   readonly runes: number;
+  /**
+   * A domain ability (G) is ready to hand: its name and cooldown live in the
+   * same cell as Löyly, so the cell shows from the start for whoever has one.
+   */
+  readonly ability: boolean;
   readonly bac: number;
   readonly stomach: number;
   readonly caffeine: number;
@@ -226,7 +234,7 @@ export function stillHidden<T extends readonly HudMeter[]>(hidden: T, f: MeterFa
     switch (m) {
       case 'energy': return at < stepIndex('heavy');
       case 'rep': return at < stepIndex('ticket');
-      case 'loyly': return f.runes === 0 && f.loyly >= f.maxLoyly - MOVED;
+      case 'loyly': return f.runes === 0 && !f.ability && f.loyly >= f.maxLoyly - MOVED;
       case 'promille': return f.bac <= 0 && f.stomach <= 0;
       case 'caffeine': return f.caffeine <= 0 && f.crash <= 0;
     }

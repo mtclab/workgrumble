@@ -8,8 +8,10 @@ import {
   type Actor,
   type ActorKind,
   type HazardKind,
+  allyIgnores,
   hurtActor,
   type ProjectileKind,
+  shrugsOff,
   stun,
   type ProjectileSpec,
   say,
@@ -408,9 +410,9 @@ export function shove(g: Game): void {
   }
 }
 
-export function splash(g: Game, at: THREE.Vector3, radius: number, dmg: number, skip = -1): void {
+export function splash(g: Game, at: THREE.Vector3, radius: number, dmg: number, skip = -1, ally = false): void {
   for (const a of g.actors) {
-    if (!a.hostile || a.resolved || a.id === skip) continue;
+    if (!a.hostile || a.resolved || a.id === skip || (ally && allyIgnores(g, a))) continue;
     const dist = Math.hypot(a.pos.x - at.x, a.pos.z - at.z);
     if (dist > radius) continue;
     hurtActor(g, a, dmg * (1 - dist / (radius * 1.5)) * (a.shielded ? 0.5 : 1), new THREE.Vector3(a.pos.x - at.x, 0, a.pos.z - at.z).normalize().multiplyScalar(5));
@@ -497,6 +499,8 @@ export function updateProjectiles(g: Game, dt: number): void {
     } else if (!dead) {
       for (const a of g.actors) {
         if (!a.hostile || a.resolved || p.hitIds.has(a.id)) continue;
+        // An ally's shot goes past whoever the ally may not touch (the dummy; the calm, while the floor sleeps).
+        if (p.owner !== null && allyIgnores(g, a)) continue;
         const h = a.kind === 'boss' ? 3.8 : a.kind === 'reply' || a.kind === 'mosquito' ? 1.8 : 2;
         const dx = pos.x - a.pos.x;
         const dz = pos.z - a.pos.z;
@@ -505,7 +509,7 @@ export function updateProjectiles(g: Game, dt: number): void {
           if (p.kind === 'stun') stun(a, 2.2);
           const knock = p.vel.clone().setY(0).normalize().multiplyScalar(p.kind === 'duck' ? 4 : 1.5);
           if (p.kind === 'salmiakki') {
-            a.poisonT = 6;
+            if (!shrugsOff(g, a)) a.poisonT = 6;
             a.poisonDps = p.damage;
             hurtActor(g, a, p.damage * 0.5, knock);
           } else if (p.owner === null) {
@@ -529,7 +533,7 @@ export function updateProjectiles(g: Game, dt: number): void {
             if (p.kind === 'po') g.addActionItem('Procurement');
           }
         } else {
-          splash(g, pos, p.splash, p.damage * (p.owner === null ? g.derivedCache.rangedMult : 1));
+          splash(g, pos, p.splash, p.damage * (p.owner === null ? g.derivedCache.rangedMult : 1), -1, p.owner !== null);
         }
         sfx.boom();
         fxBall(g, pos.clone(), p.kind === 'po' ? 0xb5835a : p.kind === 'steam' ? 0xffffff : 0xffd400, 0.3, 0.45, p.splash * 1.4);

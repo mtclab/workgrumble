@@ -47,7 +47,8 @@ export interface StoryHost {
   clearFindings(): void;
   warn(why: string): void;
   resolvePeacefully(a: Actor, how: 'fix' | 'ticket' | 'scared' | 'charmed' | 'meeting' | 'bribe'): void;
-  enrage(a: Actor): void;
+  /** A talk-down gone wrong. True if it started a fight (never while the floor sleeps for the induction). */
+  enrage(a: Actor): boolean;
   /** `resistible` false: a meeting you chose to accept happens whatever you wear. */
   rootPlayer(seconds: number, reason: string, resistible?: boolean): void;
   /** "Oh, and while I have you": maybe staff you on something after this conversation. */
@@ -105,7 +106,7 @@ function failTalk(h: StoryHost, a: Actor, line: string): DialogueNode {
     a.talked = true;
     return said(a.name, `${line} ...but you keep your composure, and they deflate a little.`, 'neutral');
   }
-  h.enrage(a);
+  if (!h.enrage(a)) return said(a.name, `${line} ...but with Morag watching, they let it go. For now.`, 'neutral');
   return said(a.name, line, 'bad', 'Brace yourself');
 }
 

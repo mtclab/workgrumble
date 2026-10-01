@@ -180,7 +180,7 @@ describe('the floor wakes after step 6', () => {
 });
 
 describe('meters appear when they first matter', () => {
-  const calm: MeterFacts = { step: 'look', loyly: 50, maxLoyly: 50, runes: 0, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
+  const calm: MeterFacts = { step: 'look', loyly: 50, maxLoyly: 50, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
   const all = [...HUD_METERS];
 
   it('a new starter sees none of them', () => {
@@ -201,6 +201,8 @@ describe('meters appear when they first matter', () => {
     expect(stillHidden(['loyly'], { ...calm, loyly: 49.9 })).toEqual(['loyly']);
     expect(stillHidden(['loyly'], { ...calm, loyly: 30 })).toEqual([]);
     expect(stillHidden(['loyly'], { ...calm, runes: 2 })).toEqual([]);
+    // The domain ability (and its cooldown) lives in that cell: whoever has one sees it from the start.
+    expect(stillHidden(['loyly'], { ...calm, ability: true })).toEqual([]);
     expect(stillHidden(['promille'], { ...calm, stomach: 3 })).toEqual([]);
     expect(stillHidden(['promille'], { ...calm, bac: 1 })).toEqual([]);
     expect(stillHidden(['caffeine'], { ...calm, caffeine: 90 })).toEqual([]);
@@ -361,7 +363,7 @@ describe('practice damage', () => {
 describe('the meter reveal allocates nothing while nothing changes', () => {
   it('the same list comes back until a meter is revealed', () => {
     const hidden = [...HUD_METERS];
-    const f = { step: 'look' as const, loyly: 50, maxLoyly: 50, runes: 0, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
+    const f = { step: 'look' as const, loyly: 50, maxLoyly: 50, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
     expect(stillHidden(hidden, f)).toBe(hidden);
     expect(stillHidden(hidden, { ...f, caffeine: 90 })).not.toBe(hidden);
   });

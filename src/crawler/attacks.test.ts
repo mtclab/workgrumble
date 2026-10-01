@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { type Actor, createActor, type GameCtx, hurtActor, isFoe, spawnsAggro, stun, updateActor, updateAuras } from './entities';
+import { type Actor, allyIgnores, createActor, type GameCtx, hurtActor, isFoe, type ProjectileSpec, shrugsOff, spawnsAggro, stun, updateActor, updateAuras } from './entities';
 import { actorColor } from './hud';
 import { floorAwake, type InductionState, STEPS } from './induction';
 import { flowField, type Level, TILE } from './level';
@@ -481,5 +481,95 @@ describe('induction day: the corner office stays shut, and the dummy is not trou
     expect(isFoe(u)).toBe(true);
     expect(actorColor(d)).not.toBe(actorColor(u));
     expect(actorColor(d)).not.toMatch(/^#ff/i);
+  });
+});
+
+describe('induction day: nothing reaches the sleeping floor by a side door', () => {
+  /** A recruited `role` beside the player and `foe` 5 m off; who does the ally shoot at in 4 s? */
+  function ally(role: 'security' | 'sysadmin', foe: 'user' | 'dummy', awake: boolean, foeAggro: boolean): { shots: number; aggro: boolean } {
+    const ctx = new Arena();
+    ctx.floorAwake = awake;
+    const h = createActor(ctx, 'helper', ctx.playerPos.x + 1, ctx.playerPos.z, 0, ctx.rng, 10, { role });
+    h.recruited = true;
+    h.cooldown = 0;
+    const f = createActor(ctx, foe, ctx.playerPos.x, ctx.playerPos.z - 5, 0, ctx.rng, 10);
+    f.aggro = foeAggro;
+    f.docile = false;
+    ctx.actors.push(h, f);
+    let shots = 0;
+    ctx.fire = (p: ProjectileSpec): void => { if (!p.hostile && p.owner === h) shots++; };
+    for (let t = 0; t < 4; t += DT) {
+      ctx.time += DT;
+      updateActor(ctx, h, DT);
+    }
+    return { shots, aggro: f.aggro };
+  }
+
+  it('the IT crowd leaves the calm alone while the floor sleeps, and the dummy alone always', () => {
+    for (const role of ['security', 'sysadmin'] as const) {
+      expect(ally(role, 'user', false, false), role).toEqual({ shots: 0, aggro: false });
+      // The dummy, mid-lesson and swinging: still not theirs to stun.
+      expect(ally(role, 'dummy', true, true).shots, role).toBe(0);
+      // The control: somebody after you on an awake floor gets shot at.
+      expect(ally(role, 'user', true, true).shots, role).toBeGreaterThan(0);
+    }
+    const ctx = new Arena();
+    const calm = createActor(ctx, 'user', 0, 0, 0, ctx.rng, 10);
+    const dummy = createActor(ctx, 'dummy', 0, 0, 0, ctx.rng, 10);
+    expect(allyIgnores({ floorAwake: false }, calm)).toBe(true);
+    expect(allyIgnores({ floorAwake: true }, calm)).toBe(false);
+    calm.aggro = true;
+    expect(allyIgnores({ floorAwake: false }, calm)).toBe(false);
+    expect(allyIgnores({ floorAwake: true }, dummy)).toBe(true);
+  });
+
+  it('poison does not bleed a boss nobody may touch yet', () => {
+    const bleed = (awake: boolean): { hp: number; max: number; poison: number } => {
+      const ctx = new Arena();
+      ctx.floorAwake = awake;
+      const b = createActor(ctx, 'boss', ctx.playerPos.x + 20, ctx.playerPos.z + 20, 99, ctx.rng, 10);
+      if (awake) b.bossActive = true;
+      b.poisonT = 6;
+      b.poisonDps = 50;
+      ctx.actors.push(b);
+      for (let t = 0; t < 1; t += DT) {
+        ctx.time += DT;
+        updateActor(ctx, b, DT);
+      }
+      return { hp: b.hp, max: b.maxHp, poison: b.poisonT };
+    };
+    const asleep = bleed(false);
+    expect(asleep.hp).toBe(asleep.max);
+    expect(asleep.poison).toBe(0);
+    const awake = bleed(true);
+    expect(awake.hp).toBeLessThan(awake.max);
+    const ctx = new Arena();
+    const b = createActor(ctx, 'boss', 0, 0, 0, ctx.rng, 10);
+    expect(shrugsOff({ floorAwake: false }, b)).toBe(true);
+    expect(shrugsOff({ floorAwake: true }, b)).toBe(false);
+  });
+
+  it('a manager\'s reinforcements arrive calm while the floor sleeps', () => {
+    const reinforce = (awake: boolean): boolean[] => {
+      const ctx = new Arena();
+      ctx.floorAwake = awake;
+      const m = ctx.put('manager', 10);
+      m.summonIn = 0;
+      m.cooldown = 999;
+      const came: Actor[] = [];
+      const spawn: GameCtx['spawn'] = (kind, x, z, room) => {
+        const s = createActor(ctx, kind, x, z, room, ctx.rng, 10);
+        came.push(s);
+        return s;
+      };
+      (ctx as { spawn: GameCtx['spawn'] }).spawn = spawn;
+      for (let t = 0; t < 0.5; t += DT) {
+        ctx.time += DT;
+        updateActor(ctx, m, DT);
+      }
+      return came.map((c) => c.aggro);
+    };
+    expect(reinforce(false)).toEqual([false]);
+    expect(reinforce(true)).toEqual([true]);
   });
 });

@@ -415,6 +415,8 @@ export function offerStaffing(g: Game, by: string, id?: string): boolean {
 
 /** A manager, mid-meeting: "while I have you...". */
 export function maybeStaff(g: Game, by: string, chance: number): void {
+  // Not mid-induction, in person any more than by phone (tickQuests holds those).
+  if (g.save.induction !== null) return;
   if (g.save.location !== 'office' || g.pendingStaff !== null || staffedThisFloor(g) >= 3 || !fx.chance(chance)) return;
   const pool = staffable(g);
   if (pool.length === 0) return;

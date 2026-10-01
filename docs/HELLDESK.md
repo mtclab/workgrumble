@@ -74,20 +74,24 @@ the prop the card is about answers E, and it wins the prompt over anything
 else in reach (the computer offers nothing before its step, and stands at
 least three cells from Morag and the colleague where the lobby allows). Until
 the block and parry are done nothing hostile on the floor notices you (no
-aggro, no approach, anything summoned arrives calm, and the boss neither
-starts nor takes damage; hitting anyone else still starts that fight), and
-no staffing call or mentoring request comes. The practice ticket has no SLA
+aggro, no approach, anything summoned arrives calm, your allies leave the
+calm alone, a failed talk-down ends the talk rather than starting a fight,
+and the boss neither starts nor takes damage by any road, poison included;
+hitting anyone else still starts that fight), and
+no staffing call, in-person staffing or mentoring request comes. The map
+step leaves the map up a moment before Morag closes it for her last words. The practice ticket has no SLA
 and never breaches; if it goes missing it comes back. The HUD meters arrive when they
 matter: Sanity and the tool from the start, energy with the heavy swing, REP
 and the queue with the ticket, Löyly, promille and caffeine the first time
-each moves (a skipper sees everything). The step is saved with the career; a
+each moves, or from the start for a background with runes or a career with
+a domain ability, which shares that cell (a skipper sees everything). The step is saved with the career; a
 reload comes back at it. Morag, the colleague, the dummy and the lobby
 computer exist only while it runs. Only finishing it (the map, then Morag's
 last words) counts as done and ticks the skip box for next time; leaving the
 lobby floor mid-morning (the lift, once the floor is awake) abandons it
 quietly, and the next career's form still offers it. The dummy is not
 trouble: no red dot, not shielded by consultants, not counted toward the
-spawn cap or sneaking practice.
+spawn cap or sneaking practice, and never a target for your allies.
 
 - **Attributes**: Grit, Reflex, Tech, Charm, Patience, Liver.
 - **Skills rise by use** (Morrowind): Hardware (melee), Scripting (ranged),

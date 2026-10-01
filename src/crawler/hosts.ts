@@ -158,13 +158,24 @@ export function resolvePeacefully(g: Game, a: Actor, how: 'fix' | 'ticket' | 'sc
   sfx.resolved();
 }
 
-export function enrage(g: Game, a: Actor): void {
+/**
+ * A talk-down gone wrong: they come at you, angrier. True if it started a
+ * fight. Mid-induction (the floor asleep) it does not: a failed talk-down is
+ * a failed conversation and nothing more, so a new starter cannot talk
+ * themselves into the fight the induction is keeping off them.
+ */
+export function enrage(g: Game, a: Actor): boolean {
+  a.talked = true;
+  adjustStanding(g.save, 'staff', -1);
+  if (!g.floorAwake) {
+    say(a, 'Fine. Later.', 1.5);
+    return false;
+  }
   a.enragedT = 10;
   a.aggro = true;
-  a.talked = true;
   a.docile = false;
-  adjustStanding(g.save, 'staff', -1);
   say(a, 'RIGHT.', 1.5);
+  return true;
 }
 
 export function recruitedHelper(g: Game): Actor | null {
