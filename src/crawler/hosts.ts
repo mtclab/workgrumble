@@ -273,6 +273,16 @@ export function bossDeal(g: Game, kind: 'nda' | 'mokki' | 'expose' | 'parachute'
         s.rep += 2000;
         g.journal('I showed the PA the Phoenix file and named a number. Sir Reginald paid it without coming out of his office.');
       }
+      if (!s.floorState.bossDone) {
+        if (g.boss !== null) resolvePeacefully(g, g.boss, 'meeting');
+        s.floorState.bossDone = true;
+        s.stats.bosses++;
+        g.elevatorOpen = true;
+        s.quests = s.quests.filter((q) => q.kind !== 'boss');
+        for (const h of g.hazards) h.ttl = Math.min(h.ttl, 0.4);
+        g.questEvent({ type: 'boss', floor: g.floor });
+        sfx.setBoss(false);
+      }
       const prev = g.afterDialogue;
       g.afterDialogue = () => {
         prev?.();

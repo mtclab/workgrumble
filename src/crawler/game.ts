@@ -562,6 +562,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       s.queue = [];
     }
     const fs = s.floorState;
+    if (n === FINAL_FLOOR && (s.flags.ceoDeal === true || s.flags.goldenParachute === true)) fs.bossDone = true;
     const theme = THEMES[n % THEMES.length] ?? THEMES[0];
     if (theme === undefined) throw new Error('no theme');
     const seed = (s.seed + n * 977) >>> 0;
