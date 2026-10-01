@@ -104,13 +104,19 @@ describe('the steam meter', () => {
       let t = 0;
       let ended = false;
       // Frames of any length the loop can produce (it caps dt at 0.05 s), and some odd ones.
+      // The first frame that breaks a rule is kept and asserted once: an
+      // expect per frame made this test take most of its time limit.
+      let late: number | null = null;
       while (!ended) {
         const dt = run % 5 === 0 ? r.range(0, 0.25) : r.range(0.001, 0.05);
         ended = c.tick(dt);
         t += dt;
-        if (!ended) expect(t).toBeLessThan(VISION_SECONDS + 1e-9);
-        expect(t).toBeLessThan(VISION_SECONDS + 0.3);
+        if ((!ended && t >= VISION_SECONDS + 1e-9) || t >= VISION_SECONDS + 0.3) {
+          late = t;
+          break;
+        }
       }
+      expect(late, 'still running past 30 s, or ended more than a frame late').toBeNull();
       expect(t).toBeGreaterThanOrEqual(VISION_SECONDS - 1e-9);
       expect(c.done).toBe(true);
       expect(c.fraction).toBe(0);
