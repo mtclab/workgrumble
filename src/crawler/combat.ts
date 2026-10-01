@@ -403,8 +403,11 @@ export function shove(g: Game): void {
     if (dist > 2.6) continue;
     if ((dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4) < 0.3) continue;
     a.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(11));
-    stun(a, 0.5);
-    a.cooldown = Math.max(a.cooldown, 0.8);
+    if (a.shoveImmune <= 0) {
+      stun(a, 0.5);
+      a.cooldown = Math.max(a.cooldown, 0.8);
+      a.shoveImmune = 2.5;
+    }
     // A shoved dummy rocks on its base; it does not start swinging because of it.
     if (a.kind !== 'dummy') a.aggro = true;
   }

@@ -194,6 +194,7 @@ export interface Actor {
   stunned: number;
   /** Bosses shrug off stuns for a while after one lands. */
   stunImmune: number;
+  shoveImmune: number;
   slowT: number;
   poisonT: number;
   poisonDps: number;
@@ -780,6 +781,7 @@ export function createActor(
     shielded: false,
     stunned: 0,
     stunImmune: 0,
+    shoveImmune: 0,
     slowT: 0,
     poisonT: 0,
     poisonDps: 0,
@@ -1025,6 +1027,7 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   a.attackAnim = Math.max(0, a.attackAnim - dt * 3);
   a.slowT = Math.max(0, a.slowT - dt);
   a.stunImmune = Math.max(0, a.stunImmune - dt);
+  a.shoveImmune = Math.max(0, a.shoveImmune - dt);
   if (!(a.elite === 'escalating' && a.hp < a.maxHp * 0.5)) a.enragedT = Math.max(0, a.enragedT - dt);
   a.revealT = Math.max(0, a.revealT - dt);
 
@@ -1486,6 +1489,7 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
  */
 function windUp(ctx: GameCtx, a: Actor, id: AttackId, dx: number, dz: number): void {
   beginWindup(a, id);
+  a.memo.flinched = false;
   const len = Math.hypot(dx, dz);
   if (len > 1e-4) a.aim.set(dx / len, 0, dz / len);
   else a.aim.set(Math.sin(a.yaw), 0, Math.cos(a.yaw));
@@ -2089,6 +2093,10 @@ export function stun(a: Actor, seconds: number): void {
     a.stunned = Math.max(a.stunned, Math.min(0.5, seconds));
     a.stunImmune = 6;
   } else {
+    if (seconds < STAGGER && a.pending !== null) {
+      if (a.memo.flinched === true) return;
+      a.memo.flinched = true;
+    }
     a.stunned = Math.max(a.stunned, seconds);
     if (seconds >= STAGGER) cancelWindup(a);
   }

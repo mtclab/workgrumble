@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { type Actor, allyIgnores, createActor, type GameCtx, hurtActor, isFoe, type ProjectileSpec, shrugsOff, spawnsAggro, stun, updateActor, updateAuras } from './entities';
 import { actorColor } from './hud';
+import { shove } from './combat';
+import type { Game } from './game';
+import { newSave } from './state';
 import { floorAwake, type InductionState, STEPS } from './induction';
 import { flowField, type Level, TILE } from './level';
 import { Rng } from './rng';
@@ -571,5 +574,32 @@ describe('induction day: nothing reaches the sleeping floor by a side door', () 
     };
     expect(reinforce(false)).toEqual([false]);
     expect(reinforce(true)).toEqual([true]);
+  });
+});
+
+
+describe('interrupts leave a colleague a chance to finish their attack', () => {
+  it('a user still lands an attack within a few seconds of shoves every 0.8 s', () => {
+    const ctx = new Arena();
+    const a = ctx.put('user', 1.9);
+    const g = { actors: ctx.actors, scene: ctx.scene, fxMeshes: [], save: newSave(7), player: { pos: ctx.playerPos, yaw: 0 } } as unknown as Game;
+    let next = 0.3;
+    fight(ctx, a, 4, (t) => {
+      // Hold the range fixed to measure interruptions rather than knockback.
+      a.pos.set(ctx.playerPos.x, 0, ctx.playerPos.z - 1.9);
+      a.push.set(0, 0, 0);
+      if (t >= next) { shove(g); next += 0.8; }
+    });
+    expect(ctx.hits.filter((h) => h.effect === 'hurt').length, 'the user can finish a swing').toBeGreaterThan(0);
+  });
+
+  it('quick cable-management flinches restart a wind-up only once', () => {
+    const ctx = new Arena();
+    const a = ctx.put('user', 1.9);
+    let next = 0.3;
+    fight(ctx, a, 3, (t) => {
+      if (t >= next) { stun(a, 0.3); next += 0.35; }
+    });
+    expect(ctx.hits.filter((h) => h.effect === 'hurt').length, 'quick flinches let the swing finish').toBeGreaterThan(0);
   });
 });
