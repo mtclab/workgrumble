@@ -2,6 +2,11 @@ import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import { newSave } from '../../src/crawler/state';
+import { type DialogueNode } from '../../src/crawler/dialogue';
+import { type Actor } from '../../src/crawler/entities';
+import { type StoryHost, talkHealer, talkHelper, talkTonttu } from '../../src/crawler/story';
+import { type QuestHost, talkGiver } from '../../src/crawler/quests';
+import { teamNote } from '../../src/crawler/teamwork';
 
 const source = readFileSync('scripts/helldesk-balance/bot.js', 'utf8');
 const DT = 1 / 30;
@@ -12,9 +17,10 @@ interface Floor {
   aggroSec: number; aggroShare: number;
   activitySec: Record<'fighting' | 'walking' | 'terminal' | 'dialogue' | 'staffing' | 'idle' | 'other', number>;
   talkdowns: number; resolvesByForce: number;
+  longestDialogue: { speaker: string; title: string; seconds: number } | null;
 }
 interface Bot {
-  run: (sec: number, floors?: number) => { steps: number };
+  run: (sec: number, floors?: number) => { steps: number; longestDialogue: Floor['longestDialogue'] };
   seed: (seed: number) => void;
   floors: Floor[];
   cur: Floor | null;
@@ -35,7 +41,7 @@ function career(mode = false) {
     input: { keys: new Set<string>(), pressed: new Set<string>(), holdAttack: () => undefined, holdBlock: () => undefined, tapAttack: () => undefined },
     settings: { keys: { forward: 'w', left: 'a', right: 'd', sprint: 'shift', quickuse: 'q', sneak: 'c', interact: 'e' } },
     player: { crouching: false, yaw: 0, pitch: 0, pos: { x: 0, z: 0, clone: () => ({ x: 0, z: 0 }) } },
-    promptTarget: null as { kind: string; it: object } | null,
+    promptTarget: null as { kind: 'interact'; it: object } | { kind: 'actor'; a: object } | null,
     level: {
       start: { x: 0, z: 0 }, w: 20, h: 1, roomOf: new Int16Array(20), solid: new Uint8Array(20),
       rooms: [], interactables: [] as { id: number; kind: string; x: number; z: number }[],
@@ -54,6 +60,20 @@ function career(mode = false) {
   };
   let onStep = () => undefined;
   let onOverlay = () => undefined;
+  let dialogue: DialogueNode | null = null;
+  const answers: string[] = [];
+  const openDialogue = (node: DialogueNode) => { dialogue = node; game.screen = 'dialogue'; };
+  const options = () => dialogue?.options.map((o, i) => ({
+    disabled: o.disabled === true,
+    textContent: `${i + 1}. ${o.tag === undefined ? '' : `[${o.tag}] `}${o.label}`,
+    click: () => {
+      if (o.disabled) return;
+      answers.push(o.label);
+      const next = o.pick();
+      if (next === null) { dialogue = null; game.screen = 'play'; }
+      else openDialogue(next);
+    },
+  })) ?? [{ disabled: false, textContent: 'Continue', click: () => undefined }];
   const mission = { card: 'stapler', objectiveDone: false, over: false, spine: [{ x: 1, z: 1 }, { x: 3, z: 1 }, { x: 5, z: 1 }],
     hud: { tier: 0, actors: [] as { id: number; visible: boolean; sort: string; x: number; z: number; patrol: { x: number; z: number }[] }[] },
   };
@@ -63,10 +83,13 @@ function career(mode = false) {
   } };
   const document = {
     querySelectorAll: (selector: string) => selector === '.screen-btn' ? [{ click: () => onOverlay() }]
-      : selector === '.dlg-opt' && game.screen === 'dialogue' ? [{ disabled: false, textContent: 'Continue', click: () => undefined }] : [],
+      : selector === '.dlg-opt' && game.screen === 'dialogue' ? options() : [],
     querySelector: (selector: string) => selector === '.lock-marker' ? { style: { left: lock.marker } }
       : selector === '.lock-zone' ? { style: { left: lock.left, width: lock.width } }
-      : selector === '.lock-bar' ? { dispatchEvent: () => { lock.clicks++; } } : null,
+      : selector === '.lock-bar' ? { dispatchEvent: () => { lock.clicks++; } }
+      : selector === '.dlg' && dialogue ? { innerText: `${dialogue.speaker}\n${dialogue.subtitle ?? ''}\n${dialogue.text}` }
+      : selector === '.dlg-head b' && dialogue ? { textContent: dialogue.speaker }
+      : selector === '.dlg-head span' && dialogue ? { textContent: dialogue.subtitle ?? '' } : null,
   };
   runInNewContext(source, { window, document, performance: { now: () => 1000 }, MouseEvent: class { constructor(readonly type: string) {} } });
   const bot = (window as unknown as { __bot: Bot }).__bot;
@@ -77,8 +100,168 @@ function career(mode = false) {
     onStep = () => undefined;
     return bot.floors.at(-1);
   };
-  return { game, actor, bot, tick, finish, mission, lock, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
+  return { game, actor, bot, tick, finish, mission, lock, openDialogue, answers, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
 }
+
+describe('work-floor dialogues', () => {
+  it('gets back to work instead of reopening Kev\'s not-at-the-Peak refusal on every tick, including next floor', () => {
+    const c = career();
+    c.game.save.sanity = 100;
+    Object.assign(c.actor, { id: 1, name: 'Kev from Sales', kind: 'npc', hostile: false, npcId: 'kev', questTag: null, pos: { x: 0, z: 0 } });
+    const quest = { id: 'karaoke', stage: 0, progress: 0, done: false, floor: 0 };
+    c.game.save.questLog.push(quest);
+    c.game.markers = [{ x: 0, z: 0, icon: '?', color: '#ffd54a', label: 'Kev from Sales' }];
+    c.game.promptTarget = { kind: 'actor', a: c.actor };
+    let peak = false;
+    const host = {
+      questLog: c.game.save.questLog,
+      atPeak: () => peak,
+      standing: () => undefined,
+      addRep: (n: number) => { c.game.save.rep += n; },
+      journal: () => undefined,
+      questEvent: () => { quest.done = true; c.game.markers = []; },
+    } as unknown as QuestHost;
+    const answer = () => {
+      if (c.game.input.pressed.delete('e')) c.openDialogue(talkGiver(host, 'karaoke', 'Kev from Sales'));
+      return undefined;
+    };
+    for (let floor = 0; floor < 2; floor++) {
+      c.game.save.floor = floor;
+      delete (c.actor as typeof c.actor & { __talkedAt?: number }).__talkedAt;
+      c.onStep(answer);
+      c.tick(300);
+      expect(c.answers, 'Kev must not hold the floor in repeated refusal dialogues').toHaveLength(floor + 1);
+      expect(c.bot.cur?.activitySec.dialogue).toBeLessThan(1);
+      expect(c.bot.cur?.floorSec).toBeGreaterThan(9);
+      expect(c.game.screen).toBe('play');
+      expect(quest.done).toBe(false);
+      c.finish();
+      c.game.save.location = 'office';
+    }
+    c.game.save.floor = 2;
+    c.onStep(answer);
+    c.tick(300);
+    peak = true;
+    c.tick(1800);
+    expect(quest.done, 'A later visit at the Peak must still complete the quest').toBe(true);
+    expect(c.game.markers).toHaveLength(0);
+    expect(c.game.screen).toBe('play');
+  });
+
+  function colleague(c: ReturnType<typeof career>) {
+    const actor = { name: 'Test colleague', kind: 'helper', role: 'intern', npcId: null, recruited: false, morale: 50, memo: {}, giftGiven: true } as Actor;
+    const host = {
+      save: c.game.save,
+      runeDiscount: () => 1,
+      addRep: (n: number) => { c.game.save.rep += n; },
+      learnSpell: (id: string) => { c.game.save.spells.push(id); return true; },
+      trainSkill: () => { c.game.save.skills.runecraft.value++; },
+      teamNote,
+      treatOptions: () => [],
+      tooTired: () => false,
+      tip: () => undefined,
+      standing: () => undefined,
+      evidence: () => 0,
+      healPlayer: (n: number) => { c.game.save.sanity += n; },
+    } as unknown as StoryHost;
+    return { actor, host };
+  }
+
+  it.each([0, 100])('takes at most one sauna lesson and leaves within a few seconds at magic skill %i', (skill) => {
+    const c = career();
+    c.tick();
+    const { actor, host } = colleague(c);
+    c.game.save.rep = 1000000;
+    c.game.save.skills.runecraft.value = skill;
+    c.openDialogue(talkTonttu(host, actor));
+    for (let n = 0; n < 90 && c.game.screen === 'dialogue'; n++) c.tick();
+    expect(c.game.screen, 'The sauna elf must let the bot return to work').toBe('play');
+    expect(c.answers).toHaveLength(2);
+    expect(c.answers.at(-1)).toBe('Heippa. (Leave)');
+    expect(c.bot.cur?.longestDialogue?.seconds).toBeLessThan(3);
+    expect(c.game.save.rep).toBeGreaterThan(999000);
+  });
+
+  it('leaves the sauna without spending when purchases are off or no lesson is affordable', () => {
+    const c = career();
+    c.tick();
+    const { actor, host } = colleague(c);
+    for (const buy of [false, true]) {
+      c.bot.policy.buy = buy;
+      c.game.save.rep = buy ? 0 : 1000;
+      const rep = c.game.save.rep;
+      c.openDialogue(talkTonttu(host, actor));
+      c.tick();
+      expect(c.answers.at(-1)).toBe('Heippa. (Leave)');
+      expect(c.game.screen).toBe('play');
+      expect(c.game.save.rep).toBe(rep);
+    }
+  });
+
+  it('walks away from an optional colleague when recruitment does not apply', () => {
+    const c = career();
+    c.tick();
+    const { actor, host } = colleague(c);
+    actor.role = 'spirit';
+    Object.assign(c.bot.policy, { recruit: false });
+    c.openDialogue(talkHelper(host, actor));
+    c.tick();
+    expect(c.game.screen, 'An unwanted recruitment conversation must close').toBe('play');
+    expect(actor.recruited).toBe(false);
+    expect(c.answers).toEqual(['Not now.']);
+  });
+
+  it('returns to work with tea instead of asking for gossip when no kitchen task applies', () => {
+    const c = career();
+    c.tick();
+    const { actor, host } = colleague(c);
+    c.game.save.sanity = 50;
+    c.openDialogue(talkHealer(host, actor));
+    c.tick();
+    expect(c.game.screen, 'The kitchen visit must finish once there is nothing to ask for').toBe('play');
+    expect(c.game.save.sanity).toBe(56);
+    expect(c.answers).toEqual(['Thanks. Back to it.']);
+  });
+
+  it('names the longest continuous dialogue across run calls, keeps its opening title and resets next floor', () => {
+    const c = career();
+    c.tick();
+    const { actor, host } = colleague(c);
+    c.game.save.rep = 1000;
+    c.openDialogue(talkTonttu(host, actor));
+    c.tick(2);
+    const longest = c.bot.cur?.longestDialogue;
+    expect(longest, 'Every work floor must name its longest dialogue').toMatchObject({ speaker: 'Saunatonttu', title: 'The sauna elf' });
+    expect(longest?.seconds).toBeCloseTo(3 * DT);
+    c.openDialogue({ speaker: 'Test caller', subtitle: 'Short call', text: '', options: [{ label: 'Hang up', pick: () => null }] });
+    c.tick();
+    const floor = c.finish()!;
+    expect(floor.longestDialogue).toEqual(longest);
+    c.game.save.location = 'office';
+    c.game.save.floor++;
+    c.tick();
+    expect(c.bot.cur?.longestDialogue).toBeNull();
+    expect(floor.longestDialogue).toEqual(longest);
+  });
+
+  it('records an ongoing stall before the dialogue or floor ends', () => {
+    const c = career();
+    c.tick();
+    const node: DialogueNode = {
+      speaker: 'Test caller', subtitle: 'Unfinished call', text: '',
+      options: [{ label: 'Continue', pick: () => node }],
+    };
+    c.openDialogue(node);
+    c.tick(149);
+    const status = c.bot.run(DT / 2);
+    expect(c.game.screen).toBe('dialogue');
+    expect(status.longestDialogue, 'Runner snapshots must name a live stall').toMatchObject({ speaker: 'Test caller', title: 'Unfinished call' });
+    expect(status.longestDialogue?.seconds).toBeCloseTo(5);
+    expect(c.bot.cur?.longestDialogue, 'A live stall must identify itself in the current floor').toMatchObject({ speaker: 'Test caller', title: 'Unfinished call' });
+    expect(c.bot.cur?.longestDialogue?.seconds).toBeCloseTo(5);
+    expect(c.bot.cur?.activitySec.dialogue).toBeCloseTo(5);
+  });
+});
 
 describe('floor combat measurements', () => {
   it('reports nearby aggro time including a boss, with force and talk-down deltas', () => {

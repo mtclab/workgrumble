@@ -119,8 +119,17 @@
   function press(code) { inp.pressed.add(code); }
 
   // ---------------------------------------------------------------- dialogue policy
+  let conversation = null;
+  function noteDialogue() {
+    const speaker = document.querySelector('.dlg-head b')?.textContent ?? 'Unknown dialogue';
+    const title = document.querySelector('.dlg-head span')?.textContent ?? '';
+    if (conversation === null || conversation.speaker !== speaker || (title && conversation.title !== title)) {
+      conversation = { speaker, title, seconds: 0, picks: 0 };
+    }
+  }
   function pct(text) { const m = /(\d+)%/.exec(text); return m ? Number(m[1]) : null; }
   function handleDialogue() {
+    noteDialogue();
     // A supply closet's lock: the bot does not pick locks. Walk away.
     const quit = document.querySelector('.lock-quit');
     if (g.lockpick.open && quit) { quit.click(); B.lockQuits = (B.lockQuits ?? 0) + 1; return true; }
@@ -135,7 +144,12 @@
     const labels = opts.map((b) => b.textContent);
     let i = 0;
     const find = (re) => labels.findIndex((l) => re.test(l));
-    if (/Staffing:/.test(head)) {
+    const leave = find(/(?:^|\.\s+)(?:Leave\.?$|Heippa\.|Not now\.|Not right now\.|Carry on\.|Leave it\.|Close the lid\.|Not this weekend\.)/);
+    if (/The sauna elf/.test(head)) {
+      // One affordable lesson, then back to work, even when training redraws the same menu.
+      i = B.policy.buy && conversation.picks === 0 ? 0 : leave;
+      if (i < 0) i = opts.length - 1;
+    } else if (/Staffing:/.test(head)) {
       B.cur.staffOffers++;
       if (B.policy.staff === 'pushback') { const k = find(/capacity|bandwidth/); if (k >= 0) { i = k; B.cur.pushTries++; } }
       if (B.policy.staff === 'delegate') { const k = find(/^\d+\. \[Delegate/); if (k >= 0) i = k; }
@@ -163,8 +177,13 @@
       else if (on >= 0) i = on;
       else i = find(/Not now/);
       if (i < 0) i = labels.length - 1;
+    } else if (/The Kitchen Cabinet/.test(head)) {
+      const help = find(/Here is your new laptop|Could you minute|Is there any cake/);
+      i = help >= 0 ? help : find(/Thanks\. Back to it/);
+      if (i < 0) i = 0;
     } else {
-      // Pick the best check if there is one worth trying, else the first line.
+      // Pick the best check if there is one worth trying, otherwise leave when nothing applies.
+      if (leave >= 0) i = leave;
       let best = -1, bp = -1;
       labels.forEach((l, k) => { const p = pct(l); if (p !== null && p > bp && !/promotion/.test(l)) { bp = p; best = k; } });
       if (best >= 0 && bp >= 45) i = best;
@@ -173,6 +192,7 @@
       if (/Finders keepers|Never saw it|capsule vendor|sell it/i.test(labels[i] ?? '')) i = 0;
     }
     B.dialogues++;
+    conversation.picks++;
     opts[Math.max(0, i)].click();
     return true;
   }
@@ -406,6 +426,8 @@
       // Somebody we already gave up on (they wander, so their marker moves): skip them.
       const who = g.actors.find((a) => !a.resolved && Math.hypot(a.pos.x - m.x, a.pos.z - m.z) < 0.6);
       if (who && ignored.has(who.id)) return false;
+      // A marker can remain after "come back later". Do some work before asking again.
+      if (who && who.__talkedAt !== undefined && g.time - who.__talkedAt < 60) return false;
       return true;
     });
     const m = nearestOf(marks);
@@ -551,6 +573,7 @@
       p1: 0, levelUps: 0,
       floorSec: 0, aggroSec: 0, combatSec: 0, aggroEpisodes: 0, combatActive: false, quietSec: 0, lastDamageAt: -Infinity,
       activitySec: { fighting: 0, walking: 0, terminal: 0, dialogue: 0, staffing: 0, idle: 0, other: 0 },
+      longestDialogue: null,
       talkdowns0: s.stats.resolvedPeace, resolvesByForce0: s.stats.resolvedField,
     };
     ignored.clear();
@@ -566,6 +589,7 @@
       floorSec: c.floorSec, combatSec: c.combatSec, combatShare: c.floorSec > 0 ? c.combatSec / c.floorSec : 0, aggroEpisodes: c.aggroEpisodes,
       aggroSec: c.aggroSec, aggroShare: c.floorSec > 0 ? c.aggroSec / c.floorSec : 0,
       activitySec: { ...c.activitySec },
+      longestDialogue: c.longestDialogue && { ...c.longestDialogue },
       talkdowns: s.stats.resolvedPeace - c.talkdowns0, resolvesByForce: s.stats.resolvedField - c.resolvesByForce0,
       burnouts: c.burnouts, minSanityPct: Math.round(c.minSanity * 100), overloadPct: Math.round((c.overloadT / Math.max(1, g.time - c.t0)) * 100), maxOver: c.maxOver,
       staffOffers: c.staffOffers, staffDone: s.stats.staffedDone - c.staffedDone0, staffMissed: s.stats.staffedMissed - c.staffedMissed0, pushTries: c.pushTries, pushOk: c.pushOk,
@@ -593,7 +617,18 @@
     const before = g.time;
     g.step(DT);
     const dt = g.time - before;
-    if (onFloor) c.activitySec[doing] += Math.max(0, g.time - clockBefore);
+    const elapsed = Math.max(0, g.time - clockBefore);
+    if (onFloor) c.activitySec[doing] += elapsed;
+    if (conversation !== null) {
+      if (doing === 'dialogue') {
+        conversation.seconds += elapsed;
+        if (onFloor && (!c.longestDialogue || conversation.seconds > c.longestDialogue.seconds)) {
+          const { speaker, title, seconds } = conversation;
+          c.longestDialogue = { speaker, title, seconds };
+        }
+      }
+      if (g.screen !== 'dialogue' && g.screen !== 'minigame') conversation = null;
+    }
     if (!inFloor || dt <= 0) return;
     c.floorSec += dt;
     if (aggro) c.aggroSec += dt;
@@ -757,6 +792,6 @@
       }
       if (s.location === 'mokki' && wasMokki === 'office') endFloor('friday');
     }
-    return { steps, lockpick: g.lockpick.open, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: target ? target.kind + (target.actor ? ':' + target.actor.kind : target.it ? ':' + target.it.kind : '') : null, ms: Math.round(performance.now() - t0) };
+    return { steps, lockpick: g.lockpick.open, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, longestDialogue: B.cur?.longestDialogue ?? null, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: target ? target.kind + (target.actor ? ':' + target.actor.kind : target.it ? ':' + target.it.kind : '') : null, ms: Math.round(performance.now() - t0) };
   };
 })();
