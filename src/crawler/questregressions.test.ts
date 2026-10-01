@@ -5,8 +5,8 @@ import { Game } from './game';
 import { talkManager } from './story';
 import { CONSUMABLES } from './items';
 import { generateLevel } from './level';
-import { questEvent } from './questing';
-import { sideQuestsFor, talkGiver } from './quests';
+import { placeQuestContent, questEvent } from './questing';
+import { QUESTS, sideQuestsFor, talkGiver } from './quests';
 import { Rng } from './rng';
 import { derive, freshFloorState, newSave, normalizeSave } from './state';
 import { THEMES } from './textures';
@@ -73,4 +73,18 @@ it.each([false, true])('delegating a meeting protects the mentee, with another h
   choice?.pick();
   expect(mentee.recruited).toBe(true);
   expect(mentee.resolved).toBe(false);
+});
+
+
+it('reloading mentoring creates no nameless giver and names the teammate in dialogue', () => {
+  const g = host();
+  g.save.questItems = ['memo', 'schedule', 'emails', 'po'];
+  g.save.questLog = QUESTS.map((q) => ({ id: q.id, stage: 0, progress: 0, done: true, floor: 1 }));
+  g.save.questLog.push({ id: 'm-pair', stage: 0, progress: 1, done: false, floor: 1, mentor: true, by: 'Sam (Intern)' });
+  g.save = normalizeSave(JSON.parse(JSON.stringify(g.save)))!;
+  placeQuestContent(g);
+  expect(g.actors.some((a) => a.name === ''), 'mentoring has a teammate, never an empty-name NPC').toBe(false);
+  const node = talkGiver(g, 'm-pair', 'Sam');
+  expect(node.text).toContain('Pair with Sam');
+  expect(node.text).not.toContain('{m}');
 });

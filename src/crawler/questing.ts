@@ -132,7 +132,7 @@ export function startStage(g: Game, st: QuestState): void {
 
 function spawnGiver(g: Game, questId: string): Actor | null {
   const def = questById(questId);
-  if (def === undefined || def.staffed === true) return null;
+  if (def === undefined || def.staffed === true || def.mentor === true) return null;
   const s = g.save;
   const st = s.questLog.find((q) => q.id === questId);
   // Josh starts at the lift, lost. Everyone else waits somewhere sensible.

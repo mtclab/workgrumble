@@ -464,7 +464,7 @@ export function talkGiver(h: QuestHost, questId: string, speaker: string): Dialo
   if (st.failed === true) return said(speaker, FAILED[quest.id] ?? 'Well. That did not work out, did it?', 'bad');
   const obj = currentObjective(st);
   if (obj?.kind === 'escort') return said(speaker, 'Lead the way! I am right behind you. Probably.');
-  if (obj?.kind !== 'talk' || obj.npc !== npc) return said(speaker, `Any luck? (${obj?.text ?? ''})`);
+  if (obj?.kind !== 'talk' || obj.npc !== npc) return said(speaker, `Any luck? (${withName(obj?.text ?? '', st)})`);
   return turnIn(h, quest.id, npc, speaker);
 }
 
