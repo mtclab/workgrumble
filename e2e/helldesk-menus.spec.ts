@@ -37,6 +37,7 @@ interface Crawler {
   player: { pos: { x: number; z: number } };
   save: { name: string; rep: number; sanity: number; stats: { burnouts: number } };
   dialogue: { open: boolean; close: () => void };
+  input: { locked: boolean };
   writeSlotFor: (id: string) => boolean;
 }
 
@@ -105,8 +106,9 @@ test('keyboard only: title, the form, play, pause and back, the backpack and Cha
   await expect(page.locator('details.cg-more')).not.toHaveAttribute('open', '');
   await page.keyboard.press('Enter');
 
-  // Morag's welcome: Enter picks the highlighted line.
+  // Morag's welcome: the highlighted line has the focus (Space would press it too), and Enter picks it.
   await expect(page.locator('.dlg-opt.is-sel')).toContainText('Clock in');
+  await expect(page.locator('.dlg-opt.is-sel')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect.poll(() => screen(page)).toBe('play');
   expect(await page.evaluate(() => (window as unknown as W).__crawler.save.name)).toBe('Ada Keyboard');
@@ -115,6 +117,17 @@ test('keyboard only: title, the form, play, pause and back, the backpack and Cha
   await page.keyboard.press('Escape');
   await expect.poll(() => screen(page)).toBe('paused');
   await expect(page.getByRole('button', { name: 'Resume' })).toBeFocused();
+  // Load from pause: Back has the focus, so two Enters never throw the session away.
+  await page.waitForTimeout(400);
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.getByRole('button', { name: 'Load game' })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.title-logo')).toHaveText('LOAD');
+  await expect(page.getByRole('button', { name: 'Back' })).toBeFocused();
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeFocused();
   await expect(page.getByRole('button', { name: 'Inventory' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Backpack & Career' })).toHaveCount(0);
   await expect(page.locator('.maker-mark')).toHaveText('Built by MTC Lab');
@@ -122,6 +135,10 @@ test('keyboard only: title, the form, play, pause and back, the backpack and Cha
   await page.keyboard.press('Escape');
   await expect.poll(() => screen(page)).toBe('play');
   await expect(page.locator('.screen')).toBeHidden();
+  // A browser that will not hand the mouse back after Esc: the prompt says how to get it.
+  if (!(await page.evaluate(() => (window as unknown as W).__crawler.input.locked))) {
+    await expect(page.locator('.hud-prompt')).toContainText('Click to capture the mouse');
+  }
 
   // Tab: the backpack, its app bar focused on Inventory; the arrow and Enter open Character.
   await page.keyboard.press('Tab');
@@ -137,6 +154,46 @@ test('keyboard only: title, the form, play, pause and back, the backpack and Cha
   // And a number key straight to Help.
   await page.keyboard.press('Digit6');
   await expect(page.locator('.os-window .os-title')).toContainText('Help');
+
+  // Into an app's contents and back: the Control Panel, Down off the bar, Tab through
+  // its controls (a list box keeps its own arrows), Up off the top back to the bar.
+  await page.keyboard.press('Digit7');
+  const panel = page.locator('.os-window .os-body');
+  await expect(page.locator('.os-window .os-title')).toContainText('Control Panel');
+  await page.keyboard.press('ArrowDown');
+  await expect(panel.locator(':focus')).toHaveCount(1);
+  await page.keyboard.press('Tab');
+  await page.keyboard.press('Tab');
+  // Tab walks; it does not close the backpack any more.
+  expect(await screen(page)).toBe('os');
+  await expect(page.locator('.os :focus')).toHaveCount(1);
+  // Back past the first control (a list box: its arrows are its own) to the window's close box, and Up to the bar.
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('.os-window .os-x')).toBeFocused();
+  await page.keyboard.press('ArrowUp');
+  await expect(bar.getByRole('button', { name: /Control Panel/ })).toBeFocused();
+
+  // A binding answered from the keyboard: a held Enter does not bind Enter,
+  // and the focus comes back to the binding after the redraw.
+  const right = panel.locator('[data-action="right"]');
+  await right.focus();
+  // A second down without an up is a key-repeat (Playwright sends it as one).
+  await page.keyboard.down('Enter');
+  await expect(right).toHaveText('press a key…');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
+  await expect(right).toHaveText('press a key…');
+  await page.keyboard.press('KeyL');
+  await expect(panel.locator('[data-action="right"]')).toHaveText('L');
+  await expect(panel.locator('[data-action="right"]')).toBeFocused();
+  // Reset keys keeps the focus too.
+  await panel.locator('[data-reset="keys"]').focus();
+  await page.keyboard.press('Enter');
+  await expect(panel.locator('[data-action="right"]')).toHaveText('D');
+  await expect(panel.locator('[data-reset="keys"]')).toBeFocused();
+
   await page.keyboard.press('Escape');
   await expect.poll(() => screen(page)).toBe('play');
 });
@@ -199,8 +256,20 @@ test('dialogue: Esc walks away where that costs nothing; Enter picks the highlig
   });
   await expect.poll(() => screen(page)).toBe('dialogue');
   await expect(page.locator('.dlg-opt.is-sel')).toContainText('Come with me');
-  await page.keyboard.press('Enter');
+  // A cursor that only reappears over another line does not move the highlight.
+  await page.evaluate(() => {
+    const opts = document.querySelectorAll('.dlg-opt');
+    opts[opts.length - 1]?.dispatchEvent(new MouseEvent('mousemove', { movementX: 0, movementY: 0, bubbles: true }));
+  });
+  await expect(page.locator('.dlg-opt.is-sel')).toContainText('Come with me');
+  await page.keyboard.down('Enter');
   await expect.poll(recruited).toBe(true);
+  // Enter still held: its repeats press nothing - the reply stays up until a new press.
+  await expect(page.locator('.dlg-opt.is-sel')).toBeFocused();
+  await page.keyboard.down('Enter');
+  await page.keyboard.down('Enter');
+  await page.keyboard.up('Enter');
+  expect(await screen(page)).toBe('dialogue');
   // Their reply: one line, which Enter (or Esc) closes.
   await page.keyboard.press('Enter');
   await expect.poll(() => screen(page)).toBe('play');
@@ -271,6 +340,13 @@ test('a meeting roots you: the card says why, W pulses it, and it goes when you 
   const during = await pos();
   if (await page.evaluate(() => (window as unknown as W).__crawler.rootT) > 0) {
     expect(Math.hypot(during.x - start.x, during.z - start.z)).toBeLessThan(0.05);
+  }
+
+  // The arrow keys walk too, so they are heard too.
+  const afterW = await card.getAttribute('data-pulses');
+  await page.keyboard.press('ArrowLeft');
+  if (await page.evaluate(() => (window as unknown as W).__crawler.rootT) > 0) {
+    await expect.poll(() => card.getAttribute('data-pulses')).not.toBe(afterW);
   }
 
   // The meeting ends: the card goes, and the held W walks.

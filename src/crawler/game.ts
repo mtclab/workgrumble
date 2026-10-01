@@ -78,10 +78,10 @@ import {
 } from './questing';
 import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
 import { MenuKeys } from './menukeys';
-import { lockLossPauses } from './menus';
+import { lockLossPauses, playPrompt } from './menus';
 import { browserStorage, takeWhatsNew } from './releases';
 import { fx, Rng } from './rng';
-import { busyDue, MOVE_ACTIONS, RootedCard, rootedView } from './rooted';
+import { busyDue, rootDrain, RootedCard, rootedView, triesToMove } from './rooted';
 import {
   type ArchPath,
   type Attribute,
@@ -1225,7 +1225,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       if (this.settings.compass) this.compass.update(this.player.pos.x, this.player.pos.z, this.player.yaw, this.markers);
     }
     this.hud.root.style.display = visible ? 'block' : 'none';
-    this.rootedCard.update(rootedView(this.screen === 'play' && this.vision === null, this.rootT, this.rootMax, this.rootReason));
+    this.rootedCard.update(rootedView(this.screen === 'play' && this.vision === null, this.rootT, this.rootMax, this.rootReason, rootDrain(perk(this.save, 'teflon'))));
     this.compass.visible = visible && this.settings.compass;
     this.hud.crosshair.style.display = this.screen === 'play' ? 'block' : 'none';
   };
@@ -1245,7 +1245,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       yaw: this.player.yaw,
       level: this.level,
       actors: this.actors,
-      prompt: this.screen !== 'play' ? '' : this.input.locked ? this.prompt : 'Click to capture the mouse and look around',
+      prompt: playPrompt(this.screen, this.input.locked, this.prompt),
       effects: this.effects(),
       boss: this.boss,
       face: this.faceMood,
@@ -1406,7 +1406,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.rootT > 0) {
       speed = 0;
       // Trying to walk out of a meeting: the card says the key was heard.
-      if (MOVE_ACTIONS.some((a) => this.hit(a))) this.busy();
+      if (triesToMove((a) => this.hit(a), (c) => this.input.hit(c))) this.busy();
     }
     const jump = this.hit('jump') && this.rootT <= 0 && !this.player.crouching;
     this.player.move(this.level, wx, wz, speed, jump, dt, d.jump);
@@ -1641,7 +1641,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const d = this.derivedCache;
     this.attackCd -= dt;
     this.shoveCd -= dt;
-    this.rootT = Math.max(0, this.rootT - dt * (perk(s, 'teflon') > 0 ? 2 : 1));
+    this.rootT = Math.max(0, this.rootT - dt * rootDrain(perk(s, 'teflon')));
     this.sisuT = Math.max(0, this.sisuT - dt);
     this.invisT = Math.max(0, this.invisT - dt);
     this.saunaT = Math.max(0, this.saunaT - dt);

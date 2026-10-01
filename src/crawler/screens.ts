@@ -4,7 +4,7 @@ import { showWhatsNew } from './changelog';
 import { showCharGen } from './chargen';
 import { DEATH_LINES } from './content/lines';
 import type { Game } from './game';
-import { burnoutMenu, controlsGrid, MENU_LABEL, type MenuItem, type MenuSpec, pauseMenu, titleMenu } from './menus';
+import { burnoutMenu, controlsGrid, loadMenuFocus, MENU_LABEL, type MenuItem, type MenuSpec, pauseMenu, titleMenu } from './menus';
 import { guarded, loadFailureLine } from './loading';
 import { focusables } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
@@ -91,9 +91,14 @@ export function hideOverlay(g: Game): void {
  * OS window in the middle of the screen, modal while it is up. Done, the
  * close box and Esc all take it down and put the focus back where it was.
  */
-function openPanel(g: Game, title: string, testid: string, body: HTMLElement, onClose?: () => void): void {
+function openPanel(g: Game, title: string, testid: string, build: () => HTMLElement, onClose?: () => void): void {
   const opener = document.activeElement instanceof HTMLElement && g.overlay.contains(document.activeElement) ? document.activeElement : null;
+  // The panel before this one is closed properly (its rebind cancelled,
+  // its settings released) before the new one is built: building it first
+  // would have the old one's release undo the new one.
+  g.menuKeys.dropPanel();
   g.overlay.querySelector('.title-panel')?.remove();
+  const body = build();
   // One panel at a time: the release notes keep keys of their own.
   g.overlay.querySelector('.whats-new')?.remove();
   const panel = document.createElement('section');
@@ -120,9 +125,8 @@ function openPanel(g: Game, title: string, testid: string, body: HTMLElement, on
   row.append(done);
   panel.append(head, body, row);
   const close = (): void => {
-    onClose?.();
+    g.menuKeys.dropPanel();
     panel.remove();
-    g.menuKeys.closePanel();
     opener?.focus({ preventScroll: true });
   };
   for (const b of [x, done]) {
@@ -132,7 +136,10 @@ function openPanel(g: Game, title: string, testid: string, body: HTMLElement, on
     });
   }
   g.overlay.append(panel);
-  g.menuKeys.openPanel(panel, close, focusables(body)[0] ?? done);
+  // `onClose` is also what runs when the panel is swept away without its
+  // close (another screen replacing the title, another panel): a rebind
+  // left waiting in a panel nobody can see would take the next key.
+  g.menuKeys.openPanel(panel, close, focusables(body)[0] ?? done, onClose);
 }
 
 /**
@@ -141,11 +148,15 @@ function openPanel(g: Game, title: string, testid: string, body: HTMLElement, on
  * Every change is kept at once, so New career starts with it.
  */
 function openSettingsPanel(g: Game): void {
-  openPanel(g, 'Settings', 'settings-panel', g.os.settingsPanel(), () => g.os.releasePanel());
+  openPanel(g, 'Settings', 'settings-panel', () => g.os.settingsPanel(), () => g.os.releasePanel());
 }
 
 /** The controls that matter on day one (with this player's keys), then the rest of Help. */
 function openControlsPanel(g: Game): void {
+  openPanel(g, 'Controls & help', 'controls-panel', () => controlsBody(g));
+}
+
+function controlsBody(g: Game): HTMLElement {
   const body = document.createElement('div');
   const grid = document.createElement('div');
   grid.className = 'title-controls';
@@ -158,14 +169,14 @@ function openControlsPanel(g: Game): void {
     grid.append(cell);
   }
   body.append(grid, g.os.helpPanel());
-  openPanel(g, 'Controls & help', 'controls-panel', body);
+  return body;
 }
 
 /** Every release, on demand: the same panel boot shows when something is new. */
 function openReleases(g: Game): void {
   const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  g.menuKeys.dropPanel();
   g.overlay.querySelector('.title-panel')?.remove();
-  g.menuKeys.closePanel();
   g.overlay.querySelector('.whats-new')?.remove();
   showWhatsNew(g.overlay, helldeskReleasesNewestFirst(), {
     lede: 'Every release, newest first. Update History, on any desk and in the backpack, keeps the same list.',
@@ -188,7 +199,7 @@ export function showTitle(g: Game, news: readonly ReleaseNote[] = []): void {
     ...NO_ACTIONS,
     continue: () => { if (latest !== null) g.loadSlot(latest); },
     new: () => showChargen(g),
-    load: () => showLoadMenu(g, () => showTitle(g)),
+    load: () => showLoadMenu(g, () => showTitle(g), 'title'),
     settings: () => openSettingsPanel(g),
     controls: () => openControlsPanel(g),
     whatsnew: () => openReleases(g),
@@ -203,7 +214,7 @@ export function showTitle(g: Game, news: readonly ReleaseNote[] = []): void {
   showWhatsNew(g.overlay, news);
 }
 
-export function showLoadMenu(g: Game, back: () => void): void {
+export function showLoadMenu(g: Game, back: () => void, from: 'title' | 'pause' | 'burnout'): void {
   const slots = listSlots().sort((a, b) => b.savedAt - a.savedAt);
   const list = document.createElement('div');
   list.className = 'screen-slots';
@@ -221,8 +232,12 @@ export function showLoadMenu(g: Game, back: () => void): void {
     list.append(b);
   }
   if (slots.length === 0) list.textContent = 'Nothing saved yet.';
-  // The newest save has the focus: Enter loads it. Esc goes back.
-  setOverlay(g, '<div class="title-logo small">LOAD</div>', [['Back', back]], list, { escape: back, focus: list.querySelector('button') });
+  // From the title or a burnout the newest save has the focus (Enter loads
+  // it); from pause, Back does (`loadMenuFocus`). Esc goes back.
+  setOverlay(g, '<div class="title-logo small">LOAD</div>', [['Back', back]], list, {
+    escape: back,
+    focus: loadMenuFocus(from) === 'newest' ? list.querySelector('button') : null,
+  });
 }
 
 function showSaveMenu(g: Game): void {
@@ -288,18 +303,29 @@ export function showPause(g: Game): void {
     ...NO_ACTIONS,
     resume: () => resume(g),
     save: () => showSaveMenu(g),
-    load: () => showLoadMenu(g, () => showPause(g)),
+    load: () => showLoadMenu(g, () => showPause(g), 'pause'),
     inventory: () => g.openOs('pack', 'inventory'),
     character: () => g.openOs('pack', 'character'),
     settings: () => g.openOs('pack', 'settings'),
     controls: () => openControlsPanel(g),
-    title: () => { g.abortVision(); g.autosave(); showTitle(g); },
+    title: () => leaveForTitle(g, true),
   };
   const blurb = under
     ? `<p class="title-blurb suo-pause">${SUO_LINES.noSave}</p>`
     : `<p class="title-blurb">Taking a "comfort break". The SLA clocks are paused. Probably.${s.ironman ? ' <b>IRONMAN</b>: the building saves for you.' : ''}</p>`;
   setOverlay(g, `<div class="title-logo small">PAUSED</div>
     ${blurb}`, fromSpec(spec, act), undefined, { menu: true, mark: true, escape: escapeOf(spec, act) });
+}
+
+/**
+ * Leaving play for the title, from pause or a burnout: a vision is always
+ * ended first (it is never saved, and the bog must not outlive the floor);
+ * pause also saves, a burnout has saved already.
+ */
+function leaveForTitle(g: Game, save: boolean): void {
+  g.abortVision();
+  if (save) g.autosave();
+  showTitle(g);
 }
 
 export function resume(g: Game): void {
@@ -351,8 +377,8 @@ function showBurnout(g: Game, line: string, lost: number): void {
       g.loadWorld(true);
       resume(g);
     }),
-    load: () => showLoadMenu(g, () => showBurnout(g, line, lost)),
-    title: () => showTitle(g),
+    load: () => showLoadMenu(g, () => showBurnout(g, line, lost), 'burnout'),
+    title: () => leaveForTitle(g, false),
   };
   const p = document.createElement('p');
   p.className = 'title-blurb';

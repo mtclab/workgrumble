@@ -26,7 +26,7 @@ export interface RootedView {
  * is how long this hold was when it began; a reason "Kind: detail" is split
  * at the first colon.
  */
-export function rootedView(playing: boolean, rootT: number, rootMax: number, reason: string): RootedView | null {
+export function rootedView(playing: boolean, rootT: number, rootMax: number, reason: string, drain = 1): RootedView | null {
   if (!playing || rootT <= 0) return null;
   const total = Math.max(rootMax, rootT);
   const cut = reason.indexOf(': ');
@@ -34,13 +34,27 @@ export function rootedView(playing: boolean, rootT: number, rootMax: number, rea
   return {
     reason: head.trim() === '' ? 'You cannot move' : head,
     detail: cut < 0 ? '' : reason.slice(cut + 2),
-    left: rootT,
+    // The clock runs `drain` times as fast (Teflon): the seconds you will actually wait.
+    left: rootT / Math.max(1, drain),
     fraction: Math.min(1, rootT / total),
   };
 }
 
+/** How fast a hold runs out: twice as fast with the Teflon perk. The tick and the card both use it. */
+export function rootDrain(teflonRank: number): number {
+  return teflonRank > 0 ? 2 : 1;
+}
+
 /** The keys that mean "I am trying to move": any of them while rooted pulses the card. */
 export const MOVE_ACTIONS: readonly Action[] = ['forward', 'back', 'left', 'right', 'jump'];
+
+/** The arrow keys walk too (`Game.moveInput`), whatever is bound: they count as trying. */
+export const MOVE_CODES: readonly string[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+
+/** Was a key that moves you pressed this frame: a bound action, or an arrow. */
+export function triesToMove(hitAction: (a: Action) => boolean, hitCode: (code: string) => boolean): boolean {
+  return MOVE_ACTIONS.some(hitAction) || MOVE_CODES.some(hitCode);
+}
 
 /** Game seconds between two engaged tones: a held-down key mash makes one, not a buzz. */
 export const BUSY_GAP = 0.35;

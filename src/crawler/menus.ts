@@ -101,7 +101,6 @@ export interface MenuSpec {
  */
 export const SAFE_ESCAPES: readonly MenuItem[] = ['resume'];
 
-/** The title is a real main menu: everything a player wants before a game exists. */
 /**
  * The mouse was let go of: does the game pause? Only when the browser took
  * it away during play (Esc, alt-tab). A release the game made itself is
@@ -113,6 +112,7 @@ export function lockLossPauses(screen: string, ours: boolean): boolean {
   return !ours && screen === 'play';
 }
 
+/** The title is a real main menu: everything a player wants before a game exists. */
 export function titleMenu(o: { readonly latest: boolean; readonly saves: boolean }): MenuSpec {
   const items: MenuItem[] = [];
   if (o.latest) items.push('continue');
@@ -160,6 +160,109 @@ export function packAppKey(code: string): number {
   if (m === null) return -1;
   const i = Number(m[1]) - 1;
   return i < PACK_APPS.length ? i : -1;
+}
+
+/** Where the keyboard is in the backpack: on the app bar, in the open app, or nowhere in it. */
+export type PackZone = 'bar' | 'app' | 'none';
+
+export type PackNav =
+  | { readonly kind: 'close' }
+  /** Open PACK_APPS[index]. */
+  | { readonly kind: 'app'; readonly index: number }
+  /** Along the bar. */
+  | { readonly kind: 'bar'; readonly move: FocusMove }
+  /** Down off the bar, into the open app's first control. */
+  | { readonly kind: 'enter' }
+  /** Through the open app's controls; up from the first one is back to the bar. */
+  | { readonly kind: 'step'; readonly move: 'next' | 'prev' }
+  /** Back to the bar (from nowhere in particular). */
+  | { readonly kind: 'tobar' }
+  /** Round the bar and the open app together, never out of the backpack. */
+  | { readonly kind: 'tab'; readonly back: boolean }
+  /** Eaten: a held Enter would press the focused button again on every repeat. */
+  | { readonly kind: 'swallow' }
+  | { readonly kind: 'none' };
+
+/**
+ * A held key's repeat that would press a focused button again: Enter (and
+ * Space). One press is one purchase, one perk, one equip; a text box keeps
+ * its own keys.
+ */
+export function swallowsRepeat(e: { readonly code: string; readonly repeat: boolean }, field: boolean): boolean {
+  return e.repeat && !field && (e.code === 'Enter' || e.code === 'NumpadEnter' || e.code === 'Space');
+}
+
+/**
+ * The keyboard in the backpack. The bar is the way in: 1-8 open its apps,
+ * Left and Right walk it, Down goes into the open app, Up and Down walk the
+ * app's buttons (perks, Equip, Use) and Up off the top comes back to the
+ * bar. Tab walks the bar and the app together, so a list box or a slider
+ * (whose arrows are its own) can always be left. Tab therefore does not
+ * close the backpack: Esc, I, or the backpack key when it is not Tab do.
+ */
+export function packKey(e: { readonly code: string; readonly shiftKey: boolean; readonly repeat: boolean; readonly zone: PackZone; readonly field: boolean; readonly backpackKey: string }): PackNav {
+  if (e.code === 'Escape') return { kind: 'close' };
+  if (e.code === 'Tab') return { kind: 'tab', back: e.shiftKey };
+  if (swallowsRepeat(e, e.field)) return { kind: 'swallow' };
+  if (e.field || e.repeat) return { kind: 'none' };
+  if (e.code === 'KeyI' || (e.code === e.backpackKey && e.code !== 'Tab')) return { kind: 'close' };
+  const app = packAppKey(e.code);
+  if (app >= 0) return { kind: 'app', index: app };
+  if (e.zone === 'bar') {
+    if (e.code === 'ArrowDown') return { kind: 'enter' };
+    const move = focusMove(e.code);
+    return move === null || e.code === 'ArrowUp' ? { kind: 'none' } : { kind: 'bar', move };
+  }
+  if (e.code === 'ArrowDown' || e.code === 'ArrowUp') {
+    if (e.zone === 'app') return { kind: 'step', move: e.code === 'ArrowDown' ? 'next' : 'prev' };
+    return { kind: 'tobar' };
+  }
+  return { kind: 'none' };
+}
+
+/**
+ * Where the focus goes when a list it was in is drawn again (an Equip, a
+ * perk, a rebind redraw the window): the same place, or the last control
+ * if the list got shorter, or nowhere (-1) if it was not in the list or the
+ * list is now empty. Without it the focus fell to the page and the next key
+ * started from nowhere.
+ */
+export function refocusIndex(was: number, count: number): number {
+  if (was < 0 || count <= 0) return -1;
+  return Math.min(was, count - 1);
+}
+
+/**
+ * A key pressed while a Control Panel binding waits for one: the code to
+ * bind, 'cancel' to give up waiting (Esc, and the save keys, which stay
+ * put), or 'wait' for a held key's repeats. Holding Enter on a binding button used to
+ * bind Enter: the press started the wait, its first repeat answered it.
+ */
+export type RebindAnswer = { readonly kind: 'wait' } | { readonly kind: 'cancel' } | { readonly kind: 'bind'; readonly code: string };
+export function rebindCode(e: { readonly code: string; readonly repeat: boolean }): RebindAnswer {
+  if (e.repeat) return { kind: 'wait' };
+  return e.code === 'Escape' || e.code === 'F5' || e.code === 'F9' ? { kind: 'cancel' } : { kind: 'bind', code: e.code };
+}
+
+/**
+ * Which save the load menu focuses: the newest, where loading is what the
+ * player came for (the title, a burnout). From pause there is a career in
+ * progress, unsaved since its last save: Back, so two Enters never throw it
+ * away for a save the player did not pick.
+ */
+export function loadMenuFocus(from: 'title' | 'pause' | 'burnout'): 'newest' | 'back' {
+  return from === 'pause' ? 'back' : 'newest';
+}
+
+/**
+ * The prompt in play: what E would do, or, while the mouse is not captured
+ * (a browser that refused the lock after Esc resumed, a click elsewhere),
+ * how to get it back.
+ */
+export const CAPTURE_HINT = 'Click to capture the mouse and look around';
+export function playPrompt(screen: string, locked: boolean, prompt: string): string {
+  if (screen !== 'play') return '';
+  return locked ? prompt : CAPTURE_HINT;
 }
 
 // ---------------------------------------------------------------- controls card

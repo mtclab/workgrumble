@@ -74,7 +74,7 @@ export class MenuKeys {
   /** When the current screen opened (performance.now()). */
   private openedAt = 0;
   private escape: (() => void) | null = null;
-  private panel: { readonly el: HTMLElement; readonly close: () => void } | null = null;
+  private panel: { readonly el: HTMLElement; readonly close: () => void; readonly teardown: (() => void) | undefined } | null = null;
 
   constructor(private readonly root: HTMLElement) {
     window.addEventListener('keydown', (e) => this.key(e));
@@ -85,7 +85,7 @@ export class MenuKeys {
     this.live = true;
     this.openedAt = performance.now();
     this.escape = escape;
-    this.panel = null;
+    this.dropPanel();
     focus?.focus({ preventScroll: true });
   }
 
@@ -93,21 +93,30 @@ export class MenuKeys {
   close(): void {
     this.live = false;
     this.escape = null;
-    this.panel = null;
+    this.dropPanel();
   }
 
-  /** A panel over the screen, modal while it is up. `close` takes it down (and is what Esc does). */
-  openPanel(el: HTMLElement, close: () => void, focus?: HTMLElement): void {
-    this.panel = { el, close };
+  /**
+   * A panel over the screen, modal while it is up. `close` takes it down
+   * (and is what Esc does); `teardown` is its owner's clean-up, run exactly
+   * once however the panel goes - closed, replaced by another panel, or
+   * swept away with the screen.
+   */
+  openPanel(el: HTMLElement, close: () => void, focus?: HTMLElement, teardown?: () => void): void {
+    this.dropPanel();
+    this.panel = { el, close, teardown };
     (focus ?? focusables(el)[0])?.focus({ preventScroll: true });
   }
 
-  closePanel(): void {
+  /** The panel is going (or gone): run its teardown, once, and stop routing keys to it. */
+  dropPanel(): void {
+    const p = this.panel;
     this.panel = null;
+    p?.teardown?.();
   }
 
   private scope(): HTMLElement {
-    if (this.panel !== null && !this.panel.el.isConnected) this.panel = null;
+    if (this.panel !== null && !this.panel.el.isConnected) this.dropPanel();
     return this.panel?.el ?? this.root;
   }
 

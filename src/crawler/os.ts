@@ -52,8 +52,8 @@ import {
 } from './state';
 import { ACHIEVEMENTS } from './upgrades';
 import { releaseEntry } from './changelog';
-import { focusMove, PACK_APPS, packAppKey, stepFocus } from './menus';
-import { isField } from './menukeys';
+import { PACK_APPS, packKey, swallowsRepeat, type PackZone, rebindCode, refocusIndex, stepFocus } from './menus';
+import { focusables, isField } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
 
 /**
@@ -186,28 +186,20 @@ export class Os {
     parent.append(this.root);
     window.addEventListener('keydown', (e) => {
       if (this.mode === null) return;
+      if (this.mode === 'pack') {
+        this.packKeys(e);
+        return;
+      }
       const t = e.target;
+      // At a desk too: holding Enter on Requisition buys one, not one per repeat.
+      if (swallowsRepeat(e, isField(t))) {
+        e.preventDefault();
+        return;
+      }
       if (t instanceof HTMLInputElement && e.code !== 'Escape') return;
-      if (e.code === 'Escape' || (this.mode === 'pack' && (e.code === 'Tab' || e.code === 'KeyI'))) {
+      if (e.code === 'Escape') {
         e.preventDefault();
         this.host.close();
-        return;
-      }
-      if (this.mode !== 'pack' || isField(t) || e.repeat) return;
-      // The app bar: 1-8 open its apps, the arrows walk it.
-      const n = packAppKey(e.code);
-      const app = PACK_APPS[n];
-      if (app !== undefined) {
-        e.preventDefault();
-        this.showPackApp(app);
-        return;
-      }
-      const move = focusMove(e.code);
-      const buttons = [...this.bar.querySelectorAll<HTMLButtonElement>('button')];
-      const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
-      if (move !== null && at >= 0) {
-        e.preventDefault();
-        buttons[stepFocus(buttons.length, at, move)]?.focus();
       }
     });
   }
@@ -246,6 +238,54 @@ export class Os {
       this.openApp('store');
     }
     this.refresh();
+  }
+
+  /** The backpack's keyboard (`packKey` has the rules): the bar, into the open app and back, Tab round both. */
+  private packKeys(e: KeyboardEvent): void {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const win = this.wins[0];
+    const zone: PackZone = active !== null && this.bar.contains(active) ? 'bar' : active !== null && win?.el.contains(active) === true ? 'app' : 'none';
+    const nav = packKey({ code: e.code, shiftKey: e.shiftKey, repeat: e.repeat, zone, field: isField(e.target), backpackKey: this.host.settings.keys.backpack });
+    const bar = [...this.bar.querySelectorAll<HTMLButtonElement>('button')];
+    const toBar = (): void => (bar.find((b) => b.classList.contains('is-selected')) ?? bar[0])?.focus({ preventScroll: true });
+    const inApp = win === undefined ? [] : focusables(win.body);
+    switch (nav.kind) {
+      case 'none':
+        return;
+      case 'swallow':
+        break;
+      case 'close':
+        this.host.close();
+        break;
+      case 'app': {
+        const app = PACK_APPS[nav.index];
+        if (app !== undefined) this.showPackApp(app);
+        break;
+      }
+      case 'bar':
+        bar[stepFocus(bar.length, active === null ? -1 : bar.indexOf(active as HTMLButtonElement), nav.move)]?.focus();
+        break;
+      case 'enter':
+        // An app with nothing to press (Achievements) keeps the bar.
+        inApp[0]?.focus({ preventScroll: false });
+        break;
+      case 'step': {
+        const at = active === null ? -1 : inApp.indexOf(active);
+        if (nav.move === 'prev' && at <= 0) toBar();
+        else inApp[Math.min(inApp.length - 1, at + (nav.move === 'next' ? 1 : -1))]?.focus();
+        break;
+      }
+      case 'tobar':
+        toBar();
+        break;
+      case 'tab': {
+        const all = focusables(this.root);
+        const at = active === null ? -1 : all.indexOf(active);
+        all[stepFocus(all.length, at, nav.back ? 'prev' : 'next')]?.focus();
+        break;
+      }
+    }
+    e.preventDefault();
   }
 
   /**
@@ -381,6 +421,9 @@ export class Os {
 
   private render(w: Win): void {
     const scroll = w.body.scrollTop;
+    // The keyboard stays where it was: an Equip or a perk redraws the window under it.
+    const active = document.activeElement;
+    const was = active instanceof HTMLElement && w.body.contains(active) ? focusables(w.body).indexOf(active) : -1;
     w.body.replaceChildren();
     switch (w.app) {
       case 'tickets': this.renderTickets(w.body); break;
@@ -398,6 +441,10 @@ export class Os {
       case 'updates': this.renderUpdates(w.body); break;
     }
     w.body.scrollTop = scroll;
+    if (was >= 0) {
+      const now = focusables(w.body);
+      now[refocusIndex(was, now.length)]?.focus({ preventScroll: true });
+    }
   }
 
   private say(msg: string): void {
@@ -951,7 +998,7 @@ export class Os {
     const st = this.host.settings;
     const grid = el('div', { class: 'os-keys' });
     for (const a of ACTIONS) {
-      const b = el('button', { class: 'os-btn os-key' }, keyName(st.keys[a]));
+      const b = el('button', { class: 'os-btn os-key', 'data-action': a }, keyName(st.keys[a]));
       // The right button is a binding here, not a menu.
       b.addEventListener('contextmenu', (e) => e.preventDefault());
       b.addEventListener('click', () => {
@@ -979,8 +1026,10 @@ export class Os {
           }
           e.preventDefault();
           e.stopImmediatePropagation();
+          const answer = rebindCode(e);
+          if (answer.kind === 'wait') return;
           stop();
-          commit(e.code !== 'Escape' && e.code !== 'F5' && e.code !== 'F9' ? e.code : null);
+          commit(answer.kind === 'bind' ? answer.code : null);
         };
         // A mouse button binds when it is pressed on this button (the one
         // waiting). Pressed anywhere else it is the player moving on - to
@@ -1009,6 +1058,8 @@ export class Os {
           }
           body.replaceChildren();
           this.renderSettings(body);
+          // Back on the binding just answered, so the keyboard carries on from there.
+          body.querySelector<HTMLElement>(`[data-action="${a}"]`)?.focus({ preventScroll: true });
         };
         window.addEventListener('keydown', onKey, true);
         window.addEventListener('mousedown', onMouse, true);
@@ -1016,7 +1067,13 @@ export class Os {
       });
       grid.append(el('label', {}, el('span', {}, ACTION_LABEL[a]), b));
     }
-    grid.append(el('button', { class: 'os-btn', onclick: () => { st.keys = { ...DEFAULT_KEYS }; this.host.applySettings(); body.replaceChildren(); this.renderSettings(body); } }, 'Reset keys'));
+    grid.append(el('button', { class: 'os-btn', 'data-reset': 'keys', onclick: () => {
+      st.keys = { ...DEFAULT_KEYS };
+      this.host.applySettings();
+      body.replaceChildren();
+      this.renderSettings(body);
+      body.querySelector<HTMLElement>('[data-reset="keys"]')?.focus({ preventScroll: true });
+    } }, 'Reset keys'));
     return grid;
   }
 
@@ -1036,7 +1093,7 @@ export class Os {
       sec('More keys', [
         'F cast rune · X next rune · G domain ability · C sneak · V first/third person',
         '1-9 or the wheel switch tools · J journal · F5 quicksave · F9 quickload',
-        'In the backpack: 1-8 or the arrow keys and Enter pick an app; Tab or Esc closes it',
+        'In the backpack: 1-8 or Left/Right and Enter pick an app; Down goes into it, Up off its top comes back; Tab walks everything; Esc or I closes it',
         'In a conversation: 1-9, or the arrows and Enter; Esc walks away where that costs nothing',
       ]);
     }

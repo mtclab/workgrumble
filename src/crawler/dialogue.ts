@@ -1,4 +1,4 @@
-import { firstEnabled, focusMove, stepEnabled } from './menus';
+import { firstEnabled, focusMove, type FocusMove, stepEnabled } from './menus';
 import { fx } from './rng';
 
 /**
@@ -39,6 +39,43 @@ export function safeOption(options: readonly DialogueOption[]): number {
   return options.findIndex((o) => o.leave === true && o.disabled !== true);
 }
 
+/** What a key does in a conversation. */
+export type DialogueKey =
+  | { readonly kind: 'pick'; readonly index: number }
+  | { readonly kind: 'enter' }
+  | { readonly kind: 'escape' }
+  | { readonly kind: 'move'; readonly move: FocusMove }
+  /** Eaten and nothing else: a held key's repeats. */
+  | { readonly kind: 'swallow' }
+  | { readonly kind: 'none' };
+
+/**
+ * The keyboard in a conversation. One press is one choice: a held key's
+ * repeats are swallowed, the activating ones (Enter, Space) with their
+ * default too, or the browser presses the focused line again on every
+ * repeat - and every redraw focuses the first line, so holding Enter at the
+ * Saunatonttu bought training until the Rep ran out.
+ */
+export function dialogueKey(e: { readonly code: string; readonly key: string; readonly repeat: boolean; readonly shiftKey: boolean }): DialogueKey {
+  if (e.repeat) return { kind: 'swallow' };
+  const n = Number(e.key);
+  if (e.key.length === 1 && n >= 1 && n <= 9) return { kind: 'pick', index: n - 1 };
+  if (e.code === 'Enter' || e.code === 'NumpadEnter') return { kind: 'enter' };
+  if (e.code === 'Escape') return { kind: 'escape' };
+  const move = e.code === 'Tab' ? (e.shiftKey ? 'prev' : 'next') : focusMove(e.code);
+  return move === null ? { kind: 'none' } : { kind: 'move', move };
+}
+
+/**
+ * Does a mousemove move the highlight? Only a real movement: a cursor that
+ * reappears over a line (the mouse let go of, a redraw under a still
+ * pointer) sends events with no distance, and must not change what Enter
+ * picks behind the player's back.
+ */
+export function hoverMoves(dx: number, dy: number): boolean {
+  return dx !== 0 || dy !== 0;
+}
+
 export class DialogueUI {
   private readonly root: HTMLDivElement;
   private onClose: (() => void) | null = null;
@@ -56,24 +93,27 @@ export class DialogueUI {
     window.addEventListener('keydown', (e) => {
       // A key some other screen already answered (the Enter that signed the
       // contract and opened this) is not an answer here.
-      if (!this.open || e.repeat || e.defaultPrevented) return;
-      const n = Number(e.key);
-      if (e.key.length === 1 && n >= 1 && n <= 9) {
-        this.choose(n - 1, e);
-        return;
-      }
-      if (e.code === 'Enter' || e.code === 'NumpadEnter') {
-        this.choose(this.sel, e);
-        return;
-      }
-      if (e.code === 'Escape') {
-        if (this.node !== null) this.choose(safeOption(this.node.options), e);
-        return;
-      }
-      const move = e.code === 'Tab' ? (e.shiftKey ? 'prev' : 'next') : focusMove(e.code);
-      if (move !== null) {
-        e.preventDefault();
-        this.highlight(stepEnabled(this.buttons.map((b) => b.disabled), this.sel, move));
+      if (!this.open || e.defaultPrevented) return;
+      const k = dialogueKey(e);
+      switch (k.kind) {
+        case 'swallow':
+          e.preventDefault();
+          return;
+        case 'pick':
+          this.choose(k.index, e);
+          return;
+        case 'enter':
+          this.choose(this.sel, e);
+          return;
+        case 'escape':
+          if (this.node !== null) this.choose(safeOption(this.node.options), e);
+          return;
+        case 'move':
+          e.preventDefault();
+          this.highlight(stepEnabled(this.buttons.map((b) => b.disabled), this.sel, k.move));
+          return;
+        case 'none':
+          return;
       }
     });
   }
@@ -94,8 +134,10 @@ export class DialogueUI {
   show(node: DialogueNode, onClose: () => void): void {
     this.onClose = onClose;
     this.open = true;
-    this.render(node);
+    // Shown first, then drawn: focus asked of a hidden button is refused,
+    // and the default line has to have it for Space to press it.
     this.root.style.display = 'flex';
+    this.render(node);
   }
 
   private render(node: DialogueNode): void {
@@ -126,8 +168,8 @@ export class DialogueUI {
         if (next === null) this.close();
         else this.render(next);
       });
-      // The mouse highlights too, so Enter and the pointer never disagree.
-      b.addEventListener('mouseenter', () => { if (!b.disabled) this.highlight(i); });
+      // A mouse that really moves over a line highlights it, so Enter and the pointer agree.
+      b.addEventListener('mousemove', (e) => { if (!b.disabled && i !== this.sel && hoverMoves(e.movementX, e.movementY)) this.highlight(i); });
       opts.append(b);
     });
     box.append(head, text, opts);

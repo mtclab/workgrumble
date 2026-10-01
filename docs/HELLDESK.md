@@ -486,7 +486,13 @@ Load game and Title screen. In a conversation Enter picks the highlighted
 line, the arrows move it, 1-9 still work, and Esc picks a line marked
 `leave` (walks away, changes nothing) where there is one. The backpack has an
 app bar along the top (1-8 or the arrows and Enter): Inventory, Character,
-Journal, HR, Achievements, Help, Control Panel, Update History. Reading text
+Journal, HR, Achievements, Help, Control Panel, Update History. Down goes
+into the open app (perks, Equip, Use, the settings), Up off its top comes
+back, Tab walks the bar and the app together (so it no longer closes the
+backpack: Esc, I, or the backpack key when rebound off Tab do). A redraw
+(Equip, a perk, a rebind) keeps the focus where it was, and a held Enter
+presses a button once, in the backpack, at a desk and in a conversation.
+From pause, the load menu focuses Back. Reading text
 (blurbs, dialogue, tips, help, the induction, endings) is in the house serif;
 "Built by MTC Lab" sits quietly under the title and pause menus.
 

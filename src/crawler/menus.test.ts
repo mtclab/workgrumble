@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { said, safeOption } from './dialogue';
+import { dialogueKey, hoverMoves, said, safeOption } from './dialogue';
 import type { Game } from './game';
 import { rootPlayer } from './hosts';
 import {
@@ -11,17 +11,26 @@ import {
   difficultyWord,
   firstEnabled,
   focusMove,
+  loadMenuFocus,
   MENU_LABEL,
   type MenuSpec,
   PACK_APPS,
   packAppKey,
+  packKey,
+  type PackZone,
   pauseMenu,
+  playPrompt,
+  CAPTURE_HINT,
+  rebindCode,
+  refocusIndex,
   SAFE_ESCAPES,
+  swallowsRepeat,
   stepEnabled,
   stepFocus,
   titleMenu,
 } from './menus';
-import { busyDue, BUSY_GAP, MOVE_ACTIONS, rootedView } from './rooted';
+import { MenuKeys } from './menukeys';
+import { busyDue, BUSY_GAP, MOVE_ACTIONS, rootDrain, rootedView, triesToMove } from './rooted';
 import { difficultyFor, RUNG_COUNT, WORKPLACES } from './rpg';
 import { DEFAULT_KEYS } from './settings';
 
@@ -288,5 +297,126 @@ describe('the rooted card', () => {
     rootPlayer(game, 6, 'Sitting down, very suddenly', false);
     expect(g.rootMax).toBe(6);
     expect(rootedView(true, g.rootT, g.rootMax, g.rootReason)?.fraction).toBe(1);
+  });
+});
+
+describe('review fixes (docs/SPEC_MENUS.md follow-up)', () => {
+  const pk = (code: string, zone: PackZone, o: { shiftKey?: boolean; repeat?: boolean; field?: boolean; backpackKey?: string } = {}) =>
+    packKey({ code, zone, shiftKey: o.shiftKey ?? false, repeat: o.repeat ?? false, field: o.field ?? false, backpackKey: o.backpackKey ?? 'Tab' });
+
+  it('in the backpack, Tab walks the bar and the open app instead of closing it', () => {
+    expect(pk('Tab', 'bar')).toEqual({ kind: 'tab', back: false });
+    expect(pk('Tab', 'app', { shiftKey: true })).toEqual({ kind: 'tab', back: true });
+    // Out of a list box or a slider too: Tab is the way off a field.
+    expect(pk('Tab', 'app', { field: true })).toEqual({ kind: 'tab', back: false });
+  });
+
+  it('the bar leads into the open app, and Up off its top comes back', () => {
+    expect(pk('ArrowDown', 'bar')).toEqual({ kind: 'enter' });
+    expect(pk('ArrowRight', 'bar')).toEqual({ kind: 'bar', move: 'next' });
+    expect(pk('ArrowDown', 'app')).toEqual({ kind: 'step', move: 'next' });
+    expect(pk('ArrowUp', 'app')).toEqual({ kind: 'step', move: 'prev' });
+    expect(pk('ArrowUp', 'none')).toEqual({ kind: 'tobar' });
+    // A field keeps its own arrows.
+    expect(pk('ArrowDown', 'app', { field: true })).toEqual({ kind: 'none' });
+    expect(pk('Digit2', 'app')).toEqual({ kind: 'app', index: 1 });
+  });
+
+  it('the backpack still closes from the keyboard: Esc, I, or the backpack key when it is not Tab', () => {
+    expect(pk('Escape', 'app', { field: true })).toEqual({ kind: 'close' });
+    expect(pk('KeyI', 'bar')).toEqual({ kind: 'close' });
+    expect(pk('KeyB', 'bar', { backpackKey: 'KeyB' })).toEqual({ kind: 'close' });
+    expect(pk('KeyB', 'bar')).toEqual({ kind: 'none' });
+  });
+
+  it('a held Enter presses a focused button once: the backpack, a desk and a conversation', () => {
+    expect(pk('Enter', 'app', { repeat: true })).toEqual({ kind: 'swallow' });
+    expect(pk('Enter', 'app')).toEqual({ kind: 'none' });
+    expect(swallowsRepeat({ code: 'Enter', repeat: true }, false)).toBe(true);
+    expect(swallowsRepeat({ code: 'NumpadEnter', repeat: true }, false)).toBe(true);
+    expect(swallowsRepeat({ code: 'Enter', repeat: false }, false)).toBe(false);
+    expect(swallowsRepeat({ code: 'Enter', repeat: true }, true)).toBe(false);
+    const key = (code: string, k: string, repeat = false, shiftKey = false) => dialogueKey({ code, key: k, repeat, shiftKey });
+    expect(key('Enter', 'Enter', true)).toEqual({ kind: 'swallow' });
+    expect(key('Digit3', '3', true)).toEqual({ kind: 'swallow' });
+    expect(key('Enter', 'Enter')).toEqual({ kind: 'enter' });
+    expect(key('Digit3', '3')).toEqual({ kind: 'pick', index: 2 });
+    expect(key('Escape', 'Escape')).toEqual({ kind: 'escape' });
+    expect(key('Tab', 'Tab', false, true)).toEqual({ kind: 'move', move: 'prev' });
+    expect(key('KeyW', 'w')).toEqual({ kind: 'none' });
+  });
+
+  it('a held key never binds itself: its repeats leave the binding waiting', () => {
+    expect(rebindCode({ code: 'Enter', repeat: true })).toEqual({ kind: 'wait' });
+    expect(rebindCode({ code: 'KeyL', repeat: false })).toEqual({ kind: 'bind', code: 'KeyL' });
+    expect(rebindCode({ code: 'Escape', repeat: false })).toEqual({ kind: 'cancel' });
+    expect(rebindCode({ code: 'F9', repeat: false })).toEqual({ kind: 'cancel' });
+  });
+
+  it('a redraw puts the focus back where it was, or on the last control of a shorter list', () => {
+    expect(refocusIndex(3, 8)).toBe(3);
+    expect(refocusIndex(7, 5)).toBe(4);
+    expect(refocusIndex(-1, 5)).toBe(-1);
+    expect(refocusIndex(2, 0)).toBe(-1);
+  });
+
+  it('the highlight follows only a mouse that really moved', () => {
+    expect(hoverMoves(0, 0)).toBe(false);
+    expect(hoverMoves(3, 0)).toBe(true);
+    expect(hoverMoves(0, -1)).toBe(true);
+  });
+
+  it('from pause, the load menu focuses Back; from the title or a burnout, the newest save', () => {
+    expect(loadMenuFocus('pause')).toBe('back');
+    expect(loadMenuFocus('title')).toBe('newest');
+    expect(loadMenuFocus('burnout')).toBe('newest');
+  });
+
+  it('in play without the mouse captured, the prompt says how to get it back', () => {
+    expect(playPrompt('play', false, 'E: Talk')).toBe(CAPTURE_HINT);
+    expect(playPrompt('play', true, 'E: Talk')).toBe('E: Talk');
+    expect(playPrompt('paused', false, 'E: Talk')).toBe('');
+  });
+
+  it('the arrow keys walk, so they count as trying to move while rooted', () => {
+    const none = (): boolean => false;
+    expect(triesToMove(none, (c) => c === 'ArrowLeft')).toBe(true);
+    expect(triesToMove((a) => a === 'jump', none)).toBe(true);
+    expect(triesToMove(none, (c) => c === 'KeyE')).toBe(false);
+  });
+
+  it('with Teflon the hold drains twice as fast, and the card counts the seconds you will really wait', () => {
+    expect(rootDrain(0)).toBe(1);
+    expect(rootDrain(1)).toBe(2);
+    expect(rootedView(true, 4, 4, 'In a meeting: "Sync"', rootDrain(1))?.left).toBe(2);
+    expect(rootedView(true, 4, 4, 'In a meeting: "Sync"', rootDrain(1))?.fraction).toBe(1);
+    expect(rootedView(true, 4, 4, 'In a meeting: "Sync"')?.left).toBe(4);
+  });
+
+  it('a panel\'s clean-up runs exactly once however it goes: closed, replaced, or swept away with its screen', () => {
+    const w = globalThis as { window?: unknown };
+    const had = w.window;
+    w.window = { addEventListener: (): void => undefined };
+    try {
+      const keys = new MenuKeys({} as HTMLElement);
+      const el = {} as HTMLElement;
+      const focus = { focus: (): void => undefined } as unknown as HTMLElement;
+      const runs = { a: 0, b: 0, c: 0 };
+      keys.open(null, null);
+      keys.openPanel(el, () => undefined, focus, () => { runs.a++; });
+      // Another panel replaces it.
+      keys.openPanel(el, () => undefined, focus, () => { runs.b++; });
+      expect(runs).toEqual({ a: 1, b: 0, c: 0 });
+      // The screen is replaced (setOverlay -> open).
+      keys.open(null, null);
+      expect(runs).toEqual({ a: 1, b: 1, c: 0 });
+      keys.openPanel(el, () => undefined, focus, () => { runs.c++; });
+      // Its own close, then the overlay going: still once.
+      keys.dropPanel();
+      keys.close();
+      expect(runs).toEqual({ a: 1, b: 1, c: 1 });
+    } finally {
+      w.window = had;
+    }
   });
 });
