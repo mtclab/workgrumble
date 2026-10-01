@@ -572,6 +572,9 @@ plus mean and max-min share over each scenario's nine floors; incomplete
 or errored careers fail. Repeat with
 another `COMBAT_OUT` directory to check reproducibility. For single runs,
 `run.mjs` accepts `HELLDESK_URL`, `CHROMIUM` and `OUT` (JSON file).
+Each matrix career gets 40 wall minutes by default; set
+`COMBAT_WALL_MINUTES` to a positive number to change that budget. Partial
+careers still fail instead of contributing to the averages.
 Node-only regression checks (no browser or generated WASM needed):
 
 ```

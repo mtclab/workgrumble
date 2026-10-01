@@ -1,5 +1,5 @@
 // Six careers, sequentially: the current trainee and senior balance scenarios.
-// Env: HELLDESK_URL, CHROMIUM, VERBOSE (passed to run.mjs), COMBAT_OUT (JSON directory).
+// Env: HELLDESK_URL, CHROMIUM, VERBOSE (passed to run.mjs), COMBAT_OUT (JSON directory), COMBAT_WALL_MINUTES (per career, default 40).
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,6 +10,8 @@ const scenarios = [
   { name: 'senior', rung: 6, kit: ['cat6', 'cardigan'] },
 ];
 const seeds = [1700000000, 1700000001, 1700000002];
+const wallMinutes = Number(process.env.COMBAT_WALL_MINUTES ?? 40);
+if (!Number.isFinite(wallMinutes) || wallMinutes <= 0) throw new Error('COMBAT_WALL_MINUTES must be a positive finite number');
 const dir = process.env.COMBAT_OUT ?? 'combat-share';
 mkdirSync(dir, { recursive: true });
 const runner = fileURLToPath(new URL('./run.mjs', import.meta.url));
@@ -18,7 +20,7 @@ for (const scenario of scenarios) {
   const shares = [];
   for (const seed of seeds) {
     const out = join(dir, `${scenario.name}-${seed}.json`);
-    const run = spawnSync(process.execPath, [runner, JSON.stringify({ ...scenario, seed, floors: 3, wallMinutes: 15 })], {
+    const run = spawnSync(process.execPath, [runner, JSON.stringify({ ...scenario, seed, floors: 3, wallMinutes })], {
       env: { ...process.env, OUT: out }, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'],
     });
     if (run.error || run.status !== 0) throw new Error(`${scenario.name} seed ${seed}: runner failed`);

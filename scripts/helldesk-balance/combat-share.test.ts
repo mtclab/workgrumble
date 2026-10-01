@@ -6,11 +6,11 @@ const source = readFileSync('scripts/helldesk-balance/combat-share.mjs', 'utf8')
   .replace(/^import .*;\n/gm, '')
   .replace('import.meta.url', "'file:///scripts/helldesk-balance/combat-share.mjs'");
 
-function measure(incomplete = false) {
-  const runs: { name: string; rung: number; kit?: string[]; seed: number; floors: number }[] = [];
+function measure(incomplete = false, wallMinutes?: string) {
+  const runs: { name: string; rung: number; kit?: string[]; seed: number; floors: number; wallMinutes: number }[] = [];
   const lines: string[] = [];
   const context = {
-    process: { env: { HELLDESK_URL: 'served-build', CHROMIUM: 'browser', COMBAT_OUT: 'results' }, execPath: 'node' },
+    process: { env: { HELLDESK_URL: 'served-build', CHROMIUM: 'browser', COMBAT_OUT: 'results', ...(wallMinutes === undefined ? {} : { COMBAT_WALL_MINUTES: wallMinutes }) }, execPath: 'node' },
     URL,
     fileURLToPath: (url: URL) => url.pathname,
     join: (...parts: string[]) => parts.join('/'),
@@ -48,8 +48,28 @@ describe('combat-share matrix', () => {
   });
 
   it('rejects a partial career instead of reporting a misleading average', () => {
-    const m = measure(true);
+    const m = measure(true, '60');
     expect(m.run).toThrow('incomplete or errored career');
     expect(m.runs).toHaveLength(1);
+    expect(m.runs[0]?.wallMinutes).toBe(60);
+    expect(m.lines.some((line) => line.includes('mean combatShare'))).toBe(false);
+  });
+
+  it('gives every three-floor career forty wall minutes by default', () => {
+    const m = measure();
+    m.run();
+    expect(m.runs.map((r) => r.wallMinutes)).toEqual([40, 40, 40, 40, 40, 40]);
+  });
+
+  it('uses a configurable wall budget for both trainee and senior careers', () => {
+    const m = measure(false, '52.5');
+    m.run();
+    expect(m.runs.map((r) => r.wallMinutes)).toEqual([52.5, 52.5, 52.5, 52.5, 52.5, 52.5]);
+  });
+
+  it.each(['0', '-1', 'NaN', 'Infinity', '', 'forty'])('rejects an invalid wall budget %j before running a career', (wallMinutes) => {
+    const m = measure(false, wallMinutes);
+    expect(m.run).toThrow('COMBAT_WALL_MINUTES must be a positive finite number');
+    expect(m.runs).toHaveLength(0);
   });
 });
