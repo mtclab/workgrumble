@@ -229,6 +229,22 @@ describe('nothing is rebuilt every frame', () => {
   });
 });
 
+describe('E goes to the person in front of you, not a fixture behind them (findPrompt)', () => {
+  it('a calm user 1.6 m ahead wins over the lift doors 2.0 m ahead, behind them', () => {
+    const h = host('done');
+    h.g.inductionDay = null;
+    const p = h.g.player;
+    const ahead = (d: number): { x: number; z: number } => ({ x: p.pos.x - Math.sin(p.yaw) * d, z: p.pos.z - Math.cos(p.yaw) * d });
+    const lift = ahead(2.0);
+    h.level.interactables.push({ kind: 'elevator', x: lift.x, z: lift.z, id: 900, room: 0, used: false, mesh: null, lock: 0 });
+    const at = ahead(1.6);
+    const user = { kind: 'user', hostile: true, resolved: false, docile: false, talked: false, enragedT: 0, role: '', pos: new THREE.Vector3(at.x, 0, at.z) } as unknown as Actor;
+    h.g.actors.push(user);
+    findPrompt(h.g);
+    expect(h.g.promptTarget).toEqual({ kind: 'actor', a: user });
+  });
+});
+
 describe('E on induction day goes to what the card asks for (the real InductionDay and findPrompt)', () => {
   /** Put the lobby's own computer one metre in front of the player, closer than anything. */
   function ownComputer(h: Host): void {

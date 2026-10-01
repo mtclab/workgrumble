@@ -68,7 +68,10 @@ export function findPrompt(g: Game): void {
     const dz = a.pos.z - pp.z;
     const dist = Math.hypot(dx, dz);
     if (dist > (a.kind === 'boss' ? 4 : 2.6)) continue;
-    const score = dist - 0.5;
+    // Scored like a prop (near and in front wins), so a person facing you
+    // beats the lift doors behind them.
+    const dot = (dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4);
+    const score = dist - Math.max(dot, 0.5);
     if (score < bestScore) {
       bestScore = score;
       best = { kind: 'actor', a };
