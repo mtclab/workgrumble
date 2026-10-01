@@ -75,6 +75,15 @@ export function deleteSlot(id: SlotId): void {
   }
 }
 
+/** End only this career's automatic slots; older saves have no owner. */
+export function deleteCareerSlots(careerId: string | undefined): void {
+  if (careerId === undefined) return;
+  for (const id of ['auto', 'quick'] as const) {
+    const data = readSlot(id)?.data;
+    if (typeof data === 'object' && data !== null && 'careerId' in data && data.careerId === careerId) deleteSlot(id);
+  }
+}
+
 export function timeAgo(t: number): string {
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
   if (s < 60) return 'just now';

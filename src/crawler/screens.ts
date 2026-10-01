@@ -10,7 +10,7 @@ import { focusables } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
 import { fx } from './rng';
 import { type Ending, WORKPLACES } from './rpg';
-import { deleteSlot, latestSlot, listSlots, SLOT_LABEL, type SlotId, timeAgo } from './saves';
+import { deleteCareerSlots, latestSlot, listSlots, SLOT_LABEL, type SlotId, timeAgo } from './saves';
 import { saveSettings } from './settings';
 import { adjustStanding } from './state';
 import { SUO_LINES } from './suo';
@@ -391,7 +391,7 @@ function showBurnout(g: Game, line: string, lost: number): void {
 /** Ironman: one burnout and the career is over. */
 function showCareerOver(g: Game): void {
   const s = g.save;
-  deleteSlot('auto');
+  deleteCareerSlots(s.careerId);
   setOverlay(g, `<div class="title-logo small dead">CAREER OVER</div>
     <p class="title-blurb">${fx.pick(DEATH_LINES)}</p>
     <p class="title-blurb">Ironman. ${s.name}, ${g.title}, level ${s.level}, burned out on ${g.floorName()} in week ${s.week}.
@@ -422,8 +422,7 @@ export function showEnding(g: Game, e: Ending): void {
 export function showFired(g: Game): void {
   g.screen = 'ending';
   g.input.releaseLock();
-  deleteSlot('auto');
-  deleteSlot('quick');
+  deleteCareerSlots(g.save.careerId);
   sfx.error();
   setOverlay(g, `<div class="title-logo small dead">P45</div>
     <p class="title-blurb">A trainee with three warnings and nowhere lower to go. Security walks you out holding a cardboard box with a stapler in it.</p>

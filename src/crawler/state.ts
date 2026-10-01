@@ -131,6 +131,7 @@ export interface WeekendState {
 
 export interface SaveState {
   version: 3;
+  careerId?: string | undefined;
   name: string;
   background: string;
   sign: string;
@@ -251,6 +252,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
   const label = plainInstance('labelmaker', r);
   const s: SaveState = {
     version: 3,
+    careerId: crypto.randomUUID(),
     name: setup?.name ?? 'Pat Pending',
     background: bg?.id ?? 'grad',
     sign: setup?.sign ?? 'patch',
@@ -389,6 +391,7 @@ export function migrate(raw: unknown): SaveState | null {
   }
   const merged = { ...fresh, ...(raw) };
   merged.version = 3;
+  delete merged.careerId;
   merged.gear = gear.length > 0 ? gear : fresh.gear;
   merged.equipped = {
     weapon: pick(eq.weapon) ?? merged.gear[0]?.uid ?? '',
@@ -413,6 +416,7 @@ export function normalizeSave(raw: unknown): SaveState | null {
   const out: SaveState = {
     ...fresh,
     ...m,
+    careerId: m.careerId,
     stats: { ...fresh.stats, ...m.stats },
     weekend: { ...fresh.weekend, ...m.weekend },
     oncall: normalizeOnCall((m as Partial<SaveState>).oncall),
