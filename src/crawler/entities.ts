@@ -1824,7 +1824,7 @@ function strikeBoss(ctx: GameCtx, a: Actor, id: AttackId, dist: number): void {
       break;
     }
     case 'freeze':
-      if (dist < 12) ctx.rootPlayer(1.6, 'Budget freeze');
+      if (dist < 12 && lineOfSight(ctx.level, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z)) ctx.rootPlayer(1.6, 'Budget freeze');
       ring(ctx, a, 'invite', 12, 7, (6 + f) * d);
       break;
     case 'lasers': {

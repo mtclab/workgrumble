@@ -104,7 +104,7 @@ export function playerAttackInput(g: Game, dt: number): void {
   g.dryFire = false;
 
   // Right button.
-  if (inp.rmb && canAct) {
+  if (inp.rmb) {
     g.rmbT += dt;
     g.blocking = s.energy > 0;
     // The tip comes with the first block; an induction brings it at its own block step instead.

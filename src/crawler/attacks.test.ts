@@ -603,3 +603,19 @@ describe('interrupts leave a colleague a chance to finish their attack', () => {
     expect(ctx.hits.filter((h) => h.effect === 'hurt').length, 'quick flinches let the swing finish').toBeGreaterThan(0);
   });
 });
+
+
+describe('Budget Freeze checks where you are at release', () => {
+  it.each(['range', 'wall', 'standing'] as const)('%s during the wind-up', (dodge) => {
+    const ctx = new Arena();
+    const a = ctx.putBoss('freeze', 6);
+    let moved = false;
+    fight(ctx, a, 1.5, () => {
+      if (moved || a.pending !== 'boss.freeze') return;
+      moved = true;
+      if (dodge === 'range') ctx.playerPos.z += 8;
+      if (dodge === 'wall') ctx.level.opaque.fill(1, 14 * N, 15 * N);
+    });
+    expect(ctx.hits.filter((h) => h.effect === 'root').length, 'freeze only reaches a player still in sight and range').toBe(dodge === 'standing' ? 1 : 0);
+  });
+});
