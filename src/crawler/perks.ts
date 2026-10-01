@@ -87,7 +87,7 @@ export const TREE_PERKS: readonly TreePerk[] = [
   // Athletics
   { id: 'cardio', name: 'Cardio', tree: 'athletics', ranks: [r(15, '+5% move speed'), r(40, '+10% move speed'), r(70, '+15% move speed')] },
   { id: 'stairsguy', name: 'The Stairs Guy', tree: 'athletics', ranks: [r(30, 'Sprinting costs 40% less energy.')] },
-  { id: 'parkour', name: 'Parkour', tree: 'athletics', ranks: [r(50, 'Jump higher, +10% dodge.')] },
+  { id: 'parkour', name: 'Parkour', tree: 'athletics', ranks: [r(50, 'Jump higher, +10% chance to dodge projectiles.')] },
   { id: 'marathon', name: 'Marathon', tree: 'athletics', ranks: [r(75, 'Energy comes back 50% faster.')] },
 ];
 

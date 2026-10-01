@@ -719,7 +719,7 @@ export class Os {
     body.append(
       el('h3', {}, `${s.name} - ${this.host.title} (Level ${s.level})`),
       el('div', { class: 'os-bar' }, el('div', { class: 'os-bar-fill', style: `width:${Math.min(100, Math.round((s.skillUps / SKILL_UPS_PER_LEVEL) * 100))}%` })),
-      el('p', { class: 'os-meta' }, `Skill increases toward next level: ${s.skillUps}/${SKILL_UPS_PER_LEVEL}${s.skillUps >= SKILL_UPS_PER_LEVEL ? ' - REST (T) TO LEVEL UP' : ''} · Max sanity ${d.maxSanity} · Max Löyly ${d.maxLoyly} · Armour ${Math.round(d.armor * 100)}% · Speed ×${d.speedMult.toFixed(2)} · Dodge ${Math.round(d.dodge * 100)}% · Melee ×${d.meleeMult.toFixed(2)} · Ranged ×${d.rangedMult.toFixed(2)}`),
+      el('p', { class: 'os-meta' }, `Skill increases toward next level: ${s.skillUps}/${SKILL_UPS_PER_LEVEL}${s.skillUps >= SKILL_UPS_PER_LEVEL ? ' - REST (T) TO LEVEL UP' : ''} · Max sanity ${d.maxSanity} · Max Löyly ${d.maxLoyly} · Armour ${Math.round(d.armor * 100)}% · Speed ×${d.speedMult.toFixed(2)} · Projectile dodge chance ${Math.round(d.dodge * 100)}% · Melee ×${d.meleeMult.toFixed(2)} · Ranged ×${d.rangedMult.toFixed(2)}`),
     );
     const attrs = el('div', { class: 'os-equip' });
     for (const a of ATTRIBUTES) {
