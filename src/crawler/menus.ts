@@ -1,4 +1,4 @@
-import { type Action, keyName } from './settings';
+import { type Action, keyName, RESERVED_KEYS } from './settings';
 
 /**
  * The menus' rules, apart from the page so they can be tested
@@ -110,6 +110,16 @@ export const SAFE_ESCAPES: readonly MenuItem[] = ['resume'];
  */
 export function lockLossPauses(screen: string, ours: boolean): boolean {
   return !ours && screen === 'play';
+}
+
+/**
+ * The browser took the mouse away while a load's card was up (Esc during a
+ * quickload): there is nothing to pause yet, but the player asked for a
+ * pause, so the load lands in one (`afterLoad`). It used to be lost: the
+ * load went on into play, uncaptured, with the pause never shown.
+ */
+export function lockLossDefers(screen: string, ours: boolean): boolean {
+  return !ours && screen === 'loading';
 }
 
 /** The title is a real main menu: everything a player wants before a game exists. */
@@ -241,7 +251,7 @@ export function refocusIndex(was: number, count: number): number {
 export type RebindAnswer = { readonly kind: 'wait' } | { readonly kind: 'cancel' } | { readonly kind: 'bind'; readonly code: string };
 export function rebindCode(e: { readonly code: string; readonly repeat: boolean }): RebindAnswer {
   if (e.repeat) return { kind: 'wait' };
-  return e.code === 'Escape' || e.code === 'F5' || e.code === 'F9' ? { kind: 'cancel' } : { kind: 'bind', code: e.code };
+  return RESERVED_KEYS.includes(e.code) ? { kind: 'cancel' } : { kind: 'bind', code: e.code };
 }
 
 /**

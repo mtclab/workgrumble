@@ -421,7 +421,10 @@ SUO's white frames) and hit pause (the freeze on a melee hit, and SUO's
 beat of stillness at the crossing). Every key and
 both mouse buttons can be rebound, attack and block included: click the
 action, then press a key or click the same button again with the mouse
-button you want; a clash swaps the two. The screen's edge differs by shape
+button you want; a clash swaps the two. Esc, F5 and F9 are the game's
+own and cannot be bound. The built-in extras (the arrows walk, I opens the
+backpack, Left Ctrl sneaks, 1-9 pick a tool) step aside for any action bound
+to their key (`extraFree`), so no binding is ever silently dead. The screen's edge differs by shape
 as well as colour (a hit is a hard rim, a heal a wide soft glow; `a11y.ts`),
 and a fully charged heavy swing's ring throbs as well as turning orange.
 
@@ -447,7 +450,11 @@ burnout and every lift or drive put a short card up ("Badging you in",
 painted (`showLoading` in `screens.ts`). A load that throws puts the title
 back up with the reason on it (`loading.ts`); the card has no way out of its
 own. A quickload from play keeps the mouse captured, and a release the game
-made itself never opens the pause menu (`lockLossPauses`).
+made itself never opens the pause menu (`lockLossPauses`); Esc while the
+card is up lands the load in the pause menu (`lockLossDefers`, `afterLoad`).
+A quality change (the first launch's steps included) applies its lights and
+shadows at once, on the title too. The balance bot presses attack and block
+through `Input.holdAttack`, `tapAttack` and `holdBlock`.
 
 ## Version and what changed
 

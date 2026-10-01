@@ -364,15 +364,16 @@
       face(a.pos.x, a.pos.z);
       // Block (and sometimes parry) when somebody next to us is about to swing.
       const incoming = g.actors.some((e) => e.hostile && !e.resolved && e.aggro && e.cooldown < 0.12 && e.cooldown > -0.5 && Math.hypot(e.pos.x - p.x, e.pos.z - p.z) < (e.kind === 'boss' ? 3.2 : 2.1));
-      if (incoming && s.energy > 15 && R() < B.policy.block) { inp.rmb = true; inp.lmb = false; checkStuck(false); return; }
-      inp.rmb = false;
-      if (w.kind === 'melee' || w.kind === 'nova') { if (g.attackCd <= 0) inp.lmbPressed = true; inp.lmb = false; }
-      else inp.lmb = true;
+      // Attack and block through the Input's scripted presses (whatever they are bound to).
+      if (incoming && s.energy > 15 && R() < B.policy.block) { inp.holdBlock(true); inp.holdAttack(false); checkStuck(false); return; }
+      inp.holdBlock(false);
+      if (w.kind === 'melee' || w.kind === 'nova') { if (g.attackCd <= 0) inp.tapAttack(); inp.holdAttack(false); }
+      else inp.holdAttack(true);
       checkStuck(false);
       return;
     }
-    inp.lmb = false;
-    inp.rmb = false;
+    inp.holdAttack(false);
+    inp.holdBlock(false);
     if (target.kind === 'talk') {
       const a = target.actor;
       const dist = Math.hypot(a.pos.x - p.x, a.pos.z - p.z);

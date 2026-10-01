@@ -17,6 +17,15 @@ export function guarded(work: () => void, failed: (err: unknown) => void): () =>
   };
 }
 
+/**
+ * Where a finished load lands: the pause menu when the player asked for a
+ * pause while the card was up and the load came out in play; otherwise
+ * wherever the load put them (play, Morag's welcome, the Friday calls).
+ */
+export function afterLoad(screen: string, pauseWanted: boolean): 'pause' | 'stay' {
+  return pauseWanted && screen === 'play' ? 'pause' : 'stay';
+}
+
 /** What the title says after a load failed: what went wrong, and that the saves are as they were. */
 export function loadFailureLine(err: unknown): string {
   const why = err instanceof Error ? err.message : typeof err === 'string' ? err : '';

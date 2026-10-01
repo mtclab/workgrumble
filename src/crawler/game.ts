@@ -78,7 +78,7 @@ import {
 } from './questing';
 import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
 import { MenuKeys } from './menukeys';
-import { lockLossPauses, playPrompt } from './menus';
+import { lockLossDefers, lockLossPauses, playPrompt } from './menus';
 import { browserStorage, takeWhatsNew } from './releases';
 import { fx, Rng } from './rng';
 import { busyDue, rootDrain, RootedCard, rootedView, triesToMove } from './rooted';
@@ -105,7 +105,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { latestSlot, readSlot, type SlotId, writeSlot } from './saves';
-import { type Action, loadSettings, type Settings, saveSettings, storedSettings } from './settings';
+import { type Action, BACKPACK_EXTRA, extraFree, loadSettings, SNEAK_EXTRA, TOOL_EXTRAS, type Settings, saveSettings, storedSettings } from './settings';
 import * as screens from './screens';
 import { castSpell, cycleSpell, domainAbility, domainCooldown, spellLabel } from './spells';
 import {
@@ -201,6 +201,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly sun: THREE.DirectionalLight;
   save: SaveState;
   settings: Settings;
+  /** Esc was pressed (the mouse given up) while a load's card was up: the load lands in the pause menu. */
+  pauseAfterLoad = false;
   /** The first launch timing the machine to pick a graphics quality (`tickQualityPick`), or null. */
   private qualityPicker: QualityPicker | null = null;
   /** What the pick looks at, refilled in place each frame (no allocation while it times). */
@@ -390,7 +392,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     document.addEventListener('pointerlockchange', () => {
       if (document.pointerLockElement === null) {
         this.dropMeleeHold();
-        if (lockLossPauses(this.screen, this.input.lostOnPurpose())) screens.showPause(this);
+        const ours = this.input.lostOnPurpose();
+        if (lockLossPauses(this.screen, ours)) screens.showPause(this);
+        else if (lockLossDefers(this.screen, ours)) this.pauseAfterLoad = true;
       }
       // A lock request that lands after a dialogue or menu opened would trap
       // the cursor behind it: give it straight back.
@@ -924,6 +928,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.input.bind(st.keys.attack, st.keys.block);
     this.hud.flashes = st.flashes;
     this.lightIn = 0;
+    // The lights as this quality runs them, now: which are lit and which cast
+    // shadows. Left to play's next light pass, the title (where the first
+    // launch times each level) kept High's eight lights and shadow after a
+    // step down, and every level was timed at High's cost.
+    if (this.level !== undefined) this.updateLights(true);
   }
 
   /** The first launch is still timing the machine for its graphics quality. */
@@ -1317,7 +1326,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       // The card says press M: a map left open from earlier closing on the press counts too.
       this.practice({ type: 'map' });
     }
-    if (this.hit('backpack') || inp.hit('KeyI')) {
+    if (this.hit('backpack') || this.extraHit(BACKPACK_EXTRA)) {
       this.openOs('pack');
       return;
     }
@@ -1329,7 +1338,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.pause();
       return;
     }
-    if (this.hit('sneak') || inp.hit('ControlLeft')) {
+    if (this.hit('sneak') || this.extraHit(SNEAK_EXTRA)) {
       this.player.crouching = !this.player.crouching;
       this.hud.toast(this.player.crouching ? 'Sneaking. Unaware people take sneak attacks.' : 'Standing up.');
       if (this.player.crouching) this.tip('sneak');
@@ -1344,7 +1353,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const weapons = s.gear.filter((g) => itemById(g.base)?.slot === 'weapon');
     for (let i = 0; i < 9; i++) {
       const w = weapons[i];
-      if (inp.hit(`Digit${i + 1}`) && w !== undefined) this.equipGear(w.uid);
+      const key = TOOL_EXTRAS[i];
+      if (key !== undefined && this.extraHit(key) && w !== undefined) this.equipGear(w.uid);
     }
     if (inp.wheel !== 0 && weapons.length > 1) {
       const cur = weapons.findIndex((g) => g.uid === s.equipped.weapon);
@@ -1412,7 +1422,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.rootT > 0) {
       speed = 0;
       // Trying to walk out of a meeting: the card says the key was heard.
-      if (triesToMove((a) => this.hit(a), (c) => this.input.hit(c))) this.busy();
+      if (triesToMove((a) => this.hit(a), (c) => this.extraHit(c))) this.busy();
     }
     const jump = this.hit('jump') && this.rootT <= 0 && !this.player.crouching;
     this.player.move(this.level, wx, wz, speed, jump, dt, d.jump);
@@ -1526,13 +1536,12 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   /** The movement keys held: x strafes (right +), y walks (forward +). The vector is reused. */
   private moveInput(): THREE.Vector2 {
-    const inp = this.input;
     let fwd = 0;
     let side = 0;
-    if (this.down('forward') || inp.down('ArrowUp')) fwd += 1;
-    if (this.down('back') || inp.down('ArrowDown')) fwd -= 1;
-    if (this.down('right') || inp.down('ArrowRight')) side += 1;
-    if (this.down('left') || inp.down('ArrowLeft')) side -= 1;
+    if (this.down('forward') || this.extraDown('ArrowUp')) fwd += 1;
+    if (this.down('back') || this.extraDown('ArrowDown')) fwd -= 1;
+    if (this.down('right') || this.extraDown('ArrowRight')) side += 1;
+    if (this.down('left') || this.extraDown('ArrowLeft')) side -= 1;
     return this.moveDir.set(side, fwd);
   }
 
@@ -1640,6 +1649,15 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   down(a: Action): boolean {
     return this.input.down(this.settings.keys[a]);
+  }
+
+  /** An extra key (the arrows, I, Left Ctrl, 1-9) pressed, and not bound to anything: a binding comes first (`extraFree`). */
+  extraHit(code: string): boolean {
+    return this.input.hit(code) && extraFree(this.settings.keys, code);
+  }
+
+  extraDown(code: string): boolean {
+    return this.input.down(code) && extraFree(this.settings.keys, code);
   }
 
   private tickTimers(dt: number): void {

@@ -1,4 +1,4 @@
-import type { Action } from './settings';
+import { type Action, WALK_EXTRAS } from './settings';
 
 /**
  * Frozen states say so (docs/SPEC_MENUS.md). A meeting, a budget freeze or
@@ -48,8 +48,8 @@ export function rootDrain(teflonRank: number): number {
 /** The keys that mean "I am trying to move": any of them while rooted pulses the card. */
 export const MOVE_ACTIONS: readonly Action[] = ['forward', 'back', 'left', 'right', 'jump'];
 
-/** The arrow keys walk too (`Game.moveInput`), whatever is bound: they count as trying. */
-export const MOVE_CODES: readonly string[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+/** The arrow keys walk too (`Game.moveInput`, unless bound to something else): they count as trying. */
+export const MOVE_CODES: readonly string[] = WALK_EXTRAS;
 
 /** Was a key that moves you pressed this frame: a bound action, or an arrow. */
 export function triesToMove(hitAction: (a: Action) => boolean, hitCode: (code: string) => boolean): boolean {

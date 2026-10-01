@@ -1,6 +1,9 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Input } from './input';
 import { ACTIONS, DEFAULT_KEYS, keyName, mouseCode } from './settings';
+import { type MeleeHold, meleeStep } from './windup';
 
 /**
  * The real Input on a stand-in page: a window, a document and a canvas that
@@ -113,6 +116,47 @@ describe('who let go of the mouse', () => {
     const { input } = page();
     input.releaseLock();
     expect(input.lostOnPurpose()).toBe(false);
+  });
+});
+
+describe('the balance bot\'s way in', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a scripted tap is a quick swing through the real melee rules, on whatever attack is bound to', () => {
+    for (const attack of [DEFAULT_KEYS.attack, 'KeyK']) {
+      const { input } = page();
+      input.bind(attack, DEFAULT_KEYS.block);
+      const hold: MeleeHold = { charging: false, chargeT: 0, swingQueued: false };
+      const frame = (): string => {
+        const act = meleeStep(hold, { pressed: input.clicked(), down: input.lmb, dt: 1 / 60, ready: true, canAct: true }, 0.65);
+        input.endFrame();
+        return act;
+      };
+      // What bot.js does for a melee tool: tap, and let go.
+      input.tapAttack();
+      input.holdAttack(false);
+      const acts = [frame(), frame()];
+      expect(acts, attack).toContain('light');
+    }
+  });
+
+  it('holds attack and block, and lets go of them', () => {
+    const { input } = page();
+    input.bind(DEFAULT_KEYS.attack, DEFAULT_KEYS.block);
+    input.holdAttack(true);
+    input.holdBlock(true);
+    expect([input.lmb, input.rmb]).toEqual([true, true]);
+    input.holdAttack(false);
+    input.holdBlock(false);
+    expect([input.lmb, input.rmb]).toEqual([false, false]);
+  });
+
+  it('bot.js uses only what Input offers: no assigning the read-only button views', () => {
+    const bot = readFileSync(join(__dirname, '../../scripts/helldesk-balance/bot.js'), 'utf8');
+    expect(bot).not.toMatch(/\binp\.(?:lmb|rmb|lmbPressed)\s*=[^=]/);
+    const called = new Set([...bot.matchAll(/\binp\.(\w+)\(/g)].map((m) => m[1] ?? ''));
+    expect(called.size).toBeGreaterThan(0);
+    for (const name of called) expect(typeof (Input.prototype as unknown as Record<string, unknown>)[name], name).toBe('function');
   });
 });
 

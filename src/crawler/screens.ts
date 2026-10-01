@@ -5,7 +5,7 @@ import { showCharGen } from './chargen';
 import { DEATH_LINES } from './content/lines';
 import type { Game } from './game';
 import { burnoutMenu, controlsGrid, loadMenuFocus, MENU_LABEL, type MenuItem, type MenuSpec, pauseMenu, titleMenu } from './menus';
-import { guarded, loadFailureLine } from './loading';
+import { afterLoad, guarded, loadFailureLine } from './loading';
 import { focusables } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
 import { fx } from './rng';
@@ -468,10 +468,17 @@ function afterPaint(fn: () => void): void {
  */
 export function showLoading(g: Game, line: string, work: () => void): void {
   g.screen = 'loading';
+  g.pauseAfterLoad = false;
   setOverlay(g, `<div class="loading-card" data-testid="loading-card" role="status" aria-live="polite">
     <div class="loading-badge" aria-hidden="true"></div>
     <div class="lift-name">${line}...</div></div>`, []);
-  afterPaint(guarded(work, (err) => loadFailed(g, err)));
+  afterPaint(guarded(() => {
+    work();
+    // Esc while the card was up (`lockLossDefers`): the pause it asked for.
+    const land = afterLoad(g.screen, g.pauseAfterLoad);
+    g.pauseAfterLoad = false;
+    if (land === 'pause') showPause(g);
+  }, (err) => loadFailed(g, err)));
 }
 
 /**

@@ -118,6 +118,26 @@ export class Input {
     return this.keys.has(this.blockCode);
   }
 
+  /**
+   * Scripted presses, for the balance bot (scripts/helldesk-balance): hold
+   * or let go of attack or block, or press attack once, on whatever they are
+   * bound to, through the same sets a real press goes into. `lmb` and `rmb`
+   * are read-only views of the bindings; assigning them is not a way in.
+   */
+  holdAttack(down: boolean): void {
+    if (down) this.keys.add(this.attackCode);
+    else this.keys.delete(this.attackCode);
+  }
+
+  tapAttack(): void {
+    this.pressed.add(this.attackCode);
+  }
+
+  holdBlock(down: boolean): void {
+    if (down) this.keys.add(this.blockCode);
+    else this.keys.delete(this.blockCode);
+  }
+
   /** The attack button went down this frame. */
   clicked(): boolean {
     return this.pressed.has(this.attackCode);

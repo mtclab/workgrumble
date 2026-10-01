@@ -21,6 +21,40 @@ export const DEFAULT_KEYS: Record<Action, string> = {
 };
 
 /**
+ * Keys the game keeps for itself, never bindable: Esc (pause; it also
+ * cancels a binding that waits), F5 and F9 (quicksave, quickload).
+ */
+export const RESERVED_KEYS: readonly string[] = ['Escape', 'F5', 'F9'];
+
+/** The arrow keys: they walk too, whatever is bound (`Game.moveInput`). */
+export const WALK_EXTRAS: readonly string[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
+/** 1-9: the tools you carry, in order. */
+export const TOOL_EXTRAS: readonly string[] = ['Digit1', 'Digit2', 'Digit3', 'Digit4', 'Digit5', 'Digit6', 'Digit7', 'Digit8', 'Digit9'];
+/** I: the backpack, as well as its binding. */
+export const BACKPACK_EXTRA = 'KeyI';
+/** Left Ctrl: sneak, as well as its binding. */
+export const SNEAK_EXTRA = 'ControlLeft';
+
+/**
+ * The action bound to `code`, or null. Allocates nothing: play asks it for
+ * the extra keys every frame.
+ */
+export function boundAction(keys: Readonly<Record<Action, string>>, code: string): Action | null {
+  for (const a of ACTIONS) if (keys[a] === code) return a;
+  return null;
+}
+
+/**
+ * Does an extra key (the arrows, I, Left Ctrl, 1-9) do its built-in thing?
+ * Only while no action is bound to it. A binding is the player's word: attack
+ * bound to I used to open the backpack instead (and play stopped for the
+ * frame before combat ever heard it), attack on Left Ctrl sneaked as well.
+ */
+export function extraFree(keys: Readonly<Record<Action, string>>, code: string): boolean {
+  return boundAction(keys, code) === null;
+}
+
+/**
  * A mouse button as a binding: 'Mouse0' is the left, 'Mouse2' the right
  * (`MouseEvent.button`). The mouse and the keyboard share one namespace, so
  * any action can take either and a clash swaps the same way.

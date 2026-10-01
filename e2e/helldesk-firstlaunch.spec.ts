@@ -41,6 +41,7 @@ interface Crawler {
   writeSlotFor: (id: string) => boolean;
   loadSlot: (id: string) => boolean;
   loadWorld: (fromSave: boolean) => void;
+  pauseAfterLoad: boolean;
 }
 
 interface Handles {
@@ -368,4 +369,23 @@ test('after binding the right button, the next keyboard click is not eaten: Ente
   await panel.getByRole('button', { name: 'Done' }).focus();
   await page.keyboard.press('Enter');
   await expect(panel).toHaveCount(0);
+});
+
+test('Esc during a quickload\'s card is not lost: the load lands in the pause menu', async ({ page }) => {
+  await boot(page);
+  await startCareer(page);
+  // The browser's half of Esc (the mouse given up while the card is up) is
+  // what sets the wish; headless browsers do not grant pointer lock, so the
+  // test sets it where that event does, then lets the load finish.
+  const during = await page.evaluate(() => {
+    const g = (window as unknown as W).__crawler;
+    g.writeSlotFor('slot1');
+    g.loadSlot('slot1');
+    const screenNow = g.screen;
+    g.pauseAfterLoad = true;
+    return screenNow;
+  });
+  expect(during).toBe('loading');
+  await expect.poll(() => screen(page), { timeout: 120_000 }).toBe('paused');
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible();
 });

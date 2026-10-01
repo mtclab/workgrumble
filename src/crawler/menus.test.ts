@@ -7,6 +7,7 @@ import { rootPlayer } from './hosts';
 import {
   burnoutMenu,
   controlsGrid,
+  lockLossDefers,
   lockLossPauses,
   difficultyWord,
   firstEnabled,
@@ -195,6 +196,14 @@ describe('losing the mouse', () => {
   it('pauses play only when the browser took it (Esc, alt-tab)', () => {
     expect(lockLossPauses('play', false)).toBe(true);
     expect(lockLossPauses('paused', false)).toBe(false);
+  });
+
+  it('Esc during a quickload\'s card is kept for when the load lands, not dropped', () => {
+    expect(lockLossDefers('loading', false)).toBe(true);
+    expect(lockLossPauses('loading', false)).toBe(false);
+    // The game's own release (a menu opening) is never a pause asked for.
+    expect(lockLossDefers('loading', true)).toBe(false);
+    expect(lockLossDefers('play', false)).toBe(false);
   });
 
   it('never when the game let go itself: a quickload\'s new floor is in play by the time the event comes', () => {
