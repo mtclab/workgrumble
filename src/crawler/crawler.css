@@ -129,7 +129,7 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .loading-badge { width: 44px; height: 60px; border: 3px solid #e8e0d0; border-radius: 6px; background: linear-gradient(#3aa295 0 28%, transparent 28%); animation: badge-swipe 0.9s ease-in-out infinite; }
 @keyframes badge-swipe { 0%, 100% { transform: translateX(-14px) rotate(-8deg); } 50% { transform: translateX(14px) rotate(8deg); } }
 /* The version, small, under the title: there for whoever asks, not for everyone. */
-.title-version { font: 12px Tahoma, sans-serif; color: #8a8272; letter-spacing: 1px; }
+.title-version { font: 12px Tahoma, sans-serif; color: #d8d0c0; letter-spacing: 1px; text-shadow: 0 1px 3px #000; }
 /* "What's new": a desk window in the corner of the title, not a wall in front of it. */
 .whats-new { position: absolute; top: 16px; right: 16px; width: min(420px, calc(100vw - 32px)); max-height: calc(100vh - 32px); display: flex; flex-direction: column; gap: 8px; padding: 12px; text-align: left; background: var(--os-raised); color: var(--os-ink); border: 2px solid; border-color: var(--os-bevel-light) var(--os-shadow) var(--os-shadow) var(--os-bevel-light); box-shadow: 4px 4px 0 rgba(20,18,15,0.35); z-index: 2; }
 .whats-new h3 { margin: 0; font: bold 15px Tahoma, sans-serif; }
@@ -285,13 +285,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 .os-hint { color: #b07a00; font-weight: bold; }
 
 /* ---------------- Full game: compass, tips, loot, cards ---------------- */
-.compass { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); width: min(560px, 60vw); height: 30px; overflow: hidden;
+.compass { position: absolute; left: 50%; top: 6px; transform: translateX(-50%); width: min(560px, 60vw); height: 40px; overflow: hidden;
   background: linear-gradient(90deg, transparent, rgba(20,22,20,0.75) 15%, rgba(20,22,20,0.75) 85%, transparent);
   border-top: 1px solid rgba(141,135,121,0.6); border-bottom: 1px solid rgba(141,135,121,0.6); }
 .compass-strip { position: relative; width: 100%; height: 100%; }
 .compass-card, .compass-marker { position: absolute; top: 50%; transform: translate(-50%, -50%); font: bold 13px monospace; text-shadow: 0 0 3px #000; white-space: nowrap; pointer-events: none; }
-.compass-marker { font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; }
-.compass-marker small { font-size: 9px; color: #d8d0c0; }
+.compass-card { top: 7px; font-size: 11px; }
+.compass-marker { top: 26px; text-align: center; font-size: 15px; display: flex; flex-direction: column; align-items: center; line-height: 1; }
+.compass-marker small { display: block; font-size: 9px; color: #d8d0c0; }
 .compass-marker.is-pinned { opacity: 0.6; }
 .hud-tip { position: absolute; left: 12px; bottom: 118px; max-width: min(420px, 60vw); background: rgba(16, 40, 36, 0.92); border: 1px solid #3aa295; border-left: 4px solid #3aa295; padding: 8px 12px; font: 15px/1.6 var(--read); opacity: 0; transform: translateY(8px); transition: opacity 0.4s, transform 0.4s; pointer-events: none; }
 .hud-tip.is-on { opacity: 1; transform: none; }
@@ -355,7 +356,10 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
 /* Eight cells have to share the bar: fixed, modest widths that shrink before they wrap. */
 .hud-cell { flex: 0 1 auto; overflow: hidden; }
 .hud-cell .hud-small, .hud-cell .hud-big { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.hud-cell-weapon { width: 160px; }
+.hud-cell-weapon { width: 190px; flex-shrink: 0; }
+.hud-cell-weapon .hud-weapon { font-size: 17px; line-height: 1.15; }
+.hud-cell-weapon .hud-small { font-size: 11px; line-height: 1.2; }
+.hud-cell-weapon .hud-small, .hud-cell-weapon .hud-big { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 .hud-cell-magic { width: 170px; min-width: 0; }
 .hud-cell-bac, .hud-cell-caff { width: 124px; min-width: 0; }
 .hud-cell-level { width: 200px; }
