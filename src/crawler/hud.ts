@@ -121,6 +121,7 @@ export class Hud {
   private tipT = 0;
   private readonly prompt: HTMLDivElement;
   private readonly effects: HTMLDivElement;
+  private shownEffects: readonly string[] = [];
   private readonly quests: HTMLDivElement;
   private readonly slas: HTMLDivElement;
   private readonly bossBar: HTMLDivElement;
@@ -392,12 +393,15 @@ export class Hud {
     this.weight.classList.toggle('is-alarm', d.overEncumbered);
     this.prompt.textContent = f.prompt;
     this.prompt.style.display = f.prompt === '' ? 'none' : 'block';
-    this.effects.replaceChildren(...f.effects.map((e) => {
-      const x = document.createElement('span');
-      x.className = 'hud-effect';
-      x.textContent = e;
-      return x;
-    }));
+    if (f.effects.length !== this.shownEffects.length || f.effects.some((e, i) => e !== this.shownEffects[i])) {
+      this.shownEffects = [...f.effects];
+      this.effects.replaceChildren(...f.effects.map((e) => {
+        const x = document.createElement('span');
+        x.className = 'hud-effect';
+        x.textContent = e;
+        return x;
+      }));
+    }
     this.floorLabel.textContent = f.floorName;
     // The pager: a badge under the floor name, and the quests panel steps down for it.
     this.oncall.textContent = f.oncall?.text ?? '';
