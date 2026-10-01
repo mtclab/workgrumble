@@ -24,6 +24,7 @@ import {
   RUNG_COUNT,
   SKILL_UPS_PER_LEVEL,
   titleFor,
+  trickleSanity,
 } from './rpg';
 import {
   ACTION_ITEM_KG,
@@ -269,6 +270,21 @@ describe('Helldesk character', () => {
     const a = new Rng(9);
     const b = new Rng(9);
     for (let i = 0; i < 10; i++) expect(a.next()).toBe(b.next());
+  });
+});
+
+describe('Helldesk burnout', () => {
+  it('the Sanity trickle never lifts a zero back up: the burnout check after it still fires', () => {
+    expect(trickleSanity(0, 0.12, 0.033, 60)).toBe(0);
+    expect(trickleSanity(-3, 5, 1, 60)).toBe(-3);
+  });
+
+  it('above zero it trickles both ways and stops at the top', () => {
+    expect(trickleSanity(10, 0.5, 2, 60)).toBe(11);
+    expect(trickleSanity(10, -0.5, 2, 60)).toBe(9);
+    expect(trickleSanity(59.9, 1, 1, 60)).toBe(60);
+    // Caffeine's drain can still take you to zero.
+    expect(trickleSanity(0.01, -1, 1, 60)).toBeLessThanOrEqual(0);
   });
 });
 

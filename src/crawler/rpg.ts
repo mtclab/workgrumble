@@ -140,6 +140,18 @@ export const ARCH_RUNG = 10;
 const DIFFICULTY = [0.55, 0.65, 0.76, 0.88, 1.0, 1.12, 1.25, 1.4, 1.56, 1.74, 1.93, 2.15];
 const SALARY = [50, 70, 95, 120, 150, 185, 225, 270, 320, 380, 450, 540];
 
+/**
+ * Sanity after `dt` seconds of the trickle (`perSecond`: Patience and the
+ * drink band up, caffeine's drain down), capped at `max`. At zero or below
+ * nothing trickles back: zero is a burnout, and the check for it comes later
+ * in the same tick, so a trickle that ran first used to lift a 0 to 0.004
+ * (shown as 1) and the burnout never came.
+ */
+export function trickleSanity(sanity: number, perSecond: number, dt: number, max: number): number {
+  if (sanity <= 0) return sanity;
+  return Math.min(max, sanity + perSecond * dt);
+}
+
 export function difficultyFor(rung: number): number {
   return DIFFICULTY[Math.max(0, Math.min(RUNG_COUNT - 1, rung))] ?? 1;
 }

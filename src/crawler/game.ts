@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { shakeScale } from './a11y';
 import { sfx } from './audio';
-import { autoPickDue, QualityPicker } from './autoquality';
+import { autoPickDue, pickFrame, type PickFrame, QualityPicker } from './autoquality';
 import { castShadows, setBlobShadows } from './characters';
 import { Pipeline } from './graphics';
 import { Particles } from './particles';
@@ -99,6 +99,7 @@ import {
   type Skill,
   SKILL_INFO,
   titleFor,
+  trickleSanity,
   type Track,
   WORKPLACES,
 } from './rpg';
@@ -196,6 +197,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   settings: Settings;
   /** The first launch timing the machine to pick a graphics quality (`tickQualityPick`), or null. */
   private qualityPicker: QualityPicker | null = null;
+  /** What the pick looks at, refilled in place each frame (no allocation while it times). */
+  private readonly pickFacts: { -readonly [K in keyof PickFrame]: PickFrame[K] } = { ms: 0, timing: false, visible: true, source: 'player', stored: storedSettings };
   level!: Level;
   actors: Actor[] = [];
   projectiles: Projectile[] = [];
@@ -930,26 +933,27 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   private tickQualityPick(ms: number): void {
     const p = this.qualityPicker;
     if (p === null) return;
-    if (this.settings.qualitySource !== 'sampling') {
-      // The player picked in the Control Panel: theirs stands.
-      this.qualityPicker = null;
-      return;
+    const f = this.pickFacts;
+    f.ms = ms;
+    f.timing = this.screen === 'title' || this.screen === 'chargen';
+    f.visible = document.visibilityState === 'visible';
+    f.source = this.settings.qualitySource;
+    switch (pickFrame(p, f)) {
+      case 'none':
+        return;
+      case 'step':
+        this.settings.quality = p.level;
+        this.applySettings();
+        this.os.syncQuality();
+        return;
+      case 'settle':
+        this.settleQualityPick();
+        return;
+      case 'abandon':
+        // The player picked, or the kept settings are somebody else's now: theirs stand.
+        this.qualityPicker = null;
+        return;
     }
-    if (this.screen !== 'title' && this.screen !== 'chargen') {
-      this.settleQualityPick();
-      return;
-    }
-    // A hidden tab draws nothing worth timing.
-    if (document.visibilityState !== 'visible') return;
-    const v = p.frame(ms);
-    if (v === null) return;
-    if (v === 'down') {
-      this.settings.quality = p.level;
-      this.applySettings();
-      this.os.syncQuality();
-      return;
-    }
-    this.settleQualityPick();
   }
 
   /** The pick is made: the level it reached is the machine's choice, noted as such in the Control Panel. */
@@ -1646,7 +1650,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     s.loyly = Math.min(d.maxLoyly, s.loyly + (0.35 + s.attrs.tech * 0.004) * dt);
     const second = perk(s, 'secondwind') > 0 && s.sanity < d.maxSanity * 0.25 ? 3 : 1;
     const ultra = d.ultra ? 3 : 0;
-    s.sanity = Math.min(d.maxSanity, s.sanity + (s.attrs.patience * 0.003 + d.band.regen + ultra) * second * dt - d.caffeine.drain * dt);
+    s.sanity = trickleSanity(s.sanity, (s.attrs.patience * 0.003 + d.band.regen + ultra) * second - d.caffeine.drain, dt, d.maxSanity);
     this.slowT = Math.max(0, this.slowT - dt);
   }
 

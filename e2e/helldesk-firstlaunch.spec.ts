@@ -98,7 +98,9 @@ async function watchFrames(page: Page): Promise<void> {
     g.pipeline.render = (): void => {
       rec.shake = Math.max(rec.shake, Math.abs(g.camera.position.x - g.player.pos.x), Math.abs(g.camera.position.z - g.player.pos.z));
       const v = document.querySelector<HTMLElement>('.hud-vignette');
-      if (v !== null && v.style.display !== 'none') rec.flash = v.dataset.flash ?? 'shown';
+      // What is on the screen: the computed style, not the inline one (the
+      // edge is hidden by the stylesheet until the HUD first shows it).
+      if (v !== null && getComputedStyle(v).display !== 'none') rec.flash = v.dataset.flash ?? 'shown';
       render();
     };
   });
@@ -197,6 +199,26 @@ test.describe('a first launch', () => {
     await waitWall(page, 10_000);
     expect(await stored(page)).toMatchObject({ quality: 'medium', qualitySource: 'player' });
   });
+});
+
+test('settings written while a first launch is timing stand: the pick stops and saves nothing over them', async ({ page }) => {
+  await page.goto(HELLDESK);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect.poll(() => page.evaluate(() => (window as unknown as W).__crawler.pickingQuality), { timeout: 120_000 }).toBe(true);
+  // What every spec's boot does mid-pick: settings of its own, then (here) no reload.
+  const seeded = { quality: 'low', renderScale: 0.3, tips: false, inductionDone: true };
+  await page.evaluate(([k, v]) => localStorage.setItem(k, JSON.stringify(v)), [SETTINGS_KEY, seeded] as const);
+  // The pick's next verdict is where it would write: it stops there instead.
+  await expect.poll(() => page.evaluate(() => (window as unknown as W).__crawler.pickingQuality), { timeout: 120_000 }).toBe(false);
+  await waitFrames(page, 5);
+  expect(await stored(page)).toEqual(seeded);
+  // And the next launch reads them as they were seeded.
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'New career' })).toBeVisible({ timeout: 120_000 });
+  expect(await page.evaluate(() => (window as unknown as W).__crawler.pickingQuality)).toBe(false);
+  await page.getByRole('button', { name: 'New career' }).click();
+  await expect(page.getByLabel('Skip the induction')).toBeChecked();
 });
 
 test('building a floor puts the loading card up, and it is painted before the work starts', async ({ page }) => {

@@ -5,6 +5,8 @@ import {
   lower,
   MAX_FRAME_MS,
   medianOf,
+  type PickFrame,
+  pickFrame,
   type Quality,
   QualityPicker,
   TARGET_FRAME_MS,
@@ -150,5 +152,53 @@ describe('when a launch picks', () => {
 
   it('defaults to the player\'s own quality: only a first launch marks it as the machine\'s', () => {
     expect(DEFAULT_SETTINGS.qualitySource).toBe('player');
+  });
+});
+
+describe('the pick, frame by frame, as the game runs it', () => {
+  const ours = JSON.stringify({ ...DEFAULT_SETTINGS, qualitySource: 'sampling' });
+  const facts = (over: Partial<PickFrame> = {}): PickFrame => ({ ms: 40, timing: true, visible: true, source: 'sampling', stored: () => ours, ...over });
+
+  /** Frames of `f` until something other than 'none' comes back. */
+  function until(p: QualityPicker, f: PickFrame): string {
+    for (let i = 0; i < 10_000; i++) {
+      const a = pickFrame(p, f);
+      if (a !== 'none') return a;
+    }
+    return 'none';
+  }
+
+  it('steps a slow machine down, and settles a fast one', () => {
+    expect(until(new QualityPicker('high'), facts())).toBe('step');
+    expect(until(new QualityPicker('high'), facts({ ms: 10 }))).toBe('settle');
+  });
+
+  it('settings written meanwhile by something else stand: the pick stops instead of saving over them', () => {
+    const seeded = JSON.stringify({ quality: 'low', renderScale: 0.3, tips: false, inductionDone: true });
+    let kept: string | null = ours;
+    const p = new QualityPicker('high');
+    const f = facts({ stored: () => kept });
+    // Half way through the window, the settings are replaced (a test seeding them, another tab).
+    for (let i = 0; i < 50; i++) expect(pickFrame(p, f)).toBe('none');
+    kept = seeded;
+    expect(until(p, f)).toBe('abandon');
+    // Leaving the title with a pick in progress settles it, unless the settings are no longer the pick's.
+    expect(pickFrame(new QualityPicker('high'), facts({ timing: false }))).toBe('settle');
+    expect(pickFrame(new QualityPicker('high'), facts({ timing: false, stored: () => seeded }))).toBe('abandon');
+  });
+
+  it('the player\'s own pick ends it at once', () => {
+    expect(pickFrame(new QualityPicker('high'), facts({ source: 'player' }))).toBe('abandon');
+  });
+
+  it('a hidden tab is not timed, and the kept settings are read only when the pick is about to write', () => {
+    let reads = 0;
+    const p = new QualityPicker('high');
+    const f = facts({ stored: () => { reads++; return ours; } });
+    expect(pickFrame(p, { ...f, visible: false })).toBe('none');
+    for (let i = 0; i < 20; i++) pickFrame(p, f);
+    expect(reads).toBe(0);
+    expect(until(p, f)).toBe('step');
+    expect(reads).toBe(1);
   });
 });

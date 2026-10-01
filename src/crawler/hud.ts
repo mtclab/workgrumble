@@ -152,6 +152,8 @@ export class Hud {
     this.root.className = 'hud';
     parent.append(this.root);
     this.vignette = div('hud-vignette', this.root);
+    // Hidden until there is something to show (`update` owns it from here).
+    this.vignette.style.display = 'none';
     // Where hits come from: a few arcs to reuse, and a ring for hurt from nowhere in particular.
     for (let i = 0; i < 4; i++) this.hitArcs.push({ el: div('hud-hit', this.root), dx: 0, dz: 0, t: 0 });
     this.hitRing = div('hud-hit-ring', this.root);

@@ -429,8 +429,10 @@ choosing a quality yourself overrules it (and clears the note). It is
 `qualitySource` in the settings: 'sampling' while it times (a tab closed
 mid-way resumes), then 'auto', or 'player'; settings from before it read as
 the player's, so it never runs again once settings exist. Starting play
-before it has decided keeps the level reached. The rules are pure
-(`autoquality.ts`); the game only feeds it frame times.
+before it has decided keeps the level reached. If the kept settings stop
+being a pick in progress meanwhile (another tab, a test seeding them), the
+pick stops and writes nothing over them. The rules are pure
+(`autoquality.ts`, `pickFrame`); the game only feeds it frame times.
 
 **Loading.** New career, Continue, Load, F9, clocking back in after a
 burnout and every lift or drive put a short card up ("Badging you in",

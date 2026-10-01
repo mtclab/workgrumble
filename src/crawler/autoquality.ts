@@ -125,3 +125,44 @@ export class QualityPicker {
     return v;
   }
 }
+
+/** What the game does with a frame of the pick (`pickFrame`). */
+export type PickAction = 'none' | 'step' | 'settle' | 'abandon';
+
+export interface PickFrame {
+  /** This frame's time, ms. */
+  readonly ms: number;
+  /** On a screen that is timed (the title, the New Starter Form). */
+  readonly timing: boolean;
+  /** The tab is showing. */
+  readonly visible: boolean;
+  /** `qualitySource` in this page's own settings. */
+  readonly source: Settings['qualitySource'];
+  /**
+   * The settings as kept now. Read only when the pick is about to write
+   * (a verdict, or settling): never once a frame.
+   */
+  readonly stored: () => string | null;
+}
+
+/**
+ * One frame of the first launch's pick, for the game to act on:
+ * 'step' (apply and save `p.level`, one lower), 'settle' (save `p.level` as
+ * the machine's choice), 'abandon' (stop, write nothing) or 'none'.
+ *
+ * It abandons when the player has picked in this page, and when the kept
+ * settings are no longer a pick in progress: written meanwhile by something
+ * else (another tab, a test seeding them), they are somebody's decision, and
+ * a pick that saved its own copy over them would throw that decision away
+ * (it did: a page timing its first launch overwrote seeded settings, taking
+ * "Skip the induction" and Low quality with them).
+ */
+export function pickFrame(p: QualityPicker, f: PickFrame): PickAction {
+  if (f.source !== 'sampling') return 'abandon';
+  if (!f.timing) return autoPickDue(f.stored()) ? 'settle' : 'abandon';
+  if (!f.visible) return 'none';
+  const v = p.frame(f.ms);
+  if (v === null) return 'none';
+  if (!autoPickDue(f.stored())) return 'abandon';
+  return v === 'down' ? 'step' : 'settle';
+}
