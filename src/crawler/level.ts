@@ -400,6 +400,103 @@ export function freeSpotIn(level: Level, room: Room, r: Rng, taken: ReadonlySet<
   return null;
 }
 
+function clearFurnitureCell(builder: Builder, cell: number, w: number): void {
+  const x = (cell % w) * TILE;
+  const z = Math.floor(cell / w) * TILE;
+  for (const [key, geoms] of builder.boxes) {
+    builder.boxes.set(key, geoms.filter((g) => {
+      g.computeBoundingBox();
+      const b = g.boundingBox!;
+      if (b.max.x <= x + 0.05 || b.min.x >= x + TILE - 0.05 || b.max.z <= z + 0.05 || b.min.z >= z + TILE - 0.05) return true;
+      g.dispose();
+      return false;
+    }));
+  }
+}
+
+export function repairFloorAccess(level: Pick<Level, 'w' | 'h' | 'floor' | 'solid' | 'opaque' | 'rooms' | 'interactables' | 'start'> & { spawns: Spawn[] }, r: Rng, builder: Builder): void {
+  // Props must never seal off part of the floor. Flood from the
+  // lobby. An empty pocket nobody needs is simply filled in. A pocket with
+  // somebody in it gets a way in: squeeze past a desk if there is one, and
+  // only if the one thing in the way is a machine (a fridge, a locker, a
+  // terminal), move the people out instead of making the machine a ghost.
+  const { w, h, floor, solid, opaque, rooms, spawns, interactables, start } = level;
+  const lobby = rooms[0] as Room;
+  const dropped = new Set<Spawn>();
+  const stub = { w, h, solid } as unknown as Level;
+  const machineCells = new Set(interactables.map((it) => toCell(it.z) * w + toCell(it.x)));
+  const cellOf = (s: Spawn): number => toCell(s.z) * w + toCell(s.x);
+  for (let guard = 0; guard < 400; guard++) {
+    const reached = flowField(stub, start.x, start.z, 32000);
+    let lost = -1;
+    for (let i = 0; i < w * h; i++) {
+      if (floor[i] === 1 && solid[i] === 0 && reached[i] === -1) {
+        lost = i;
+        break;
+      }
+    }
+    if (lost < 0) break;
+    const pocket = new Set<number>([lost]);
+    const stack = [lost];
+    while (stack.length > 0) {
+      const cur = stack.pop() as number;
+      const x = cur % w;
+      const y = (cur - x) / w;
+      for (const [ox, oy] of NEIGHBOURS4) {
+        const n = (y + oy) * w + (x + ox);
+        if (floor[n] === 1 && solid[n] === 0 && !pocket.has(n)) {
+          pocket.add(n);
+          stack.push(n);
+        }
+      }
+    }
+    const inside = spawns.map((sp, k) => (pocket.has(cellOf(sp)) ? k : -1)).filter((k) => k >= 0);
+    if (inside.length === 0) {
+      for (const i of pocket) solid[i] = 1;
+      continue;
+    }
+    let bridge = -1;
+    for (const i of pocket) {
+      const x = i % w;
+      const y = (i - x) / w;
+      for (const [ox, oy] of NEIGHBOURS4) {
+        const n = (y + oy) * w + (x + ox);
+        if (floor[n] !== 1 || solid[n] !== 1 || machineCells.has(n)) continue;
+        const nx = n % w;
+        const ny = (n - nx) / w;
+        if (NEIGHBOURS4.some(([ax, ay]) => reached[(ny + ay) * w + (nx + ax)] !== -1 && reached[(ny + ay) * w + (nx + ax)] !== undefined)) {
+          bridge = n;
+          break;
+        }
+      }
+      if (bridge >= 0) break;
+    }
+    if (bridge >= 0) {
+      solid[bridge] = 0;
+      opaque[bridge] = 0;
+      clearFurnitureCell(builder, bridge, w);
+      continue;
+    }
+    // Only a machine in the way: rehome the people and fill the pocket.
+    for (const k of inside) {
+      const sp = spawns[k] as Spawn;
+      const rm = rooms[sp.room] ?? lobby;
+      let moved: Spawn | null = null;
+      for (let t = 0; t < 60 && moved === null; t++) {
+        const x = r.int(rm.x, rm.x + rm.w - 1);
+        const y = r.int(rm.y, rm.y + rm.h - 1);
+        const i = y * w + x;
+        if (floor[i] === 1 && solid[i] === 0 && reached[i] !== -1) moved = { ...sp, x: cellCenter(x), z: cellCenter(y) };
+      }
+      if (moved === null) dropped.add(sp);
+      else spawns[k] = moved;
+    }
+    for (const i of pocket) solid[i] = 1;
+  }
+
+  for (let k = spawns.length - 1; k >= 0; k--) if (dropped.has(spawns[k]!)) spawns.splice(k, 1);
+}
+
 export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures): Level {
   headless = noTextures;
   decor = withDecor;
@@ -963,79 +1060,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     group.add(arrive);
   }
 
-  // Safety pass: props must never seal off part of the floor. Flood from the
-  // lobby. An empty pocket nobody needs is simply filled in. A pocket with
-  // somebody in it gets a way in: squeeze past a desk if there is one, and
-  // only if the one thing in the way is a machine (a fridge, a locker, a
-  // terminal), move the people out instead of making the machine a ghost.
-  const stub = { w, h, solid } as unknown as Level;
-  const machineCells = new Set(interactables.map((it) => toCell(it.z) * w + toCell(it.x)));
-  const cellOf = (s: Spawn): number => toCell(s.z) * w + toCell(s.x);
-  for (let guard = 0; guard < 400; guard++) {
-    const reached = flowField(stub, start.x, start.z, 32000);
-    let lost = -1;
-    for (let i = 0; i < w * h; i++) {
-      if (floor[i] === 1 && solid[i] === 0 && reached[i] === -1) {
-        lost = i;
-        break;
-      }
-    }
-    if (lost < 0) break;
-    const pocket = new Set<number>([lost]);
-    const stack = [lost];
-    while (stack.length > 0) {
-      const cur = stack.pop() as number;
-      const x = cur % w;
-      const y = (cur - x) / w;
-      for (const [ox, oy] of NEIGHBOURS4) {
-        const n = (y + oy) * w + (x + ox);
-        if (floor[n] === 1 && solid[n] === 0 && !pocket.has(n)) {
-          pocket.add(n);
-          stack.push(n);
-        }
-      }
-    }
-    const inside = spawns.map((sp, k) => (pocket.has(cellOf(sp)) ? k : -1)).filter((k) => k >= 0);
-    if (inside.length === 0) {
-      for (const i of pocket) solid[i] = 1;
-      continue;
-    }
-    let bridge = -1;
-    for (const i of pocket) {
-      const x = i % w;
-      const y = (i - x) / w;
-      for (const [ox, oy] of NEIGHBOURS4) {
-        const n = (y + oy) * w + (x + ox);
-        if (floor[n] !== 1 || solid[n] !== 1 || machineCells.has(n)) continue;
-        const nx = n % w;
-        const ny = (n - nx) / w;
-        if (NEIGHBOURS4.some(([ax, ay]) => reached[(ny + ay) * w + (nx + ax)] !== -1 && reached[(ny + ay) * w + (nx + ax)] !== undefined)) {
-          bridge = n;
-          break;
-        }
-      }
-      if (bridge >= 0) break;
-    }
-    if (bridge >= 0) {
-      solid[bridge] = 0;
-      opaque[bridge] = 0;
-      continue;
-    }
-    // Only a machine in the way: rehome the people and fill the pocket.
-    for (const k of inside) {
-      const sp = spawns[k] as Spawn;
-      const rm = rooms[sp.room] ?? lobby;
-      let moved: Spawn | null = null;
-      for (let t = 0; t < 60 && moved === null; t++) {
-        const x = r.int(rm.x, rm.x + rm.w - 1);
-        const y = r.int(rm.y, rm.y + rm.h - 1);
-        const i = y * w + x;
-        if (floor[i] === 1 && solid[i] === 0 && reached[i] !== -1) moved = { ...sp, x: cellCenter(x), z: cellCenter(y) };
-      }
-      spawns[k] = moved ?? { ...sp, x: start.x + TILE, z: start.z, room: 0 };
-    }
-    for (const i of pocket) solid[i] = 1;
-  }
+  repairFloorAccess({ w, h, floor, solid, opaque, rooms, spawns, interactables, start }, r, builder);
 
   // ---- Static geometry ----
   // `userData.suo` says what each surface becomes when the steam takes you
@@ -1278,6 +1303,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     bench: std({ color: 0xc8955a, map: paint(() => woodTexture()), roughness: 0.7 }),
   };
   for (const [key, geoms] of builder.boxes) {
+    if (geoms.length === 0) continue;
     const mat = mats[key] ?? std({ color: 0xff00ff });
     // Mixed shapes: weld them as plain triangle soup with the same attributes.
     const soup = geoms.map((g) => {
