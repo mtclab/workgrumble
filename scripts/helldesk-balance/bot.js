@@ -12,6 +12,7 @@
   const inp = g.input;
   const K = g.settings.keys;
   let R = Math.random;
+  let activity = 'other';
 
   const B = (window.__bot = {
     policy: { staff: 'accept', mentor: 'accept', talk: 0.3, fixAcc: 0.75, block: 0.5, sideQuests: true, treats: true, recruit: true, buy: true, maxFloorMinutes: 22 },
@@ -77,9 +78,10 @@
   function release() { inp.keys.delete(K.forward); inp.keys.delete(K.left); inp.keys.delete(K.right); inp.keys.delete(K.sprint); }
   /** Walk toward (tx,tz); true when within `near`. */
   function goTo(tx, tz, near) {
+    activity = target && target.staffing ? 'staffing' : 'walking';
     const p = g.player.pos;
     const d = Math.hypot(tx - p.x, tz - p.z);
-    if (d < near) { release(); return true; }
+    if (d < near) { activity = target && target.staffing ? 'staffing' : 'idle'; release(); return true; }
     const L = g.level, W = L.w;
     const f = field(tx, tz);
     const pc = cell(p.z) * W + cell(p.x);
@@ -224,11 +226,16 @@
   }
   function objectives() {
     const s = g.save;
-    const out = { fix: false, useTerminal: false, kiuas: false, printer: false, healer: false, avoidLocker: false };
+    const out = { fix: false, useTerminal: false, kiuas: false, printer: false, healer: false, avoidLocker: false, staffed: new Set() };
     for (const q of s.questLog) {
       if (q.done || q.failed || q.delegated) continue;
       const obj = window.__helldesk.objective ? window.__helldesk.objective(q) : null;
       if (!obj) continue;
+      if (q.staffed) {
+        if (obj.kind === 'fix') out.staffed.add('fix');
+        if (obj.kind === 'use') out.staffed.add(obj.use === 'terminal' ? 'useTerminal' : obj.use);
+        if (obj.kind === 'count' && obj.match && obj.match({ type: 'talk', npc: 'healer' })) out.staffed.add('healer');
+      }
       if (obj.kind === 'fix') out.fix = true;
       if (obj.kind === 'use' && obj.use === 'terminal') out.useTerminal = true;
       if (obj.kind === 'use' && obj.use === 'kiuas') out.kiuas = true;
@@ -268,15 +275,15 @@
     if (s.queue.length >= 3 || slaLow || ob.fix || ob.useTerminal) {
       const terms = g.level.interactables.filter((i) => i.kind === 'terminal' && !ignored.has(i.id) && (!ob.useTerminal || !g.loggedOn.has(i.id) || s.queue.length > 0));
       const t = nearestOf(terms);
-      if (t) return { kind: 'use', it: t, x: t.x, z: t.z };
+      if (t) return { kind: 'use', it: t, x: t.x, z: t.z, staffing: ob.staffed.has('fix') || ob.staffed.has('useTerminal') };
     }
     // 4. A mentee who wandered off, or a mentor ask.
     if (g.mentorAsk && !g.mentorAsk.actor.resolved) { const a = g.mentorAsk.actor; return { kind: 'talk', actor: a }; }
     for (const q of s.questLog) if (q.mentor && !q.done && !q.failed) { const m = g.actors.find((a) => a.name === q.by && !a.resolved); if (m && !m.recruited) return { kind: 'talk', actor: m }; }
     // 5. Things to use for quests.
-    if (ob.kiuas) { const k = nearestOf(g.level.interactables.filter((i) => i.kind === 'kiuas' && !i.used)); if (k) return { kind: 'use', it: k, x: k.x, z: k.z }; }
-    if (ob.printer) { const k = nearestOf(g.level.interactables.filter((i) => i.kind === 'printer' && !i.used)); if (k) return { kind: 'use', it: k, x: k.x, z: k.z }; }
-    if (ob.healer) { const l = nearestOf(g.actors.filter((a) => a.kind === 'healer' && !a.resolved && a.memo.questTalk !== true)); if (l) return { kind: 'talk', actor: l }; }
+    if (ob.kiuas) { const k = nearestOf(g.level.interactables.filter((i) => i.kind === 'kiuas' && !i.used)); if (k) return { kind: 'use', it: k, x: k.x, z: k.z, staffing: ob.staffed.has('kiuas') }; }
+    if (ob.printer) { const k = nearestOf(g.level.interactables.filter((i) => i.kind === 'printer' && !i.used)); if (k) return { kind: 'use', it: k, x: k.x, z: k.z, staffing: ob.staffed.has('printer') }; }
+    if (ob.healer) { const l = nearestOf(g.actors.filter((a) => a.kind === 'healer' && !a.resolved && a.memo.questTalk !== true)); if (l) return { kind: 'talk', actor: l, staffing: ob.staffed.has('healer') }; }
     // 6. Quest markers: items, turn-ins, rooms, hunts, givers (if there is room).
     const room = d.workload < d.capacity;
     const marks = g.markers.filter((m) => {
@@ -294,9 +301,10 @@
     const m = nearestOf(marks);
     if (m) {
       const actor = g.actors.find((a) => !a.resolved && Math.hypot(a.pos.x - m.x, a.pos.z - m.z) < 0.6);
-      if (actor && actor.hostile) return { kind: 'fight', actor };
-      if (actor) return { kind: 'talk', actor, mark: m };
-      return { kind: 'goto', x: m.x, z: m.z, near: 1.2, mark: m, wait: 0 };
+      const staffing = m.icon === '📌' || (actor && s.questLog.some((q) => q.staffed && !q.done && !q.failed && !q.delegated && q.id === actor.questTag));
+      if (actor && actor.hostile) return { kind: 'fight', actor, staffing };
+      if (actor) return { kind: 'talk', actor, mark: m, staffing };
+      return { kind: 'goto', x: m.x, z: m.z, near: 1.2, mark: m, wait: 0, staffing };
     }
     // 7. Recruit a teammate or two.
     if (B.policy.recruit && recruitedCount() < 2) {
@@ -325,6 +333,7 @@
   B.talkers = new Set();
 
   function act() {
+    activity = 'other';
     const s = g.save, d = g.derivedCache;
     if (s.sanity < d.maxSanity * 0.45 && (B.lastQuick ?? 0) < g.time - 2.5) { press(K.quickuse); B.lastQuick = g.time; }
     if (target && target.flee && s.sanity > d.maxSanity * 0.6) target = null;
@@ -346,6 +355,7 @@
       if (threat) { target = { kind: 'fight', actor: threat }; targetT = 0; }
     }
     if (target === null) {
+      activity = 'idle';
       // Nothing to do: wander somewhere new rather than stand still.
       B.idleT = (B.idleT ?? 0) + DT;
       if (B.idleT > 30) {
@@ -369,6 +379,7 @@
       if (a.__bot === undefined) { a.__bot = R() < B.policy.talk ? 'talk' : 'fight'; if (a.__bot === 'talk') B.talkers.add(a.id); }
       if (a.__bot === 'talk' && !a.talked && ['user', 'caller', 'customer', 'consultant', 'vendor', 'manager'].includes(a.kind) && a.enragedT <= 0) { target = { kind: 'talk', actor: a }; return; }
       if (dist > range) { goTo(a.pos.x, a.pos.z, range * 0.9); checkStuck(true); return; }
+      activity = 'fighting';
       release();
       face(a.pos.x, a.pos.z);
       // Block (and sometimes parry) when somebody next to us is about to swing.
@@ -384,6 +395,7 @@
     inp.holdAttack(false);
     inp.holdBlock(false);
     if (target.kind === 'talk') {
+      activity = target.staffing ? 'staffing' : 'other';
       const a = target.actor;
       const dist = Math.hypot(a.pos.x - p.x, a.pos.z - p.z);
       if (dist > 2.0) { goTo(a.pos.x, a.pos.z, 1.8); checkStuck(true); return; }
@@ -401,6 +413,7 @@
       if (Math.hypot(it.x - p.x, it.z - p.z) < 3.4) { face(it.x, it.z); H.findPrompt(); }
       const inPrompt = g.promptTarget && g.promptTarget.kind === 'interact' && g.promptTarget.it === it;
       if (!inPrompt && !goTo(it.x, it.z, reach)) { checkStuck(true); return; }
+      activity = target.staffing ? 'staffing' : it.kind === 'terminal' ? 'terminal' : 'other';
       release();
       face(it.x, it.z);
       H.findPrompt();
@@ -427,6 +440,7 @@
       mentored0: s.stats.mentored, perk0: s.perkPoints, quits: 0, moraleSum: 0, moraleN: 0, treats0: s.stats.treats, drinks0: s.stats.drinks, sideDone0: s.questLog.filter((q) => q.done && !q.staffed && !q.mentor).length,
       p1: 0, levelUps: 0,
       floorSec: 0, aggroSec: 0, combatSec: 0, aggroEpisodes: 0, combatActive: false, quietSec: 0, lastDamageAt: -Infinity,
+      activitySec: { fighting: 0, walking: 0, terminal: 0, dialogue: 0, staffing: 0, idle: 0, other: 0 },
       talkdowns0: s.stats.resolvedPeace, resolvesByForce0: s.stats.resolvedField,
     };
     ignored.clear();
@@ -441,6 +455,7 @@
       floor: c.floor, rung: c.rung, level: c.level, minutes: +minutes.toFixed(1), reason,
       floorSec: c.floorSec, combatSec: c.combatSec, combatShare: c.floorSec > 0 ? c.combatSec / c.floorSec : 0, aggroEpisodes: c.aggroEpisodes,
       aggroSec: c.aggroSec, aggroShare: c.floorSec > 0 ? c.aggroSec / c.floorSec : 0,
+      activitySec: { ...c.activitySec },
       talkdowns: s.stats.resolvedPeace - c.talkdowns0, resolvesByForce: s.stats.resolvedField - c.resolvesByForce0,
       burnouts: c.burnouts, minSanityPct: Math.round(c.minSanity * 100), overloadPct: Math.round((c.overloadT / Math.max(1, g.time - c.t0)) * 100), maxOver: c.maxOver,
       staffOffers: c.staffOffers, staffDone: s.stats.staffedDone - c.staffedDone0, staffMissed: s.stats.staffedMissed - c.staffedMissed0, pushTries: c.pushTries, pushOk: c.pushOk,
@@ -455,16 +470,20 @@
     return rec;
   }
 
-  // Sample at the start of a tick, counting only time the simulation advances.
-  function step() {
+  // Aggro is sampled at tick start; activity also counts the bot's menu clock.
+  function step(doing = activity, advanceClock = false) {
     if (g.screen === 'play' && g.save.location === 'office' && B.cur === null) newFloor();
     const c = B.cur;
-    const inFloor = c && g.screen === 'play' && g.save.location === 'office' && c.floor === g.save.floor;
+    const onFloor = c && g.save.location === 'office' && c.floor === g.save.floor;
+    const inFloor = onFloor && g.screen === 'play';
     const p = g.player.pos;
     const aggro = inFloor && g.actors.some((a) => a.hostile && !a.resolved && a.aggro && Math.hypot(a.pos.x - p.x, a.pos.z - p.z) <= 14);
+    const clockBefore = g.time;
+    if (advanceClock) g.time += DT;
     const before = g.time;
     g.step(DT);
     const dt = g.time - before;
+    if (onFloor) c.activitySec[doing] += Math.max(0, g.time - clockBefore);
     if (!inFloor || dt <= 0) return;
     c.floorSec += dt;
     if (aggro) c.aggroSec += dt;
@@ -569,9 +588,9 @@
     while (g.time < until && performance.now() - t0 < 20000) {
       steps++;
       if (B.ended || B.floors.length >= maxFloors) break;
-      if (g.screen === 'dialogue' || g.screen === 'minigame') { if (!handleDialogue()) { g.lockpick?.cancel?.(); if (g.screen !== 'play') { g.screen = 'play'; } } g.time += DT; step(); continue; }
-      if (g.screen === 'os') { if (g.currentTerminal) workTerminal(); else g.close(); g.time += DT; step(); continue; }
-      if (g.screen !== 'play') { handleOverlay(); g.time += DT; step(); continue; }
+      if (g.screen === 'dialogue' || g.screen === 'minigame') { if (!handleDialogue()) { g.lockpick?.cancel?.(); if (g.screen !== 'play') { g.screen = 'play'; } } step('dialogue', true); continue; }
+      if (g.screen === 'os') { if (g.currentTerminal) workTerminal(); else g.close(); step('terminal', true); continue; }
+      if (g.screen !== 'play') { const doing = g.screen === 'paused' ? 'idle' : 'other'; handleOverlay(); step(doing, true); continue; }
       if (s.location === 'mokki') {
         if (B.cur && B.cur.floor === s.floor) endFloor('friday');
         const r = weekend();

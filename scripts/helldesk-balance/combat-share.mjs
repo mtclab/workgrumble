@@ -13,7 +13,7 @@ const seeds = [1700000000, 1700000001, 1700000002];
 const dir = process.env.COMBAT_OUT ?? 'combat-share';
 mkdirSync(dir, { recursive: true });
 const runner = fileURLToPath(new URL('./run.mjs', import.meta.url));
-console.log('scenario seed floor floorSec aggroSec aggroShare combatSec combatShare aggroEpisodes burnouts');
+console.log('scenario seed floor floorSec aggroSec aggroShare combatSec combatShare aggroEpisodes burnouts activity1 activity2 activity3');
 for (const scenario of scenarios) {
   const shares = [];
   for (const seed of seeds) {
@@ -31,7 +31,13 @@ for (const scenario of scenarios) {
         throw new Error(`${scenario.name} seed ${seed}: missing combat measurements`);
       }
       shares.push(f.combatShare);
-      console.log(`${scenario.name} ${seed} ${f.floor} ${f.floorSec.toFixed(1)} ${f.aggroSec.toFixed(1)} ${f.aggroShare.toFixed(4)} ${f.combatSec.toFixed(1)} ${f.combatShare.toFixed(4)} ${f.aggroEpisodes} ${f.burnouts}`);
+      const activities = ['fighting', 'walking', 'terminal', 'dialogue', 'staffing', 'idle', 'other'];
+      if (!f.activitySec || !activities.every((a) => Number.isFinite(f.activitySec[a]) && f.activitySec[a] >= 0)) {
+        throw new Error(`${scenario.name} seed ${seed}: missing activity measurements`);
+      }
+      const top = activities.sort((a, b) => f.activitySec[b] - f.activitySec[a] || a.localeCompare(b)).slice(0, 3)
+        .map((a) => `${a}:${f.activitySec[a].toFixed(1)}s`).join(' ');
+      console.log(`${scenario.name} ${seed} ${f.floor} ${f.floorSec.toFixed(1)} ${f.aggroSec.toFixed(1)} ${f.aggroShare.toFixed(4)} ${f.combatSec.toFixed(1)} ${f.combatShare.toFixed(4)} ${f.aggroEpisodes} ${f.burnouts} ${top}`);
     }
   }
   const mean = shares.reduce((a, b) => a + b, 0) / shares.length;

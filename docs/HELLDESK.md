@@ -549,6 +549,15 @@ combat definition and closes after 3 quiet game seconds; quiet gaps add no comba
 time. Resolve counts are floor deltas of `resolvedPeace` and `resolvedField`
 (force excludes bosses, turrets and mosquitoes).
 
+`activitySec` breaks each floor into fighting, walking to a target,
+terminal/OS work, dialogue, staffing errands, idle/waiting and other, in
+game seconds. It records the bot's action, so approaching a hostile counts
+as walking even while `combatSec` rises. Travel and interactions for a
+selected staffing objective count as staffing; fighting, OS work and
+dialogue take their own categories. The totals include bot-clock advances
+while reading a terminal, in dialogue or waiting in an overlay, which
+`floorSec` excludes. Hit stop and weekends add no activity time.
+
 Against an already served build, run the six careers one browser at a time:
 
 ```
@@ -558,8 +567,9 @@ HELLDESK_URL="$BALANCE_URL" CHROMIUM="$CHROMIUM_BIN" COMBAT_OUT=balance-results 
 Set `BALANCE_URL` to the served `crawler.html` URL and `CHROMIUM_BIN` to the
 browser executable. The matrix runs trainee rung 0 and senior rung 6 with
 cat6/cardigan on seeds 1700000000-1700000002, three floors each. It prints
-times, share, episodes and burnouts, plus mean and max-min share over each
-scenario's nine floors; incomplete or errored careers fail. Repeat with
+times, shares, episodes, burnouts and the top three activities in seconds,
+plus mean and max-min share over each scenario's nine floors; incomplete
+or errored careers fail. Repeat with
 another `COMBAT_OUT` directory to check reproducibility. For single runs,
 `run.mjs` accepts `HELLDESK_URL`, `CHROMIUM` and `OUT` (JSON file).
 Node-only regression checks (no browser or generated WASM needed):

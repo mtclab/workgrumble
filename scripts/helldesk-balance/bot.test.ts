@@ -10,6 +10,7 @@ interface Floor {
   floor: number; reason: string;
   floorSec: number; combatSec: number; combatShare: number; aggroEpisodes: number;
   aggroSec: number; aggroShare: number;
+  activitySec: Record<'fighting' | 'walking' | 'terminal' | 'dialogue' | 'staffing' | 'idle' | 'other', number>;
   talkdowns: number; resolvesByForce: number;
 }
 interface Bot {
@@ -27,11 +28,17 @@ function career() {
   const game = {
     save, time: 0, screen: 'play', actors: [actor], boss: null, projectiles: [],
     hitStop: 0,
+    attackCd: 0, currentTerminal: null as object | null, lockpick: { open: false },
+    loggedOn: new Set<string>(),
+    markers: [] as { x: number; z: number; icon: string; color: string; label: string }[],
     input: { keys: new Set<string>(), pressed: new Set<string>(), holdAttack: () => undefined, holdBlock: () => undefined, tapAttack: () => undefined },
     settings: { keys: { forward: 'w', left: 'a', right: 'd', sprint: 'shift', quickuse: 'q' } },
     player: { pos: { x: 0, z: 0, clone: () => ({ x: 0, z: 0 }) } },
-    level: { start: { x: 0, z: 0 } },
-    derivedCache: { maxSanity: 100, overload: 0 },
+    level: {
+      start: { x: 0, z: 0 }, w: 20, h: 1, roomOf: new Int16Array(20), solid: new Uint8Array(20),
+      rooms: [], interactables: [],
+    },
+    derivedCache: { maxSanity: 100, overload: 0, workload: 0, capacity: 3, weapon: { kind: 'melee', range: 2.5 } },
     hurtPlayer: () => undefined,
     onCombatDamage: () => undefined,
     close: () => { game.screen = 'play'; },
@@ -45,8 +52,12 @@ function career() {
   };
   let onStep = () => undefined;
   let onOverlay = () => undefined;
-  const window = { __crawler: game, __helldesk: { rest: () => undefined } };
-  const document = { querySelectorAll: (selector: string) => selector === '.screen-btn' ? [{ click: () => onOverlay() }] : [], querySelector: () => null };
+  const window = { __crawler: game, __helldesk: { rest: () => undefined, findPrompt: () => undefined } };
+  const document = {
+    querySelectorAll: (selector: string) => selector === '.screen-btn' ? [{ click: () => onOverlay() }]
+      : selector === '.dlg-opt' && game.screen === 'dialogue' ? [{ disabled: false, textContent: 'Continue', click: () => undefined }] : [],
+    querySelector: () => null,
+  };
   runInNewContext(source, { window, document, performance: { now: () => 0 } });
   const bot = (window as unknown as { __bot: Bot }).__bot;
   const tick = (n = 1, floors?: number) => { for (let i = 0; i < n; i++) bot.run(DT / 2, floors); };
@@ -241,5 +252,77 @@ describe('floor combat measurements', () => {
     expect(first).toContain('fight');
     expect(decisions(123)).toEqual(first);
     expect(decisions(124)).not.toEqual(first);
+  });
+});
+
+describe('floor activity breakdown', () => {
+  it('separates approaching a hostile from fighting, staffing travel, waiting and other interactions', () => {
+    const c = career();
+    c.game.save.sanity = 100;
+    c.bot.seed(1);
+    c.tick(); // Walking toward an aggro actor is movement, not a fighting decision.
+    c.actor.pos.x = 1;
+    c.tick();
+    c.actor.resolved = true;
+    c.tick();
+    c.game.markers = [{ x: 10, z: 0, icon: '📌', color: '#ffd54a', label: 'Staffed room' }];
+    c.tick();
+    c.game.player.pos.x = 10;
+    c.tick();
+    c.actor.resolved = false;
+    c.actor.hostile = false;
+    c.actor.pos.x = 11;
+    c.game.markers = [{ x: 11, z: 0, icon: '!', color: '#ffe07a', label: 'Person' }];
+    c.tick();
+    const floor = c.finish()!;
+    expect(floor.activitySec?.walking).toBeCloseTo(DT);
+    expect(floor.activitySec.fighting).toBeCloseTo(DT);
+    expect(floor.activitySec.staffing).toBeCloseTo(2 * DT);
+    expect(floor.activitySec.idle).toBeCloseTo(DT);
+    expect(floor.activitySec.other).toBeCloseTo(2 * DT);
+    expect(Object.values(floor.activitySec).reduce((a, b) => a + b, 0)).toBeCloseTo(floor.floorSec);
+    expect(floor.combatSec).toBeGreaterThan(floor.activitySec.fighting);
+  });
+
+  it('accounts for terminal reading, dialogue and paused waiting in game seconds, excluding hit stop and weekends', () => {
+    const c = career();
+    c.tick();
+    c.game.screen = 'os';
+    c.game.currentTerminal = {};
+    c.tick(3);
+    c.game.screen = 'dialogue';
+    c.tick(3);
+    c.game.screen = 'paused';
+    c.tick(2);
+    c.game.screen = 'play';
+    c.game.hitStop = DT;
+    expect(c.bot.run(DT / 2).steps).toBe(2);
+    const floor = c.finish()!;
+    expect(floor.activitySec?.terminal).toBeCloseTo(3 * DT);
+    expect(floor.activitySec.dialogue).toBeCloseTo(3 * DT);
+    expect(floor.activitySec.idle).toBeCloseTo(5 * DT);
+    expect(floor.floorSec).toBeCloseTo(3 * DT);
+    expect(Object.values(floor.activitySec).reduce((a, b) => a + b, 0)).toBeCloseTo(11 * DT);
+    const recorded = { ...floor.activitySec };
+    c.game.screen = 'loading';
+    c.tick(3);
+    expect(floor.activitySec).toEqual(recorded);
+    c.game.save.location = 'office';
+    c.game.save.floor = 1;
+    c.game.screen = 'play';
+    c.tick();
+    expect(c.bot.cur?.activitySec.terminal).toBe(0);
+    expect(c.bot.cur?.activitySec.dialogue).toBe(0);
+    expect(c.bot.cur?.activitySec.idle).toBeCloseTo(DT);
+  });
+
+  it('reveals a thirty-minute wait when low sanity repeatedly sends the bot to a fallback that cannot heal it', () => {
+    const c = career();
+    c.bot.run(1800);
+    const floor = c.finish()!;
+    expect(floor.floorSec).toBeGreaterThanOrEqual(1800);
+    expect(floor.activitySec?.idle).toBeCloseTo(floor.floorSec);
+    expect(floor.activitySec.walking).toBe(0);
+    expect(floor.activitySec.fighting).toBe(0);
   });
 });
