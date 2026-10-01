@@ -3,6 +3,7 @@ import { sfx } from './audio';
 import type { Game } from './game';
 import { isSolidAt } from './level';
 import { fx } from './rng';
+import { bindingText } from './settings';
 import { hash } from './voxels';
 import { farthestCell, figureCell, SteamClock, SUO_LINES } from './suo';
 import { diffSnapshots, SuoDress, snapshotWorld, type WorldSnapshot } from './suodress';
@@ -268,7 +269,7 @@ export class Vision {
     if (d <= REACH && g.hit('interact')) return 'blessed';
     if (gone) return 'faded';
     const line = this.noteT > 0 ? this.note : this.age < ENTER_LINE ? SUO_LINES.enter : d <= NEAR ? SUO_LINES.near : SUO_LINES.seek;
-    this.veil.set(line, this.clock.fraction);
+    this.veil.set(bindingText(line, g.settings.keys), this.clock.fraction);
     return null;
   }
 

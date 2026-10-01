@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Game } from './game';
+import { DEFAULT_SETTINGS } from './settings';
 import { writeSlot } from './saves';
 import { newSave } from './state';
 
@@ -12,7 +13,7 @@ vi.mock('./screens', () => ({
 function host(): Game {
   const g = Object.create(Game.prototype) as Game;
   const noop = (): void => undefined;
-  Object.assign(g, { save: newSave(1), abilityCd: 45, os: { hide: noop }, dialogue: { close: noop }, hud: { toast: noop }, loadFloor: noop, loadWorld: noop, journal: noop, openDialogue: noop });
+  Object.assign(g, { save: newSave(1), settings: DEFAULT_SETTINGS, abilityCd: 45, os: { hide: noop }, dialogue: { close: noop }, hud: { toast: noop }, loadFloor: noop, loadWorld: noop, journal: noop, openDialogue: noop });
   return g;
 }
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { said } from './dialogue';
 import { Game } from './game';
+import { DEFAULT_SETTINGS } from './settings';
 import type { Interactable } from './level';
 import { writeSlot } from './saves';
 import { resume } from './screens';
@@ -20,7 +21,7 @@ function host(): { g: Game; finish: () => void } {
   const save = newSave(1);
   const noop = (): void => undefined;
   Object.assign(g, {
-    save, derivedCache: derive(save), currentTerminal: terminal,
+    save, settings: DEFAULT_SETTINGS, derivedCache: derive(save), currentTerminal: terminal,
     overlay: { style: {}, replaceChildren: noop }, menuKeys: { close: noop },
     input: { requestLock: noop, releaseLock: noop },
     os: { hide: noop, open: noop }, hud: { toast: noop },
@@ -67,4 +68,15 @@ describe('leaving a computer', () => {
   });
 
   it('opening the backpack itself clears any stale computer', () => backpack(host().g));
+});
+
+
+it('the skip-induction welcome uses the rebound interact, attack and block keys', () => {
+  const { g } = host();
+  Object.assign(g, { settings: { ...DEFAULT_SETTINGS, keys: { ...DEFAULT_SETTINGS.keys, interact: 'KeyZ', attack: 'KeyN', block: 'KeyB' } } });
+  const welcome = vi.spyOn(g, 'openDialogue').mockImplementation(() => undefined);
+  g.beginCareer({ name: 'Player', background: 'grad', sign: 'patch', rung: 0, domain: null, track: null }, true);
+  expect(welcome.mock.calls[0]![0].text).toContain('down (Z)');
+  expect(welcome.mock.calls[0]![0].text).toContain('Hold N to wind up');
+  expect(welcome.mock.calls[0]![0].text).toContain('hold B to block');
 });

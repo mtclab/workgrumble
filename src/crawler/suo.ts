@@ -23,7 +23,7 @@ export const SUO_LINES = {
   /** The one line on screen while you look for the figure. */
   seek: 'Something stands in the steam. Go to it.',
   /** Close enough to touch it. */
-  near: 'The Löylyhenki waits. Give it your hand. (E)',
+  near: 'The Löylyhenki waits. Give it your hand. ({interact})',
   /** The steam ran out: back, nothing gained, nothing lost. */
   leave: 'The steam thins. You are back.',
   /** You took its hand. */

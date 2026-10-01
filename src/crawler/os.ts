@@ -36,7 +36,7 @@ import {
 } from './rpg';
 import { fx } from './rng';
 import { swallowNextClick } from './clickguard';
-import { ACTION_LABEL, ACTIONS, DEFAULT_KEYS, keyName, mouseCode, type Settings } from './settings';
+import { ACTION_LABEL, ACTIONS, bindingText, DEFAULT_KEYS, keyName, mouseCode, type Settings } from './settings';
 import {
   ACTION_ITEM_KG,
   canTakePerk,
@@ -1079,32 +1079,32 @@ export class Os {
 
   private renderHelp(body: HTMLElement, controls = true): void {
     const sec = (title: string, lines: string[]): void => {
-      body.append(el('h4', {}, title), el('ul', { class: 'os-help' }, ...lines.map((l) => el('li', {}, l))));
+      body.append(el('h4', {}, title), el('ul', { class: 'os-help' }, ...lines.map((l) => el('li', {}, bindingText(l, this.host.settings.keys)))));
     };
     if (controls) {
       sec('Controls', [
-        'WASD move · Shift sprint · Space jump · Mouse look · V first/third person',
-        'LMB use tool (hold with a melee tool for a power attack) · RMB hold to block, tap to shove',
-        'E interact / talk · Q quick-use food or coffee · 1-9 or wheel switch tools',
-        'F cast rune · X next rune · G domain ability · C sneak · T rest (and level up)',
-        'Tab backpack · M map · F5 quicksave · F9 quickload · Esc pause',
+        '{forward} {left} {back} {right} move · {sprint} sprint · {jump} jump · Mouse look · {view} first/third person',
+        '{attack} use tool (hold with a melee tool for a power attack) · {block} hold to block, tap to shove',
+        '{interact} interact / talk · {quickuse} quick-use food or coffee · 1-9 or wheel switch tools',
+        '{cast} cast rune · {nextspell} next rune · {ability} domain ability · {sneak} sneak · {rest} rest (and level up)',
+        '{backpack} backpack · {map} map · F5 quicksave · F9 quickload · Esc pause',
       ]);
     } else {
       sec('More keys', [
-        'F cast rune · X next rune · G domain ability · C sneak · V first/third person',
-        '1-9 or the wheel switch tools · J journal · F5 quicksave · F9 quickload',
+        '{cast} cast rune · {nextspell} next rune · {ability} domain ability · {sneak} sneak · {view} first/third person',
+        '1-9 or the wheel switch tools · {journal} journal · F5 quicksave · F9 quickload',
         'In the backpack: 1-8 or Left/Right and Enter pick an app; Down goes into it, Up off its top comes back; Tab walks everything; Esc or I closes it',
         'In a conversation: 1-9, or the arrows and Enter; Esc walks away where that costs nothing',
       ]);
     }
     sec('The job', [
       'People throw real tickets at you. Solve them at any computer before the SLA runs out, or resolve the person in person.',
-      'Most angry people can be talked down (E): every option shows its odds. Failure makes them angrier.',
+      'Most angry people can be talked down ({interact}): every option shows its odds. Failure makes them angrier.',
       'Managers slow you, drag you into meetings and give you 6 kg action items. Accept their meeting to get rid of them.',
       'Every floor has a boss. Resolve them to unlock the lift. Every Friday you go to the mökki.',
     ]);
     sec('Growing', [
-      'Skills rise by use. Eight skill increases and you can level up - by resting (T, or the mökki bed).',
+      'Skills rise by use. Eight skill increases and you can level up - by resting ({rest}, or the mökki bed).',
       'Each level: raise two attributes (the more their skills rose, the bigger the raise) and take a perk.',
       'The career ladder is the difficulty: every promotion makes the building fight harder and pay better.',
     ]);

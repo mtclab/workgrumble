@@ -107,7 +107,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { latestSlot, readSlot, type SlotId, writeSlot } from './saves';
-import { type Action, BACKPACK_EXTRA, extraFree, loadSettings, SNEAK_EXTRA, TOOL_EXTRAS, type Settings, saveSettings, storedSettings } from './settings';
+import { type Action, BACKPACK_EXTRA, bindingText, extraFree, loadSettings, SNEAK_EXTRA, TOOL_EXTRAS, type Settings, saveSettings, storedSettings } from './settings';
 import * as screens from './screens';
 import { castSpell, cycleSpell, domainAbility, domainCooldown, spellLabel } from './spells';
 import {
@@ -1030,7 +1030,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const text = TIPS[id];
     if (text === undefined) return;
     s.tipsShown.push(id);
-    this.hud.tip(text);
+    this.hud.tip(bindingText(text, this.settings.keys));
   }
 
   achieve(id: string): void {
@@ -1126,7 +1126,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.openDialogue(said(MORAG, welcomeLine(this.save.name), 'neutral', 'Clock in'));
       return;
     }
-    this.openDialogue(said('Morag from Internal IT', `Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. The users have tickets; the tickets have users. Computers are blue on the map; I am green. You can talk most people down (E) instead of stapling them. Hold the mouse to wind up a heavy swing, hold the right button to block. Every Friday you go to the mökki. Do not drink from the office fridge. Good luck.`, 'neutral', 'Clock in'), () => this.tip('start'));
+    this.openDialogue(said('Morag from Internal IT', bindingText(`Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. The users have tickets; the tickets have users. Computers are blue on the map; I am green. You can talk most people down ({interact}) instead of stapling them. Hold {attack} to wind up a heavy swing, hold {block} to block. Every Friday you go to the mökki. Do not drink from the office fridge. Good luck.`, this.settings.keys), 'neutral', 'Clock in'), () => this.tip('start'));
   }
 
   /**

@@ -111,5 +111,5 @@ export const TIPS: Record<string, string> = {
   team: 'Your team runs on morale. Give a teammate sweets (E, then pick one) to cheer them up, or an energy drink for a short, strong boost and a crash. Tired teammates hit softer, and below a point they go on a break.',
   mentor: 'You are senior now: your team comes to you when they are stuck (🎓). Mentoring counts against your workload, but getting someone through it earns you a perk point (one a week), and the Mentor perk grows with it.',
   pager: 'PAGED. You have 90 seconds (of play) to get to a computer: the satellite terminal in the cottage or, with no dish, the car and the Wi-Fi in the village (that costs the rest of the weekend\'s sauna and grill). Miss two pages in one weekend and HR hears about it.',
-  block: 'Hold the right mouse button to block (frontal hits, costs energy). Block just as a hit lands to PARRY it and stagger them. Tap it to shove.',
+  block: 'Hold {block} to block (frontal hits, costs energy). Block just as a hit lands to PARRY it and stagger them. Tap it to shove.',
 };

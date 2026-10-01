@@ -75,6 +75,11 @@ export function keyName(code: string): string {
   return map[code] ?? code;
 }
 
+export function bindingText(text: string, keys: Readonly<Record<Action, string>>): string {
+  for (const action of ACTIONS) text = text.replaceAll(`{${action}}`, keyName(keys[action]));
+  return text;
+}
+
 export interface Settings {
   view: 'first' | 'third';
   fov: number;
