@@ -32,6 +32,8 @@ import {
   type ActorKind,
   createActor,
   disposeActor,
+  isFoe,
+  spawnsAggro,
   ELITE_AFFIXES,
   type EliteAffix,
   type GameCtx,
@@ -46,7 +48,7 @@ import {
   updateAuras,
 } from './entities';
 import { Hud, type HudFrame } from './hud';
-import { floorAwake, HUD_METERS, type InductionEvent, MORAG, PRACTICE_TICKET_FROM, startInduction, stillHidden, welcomeLine } from './induction';
+import { floorAwake, HUD_METERS, inductionOnLoad, type InductionEvent, isPracticeTicket, type MeterFacts, MORAG, startInduction, stillHidden, welcomeLine } from './induction';
 import { InductionDay } from './inductionday';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
@@ -291,6 +293,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   private readonly moveDir = new THREE.Vector2();
   /** Induction day's props and card, while it runs on floor 0 (the step itself is in the save). */
   inductionDay: InductionDay | null = null;
+  /** What the meter reveal looks at, refilled in place each frame (no allocation while meters wait). */
+  private readonly meterFacts: { -readonly [K in keyof MeterFacts]: MeterFacts[K] } = { step: null, loyly: 0, maxLoyly: 0, runes: 0, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
 
   constructor(mount: HTMLElement) {
     this.mount = mount;
@@ -754,8 +758,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   spawn(kind: ActorKind, x: number, z: number, room: number): Actor | null {
-    if (this.actors.filter((a) => !a.resolved && a.hostile).length > 70) return null;
-    return this.spawnAt(kind, x, z, room, true);
+    if (this.actors.filter((a) => !a.resolved && isFoe(a)).length > 70) return null;
+    // Summoned trouble arrives after you, unless the floor is still asleep for
+    // the induction: then it arrives as calm as everyone else (a breach's
+    // manager, a nap's visitor).
+    return this.spawnAt(kind, x, z, room, spawnsAggro(this));
   }
 
   // ================================================================== saves & settings
@@ -990,33 +997,39 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   /**
    * Build the induction's props for the floor just loaded, if one is running
-   * and this is its floor. Anywhere else (the lift taken early, the mökki) or
-   * already finished, it is over: quietly, since Morag is not there to say so.
+   * and this is its floor (`inductionOnLoad` has the rule). Finished, it ends
+   * as finished; anywhere else it is abandoned, quietly, since Morag is not
+   * there to say so.
    */
   private syncInduction(): void {
-    const st = this.save.induction;
-    if (st === null) return;
-    if (st.step === 'done' || this.save.location !== 'office' || this.save.floor !== 0) {
-      this.endInduction(false);
+    const how = inductionOnLoad(this.save.induction, this.save.location, this.save.floor);
+    if (how === 'none') return;
+    if (how === 'run' && this.save.induction !== null) {
+      this.inductionDay = new InductionDay(this, this.save.induction);
       return;
     }
-    this.inductionDay = new InductionDay(this, st);
+    this.endInduction(how === 'finish' ? 'finish' : 'abandon', false);
   }
 
   /**
-   * The induction is over: the props go, the floor wakes up, and this player
-   * is remembered as having done it (the skip box is ticked from now on).
+   * The induction is over: the props go and the floor wakes up. Only a
+   * finished one (the map step done, Morag's last words) counts: this player
+   * is then remembered as having done it, and the skip box is ticked from
+   * now on. An abandoned one (the floor left mid-morning) is not, so the next
+   * career's form still offers it.
    */
-  endInduction(ceremony = true): void {
+  endInduction(how: 'finish' | 'abandon' = 'finish', ceremony = true): void {
     this.inductionDay?.dispose();
     this.inductionDay = null;
     const s = this.save;
     s.induction = null;
     // The practice ticket goes with the morning.
-    s.queue = s.queue.filter((q) => q.from !== PRACTICE_TICKET_FROM);
-    this.settings.inductionDone = true;
-    saveSettings(this.settings);
+    s.queue = s.queue.filter((q) => !isPracticeTicket(q));
     this.fieldIn = 0;
+    if (how === 'finish') {
+      this.settings.inductionDone = true;
+      saveSettings(this.settings);
+    }
     if (!ceremony) return;
     this.journal('Induction done. Morag says the floor is mine now. It did not sound like a gift.');
     this.tip('start');
@@ -1108,10 +1121,16 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       // Meters still waiting to matter: a drink in the backpack counts as much as one on the floor.
       const s = this.save;
       if (s.hudHidden.length > 0) {
-        s.hudHidden = stillHidden(s.hudHidden, {
-          step: s.induction?.step ?? null, loyly: s.loyly, maxLoyly: this.derivedCache.maxLoyly, runes: s.spells.length,
-          bac: s.bac, stomach: s.stomach, caffeine: s.caffeine, crash: s.crash,
-        });
+        const f = this.meterFacts;
+        f.step = s.induction?.step ?? null;
+        f.loyly = s.loyly;
+        f.maxLoyly = this.derivedCache.maxLoyly;
+        f.runes = s.spells.length;
+        f.bac = s.bac;
+        f.stomach = s.stomach;
+        f.caffeine = s.caffeine;
+        f.crash = s.crash;
+        s.hudHidden = stillHidden(s.hudHidden, f);
       }
       this.markersIn -= dt;
       if (this.markersIn <= 0) {
@@ -1319,7 +1338,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.player.crouching) {
       if (moving) {
         this.stillT = 0;
-        const near = this.actors.some((a) => a.hostile && !a.aggro && !a.resolved && Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 10);
+        const near = this.actors.some((a) => isFoe(a) && !a.aggro && !a.resolved && Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) < 10);
         if (near) {
           this.stealthT += dt;
           if (this.stealthT > 1.5) {
@@ -1370,6 +1389,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
     if (s.location === 'office') {
       for (const q of [...s.queue]) {
+        // The induction's ticket has no SLA: it waits for you.
+        if (isPracticeTicket(q)) continue;
         q.sla -= dt;
         if (q.sla <= 0) breach(this, q);
       }
@@ -1814,7 +1835,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   takePerk(id: string): void { host.takePerk(this, id); }
   resolve(q: QueuedTicket, label: string): { ok: boolean; message: string } {
     const r = host.resolveTicket(this, q, label);
-    if (r.ok && q.from === PRACTICE_TICKET_FROM) this.practice({ type: 'fixed' });
+    if (r.ok && isPracticeTicket(q)) this.practice({ type: 'fixed' });
     return r;
   }
   fixOptions(q: QueuedTicket): string[] { return host.fixOptions(this, q); }

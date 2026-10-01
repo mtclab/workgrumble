@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { type Actor, createActor, type GameCtx, stun, updateActor } from './entities';
+import { type Actor, createActor, type GameCtx, hurtActor, isFoe, spawnsAggro, stun, updateActor, updateAuras } from './entities';
+import { actorColor } from './hud';
 import { floorAwake, type InductionState, STEPS } from './induction';
 import { flowField, type Level, TILE } from './level';
 import { Rng } from './rng';
@@ -442,5 +443,43 @@ describe('induction day: nothing on the floor notices a new starter before the b
     expect([...run.landed]).toContain('dummy.swing');
     // Bolted down: it never took a step.
     expect(a.pos.distanceTo(home)).toBeLessThan(1e-9);
+  });
+});
+
+describe('induction day: the corner office stays shut, and the dummy is not trouble', () => {
+  it('a boss hit before the floor wakes does no damage and starts no fight; after, it does both', () => {
+    const hit = (awake: boolean): { hp: number; max: number; active: boolean } => {
+      const ctx = new Arena();
+      ctx.floorAwake = awake;
+      const a = createActor(ctx, 'boss', ctx.playerPos.x, ctx.playerPos.z - 2, 0, ctx.rng, 10);
+      ctx.actors.push(a);
+      hurtActor(ctx, a, 40, null);
+      return { hp: a.hp, max: a.maxHp, active: a.bossActive };
+    };
+    const asleep = hit(false);
+    expect(asleep.hp).toBe(asleep.max);
+    expect(asleep.active).toBe(false);
+    const awake = hit(true);
+    expect(awake.hp).toBeLessThan(awake.max);
+    expect(awake.active).toBe(true);
+  });
+
+  it('summoned trouble arrives calm while the floor sleeps', () => {
+    expect(spawnsAggro({ floorAwake: false })).toBe(false);
+    expect(spawnsAggro({ floorAwake: true })).toBe(true);
+  });
+
+  it('the dummy is no foe: no consultant shields it, and its map dot is not a hostile red', () => {
+    const ctx = new Arena();
+    const c = createActor(ctx, 'consultant', ctx.playerPos.x, ctx.playerPos.z - 4, 0, ctx.rng, 10);
+    const d = createActor(ctx, 'dummy', ctx.playerPos.x + 1, ctx.playerPos.z - 4, 0, ctx.rng, 10);
+    const u = createActor(ctx, 'user', ctx.playerPos.x - 1, ctx.playerPos.z - 4, 0, ctx.rng, 10);
+    updateAuras([c, d, u]);
+    expect(u.shielded).toBe(true);
+    expect(d.shielded).toBe(false);
+    expect(isFoe(d)).toBe(false);
+    expect(isFoe(u)).toBe(true);
+    expect(actorColor(d)).not.toBe(actorColor(u));
+    expect(actorColor(d)).not.toMatch(/^#ff/i);
   });
 });

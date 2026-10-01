@@ -2,6 +2,7 @@ import { sfx } from './audio';
 import { TICKETS } from './content/tickets';
 import { type Actor, say } from './entities';
 import type { Game } from './game';
+import { isPracticeTicket } from './induction';
 import { fx, Rng } from './rng';
 import { bandFor, WORKPLACES } from './rpg';
 import { adjustStanding, perk, type QueuedTicket, type Quest, skill } from './state';
@@ -35,6 +36,8 @@ export function enqueueTicket(g: Game, from: Actor, gold: boolean): void {
 }
 
 export function breach(g: Game, q: QueuedTicket): void {
+  // The induction's ticket never breaches: it is the lesson, and the step waits on it.
+  if (isPracticeTicket(q)) return;
   const s = g.save;
   s.queue = s.queue.filter((x) => x !== q);
   s.stats.breaches++;

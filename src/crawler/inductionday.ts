@@ -26,12 +26,16 @@ import {
   PRACTICE_NAME,
   PRACTICE_THANKS,
   PRACTICE_TICKET_FROM,
+  isPracticeTicket,
+  LABELS_FOR_STEP,
   SANITY_LINE,
 } from './induction';
 import { itemById } from './items';
 import { cellCenter, flowField, type Interactable, type Level, lineOfSight, toCell } from './level';
 import { inductionTerminalMesh } from './meshes';
-import { keyName } from './settings';
+import { plainInstance } from './loot';
+import { Rng } from './rng';
+import { type Action, keyName } from './settings';
 import { screenTexture } from './textures';
 import { cancelWindup } from './windup';
 
@@ -68,6 +72,9 @@ const MORAG_OUTFIT = {
 /** How near E reaches, as in findPrompt: a person, a computer. */
 const ACTOR_REACH = 2.6;
 const TERMINAL_REACH = 2.4;
+
+/** The bindings the cards draw. */
+const CARD_ACTIONS: readonly Action[] = ['forward', 'left', 'back', 'right', 'interact', 'map'];
 
 const GREEN = '#7dff9a';
 const PRACTICE = '#7dffea';
@@ -237,9 +244,13 @@ export class InductionDay {
   dummy: Actor | null = null;
   /** The lobby computer: its entry in the level, its mesh, and what its cell was before. */
   private terminal: { readonly it: Interactable; readonly mesh: THREE.Group; readonly cell: number; readonly wasSolid: number } | null = null;
-  private readonly card: HTMLDivElement;
-  /** What the card was last built for, so it is only rebuilt when that changes. */
-  private shown = '';
+  /** The card on screen (null with no DOM: the unit tests run the induction headless). */
+  private readonly card: HTMLDivElement | null;
+  /** What the card was last built for (step, Sanity told, the bindings, the gear), checked without allocating. */
+  private shownStep = '';
+  private shownTold = false;
+  private readonly shownKeys: string[] = [];
+  private shownGear = -1;
   private complainIn = 1;
   private disposed = false;
 
@@ -256,13 +267,19 @@ export class InductionDay {
     this.dummy = g.spawnAt('dummy', dx, dz, 0, false);
     if (this.dummy !== null) this.dummy.yaw = Math.atan2(g.level.start.x - dx, g.level.start.z - dz);
     if (plan.terminal !== null) this.placeTerminal(plan.terminal);
-    this.card = document.createElement('div');
-    this.card.className = 'hud-induct';
-    this.card.dataset.testid = 'induction-card';
-    this.card.setAttribute('role', 'status');
-    g.hud.root.append(this.card);
-    g.hud.root.classList.add('has-induction');
+    if (typeof document === 'undefined') {
+      this.card = null;
+    } else {
+      this.card = document.createElement('div');
+      this.card.className = 'hud-induct';
+      this.card.dataset.testid = 'induction-card';
+      this.card.setAttribute('role', 'status');
+      g.hud.root.append(this.card);
+      g.hud.root.classList.add('has-induction');
+    }
     this.markers();
+    // Resumed mid-step: whatever the step needs is put right again.
+    if (st.step === 'label') this.ensureLabels();
     if (st.step === 'ticket') this.ensureTicket();
     // Filled in at once: the card is on screen behind Morag's first words.
     this.render();
@@ -325,6 +342,9 @@ export class InductionDay {
       if (d.aggro && !swinging) cancelWindup(d);
       d.aggro = swinging;
     }
+    // Something took the ticket away (a breach before it was guarded, an
+    // older save): the step would wait for ever, so it comes back.
+    if (st.step === 'ticket' && !g.save.queue.some(isPracticeTicket)) this.ensureTicket();
     this.render();
   }
 
@@ -343,6 +363,9 @@ export class InductionDay {
     this.render();
     g.autosaveSoon();
     switch (this.st.step) {
+      case 'label':
+        this.ensureLabels();
+        break;
       case 'block':
         g.tip('block');
         break;
@@ -350,6 +373,8 @@ export class InductionDay {
         this.ensureTicket();
         break;
       case 'done':
+        // Morag talks to you, not to the floor plan.
+        g.hud.mapOpen = false;
         g.openDialogue(said(MORAG, closingLines(this.st), 'good', 'Get to work'), () => g.endInduction());
         break;
       default:
@@ -394,14 +419,29 @@ export class InductionDay {
    */
   pinnedPrompt(): PromptTarget {
     if (this.disposed) return null;
-    const pp = this.g.player.pos;
     const target = eTarget(this.st.step);
     if (target === 'terminal') {
       const t = this.terminal;
-      return t !== null && Math.hypot(t.it.x - pp.x, t.it.z - pp.z) <= TERMINAL_REACH ? { kind: 'interact', it: t.it } : null;
+      return t !== null && this.inReach(t.it.x, t.it.z, TERMINAL_REACH) ? { kind: 'interact', it: t.it } : null;
     }
     const a = target === 'morag' ? this.morag : target === 'colleague' ? this.colleague : null;
-    return a !== null && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) <= ACTOR_REACH ? { kind: 'actor', a } : null;
+    return a !== null && this.inReach(a.pos.x, a.pos.z, ACTOR_REACH) ? { kind: 'actor', a } : null;
+  }
+
+  /**
+   * In reach the way any E prompt is, and stricter since this one wins: near
+   * enough, in front of you (or right beside you, as for any interactable),
+   * and with no wall between.
+   */
+  private inReach(x: number, z: number, reach: number): boolean {
+    const p = this.g.player;
+    const dx = x - p.pos.x;
+    const dz = z - p.pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist > reach) return false;
+    const dot = (-dx * Math.sin(p.yaw) - dz * Math.cos(p.yaw)) / Math.max(dist, 1e-4);
+    if (dot < 0.2 && dist > 1.4) return false;
+    return lineOfSight(this.g.level, p.pos.x, p.pos.z, x, z);
   }
 
   /**
@@ -426,11 +466,14 @@ export class InductionDay {
     };
   }
 
-  /** The ticket step's one ticket: in the queue (once), with the right fix hinted. */
-  private ensureTicket(): void {
+  /**
+   * The ticket step's one ticket: in the queue (once - calling again changes
+   * nothing), with the right fix hinted. Public for the tests.
+   */
+  ensureTicket(): void {
     const g = this.g;
     const s = g.save;
-    let q = s.queue.find((x) => x.from === PRACTICE_TICKET_FROM);
+    let q = s.queue.find(isPracticeTicket);
     if (q === undefined) {
       q = { t: practiceTicket(), sla: 3600, from: PRACTICE_TICKET_FROM, struck: [], gold: false };
       s.queue.push(q);
@@ -439,9 +482,31 @@ export class InductionDay {
     }
     // An easy one: the hunch always points at the fix (and survives a reload,
     // which rebuilds the fix cache).
+    const cached = g.fixCache.get(q);
+    const ticket = q.t;
+    if (cached !== undefined && cached.hint !== null && TICKETS[ticket]?.fixes.includes(cached.hint) === true) return;
     const opts = g.fixOptions(q);
-    const right = opts.find((o) => TICKETS[q.t]?.fixes.includes(o) === true) ?? null;
+    const right = opts.find((o) => TICKETS[ticket]?.fixes.includes(o) === true) ?? null;
     g.fixCache.set(q, { opts, hint: right });
+  }
+
+  /**
+   * The label step can always be done: the label maker in the bag (sold
+   * already? Morag has a spare) and labels enough to hit a dummy with.
+   */
+  private ensureLabels(): void {
+    const g = this.g;
+    const s = g.save;
+    let topped = false;
+    if (!s.gear.some((x) => x.base === 'labelmaker')) {
+      s.gear.push(plainInstance('labelmaker', new Rng((s.seed ^ 0x1abe1) >>> 0)));
+      topped = true;
+    }
+    if (s.ammo.labels < LABELS_FOR_STEP) {
+      s.ammo.labels = LABELS_FOR_STEP;
+      topped = true;
+    }
+    if (topped) g.hud.toast('Morag hands you a label maker and a fresh roll. "Bring it back. You will not."', 'info');
   }
 
   /** Who has a marker over their head: Morag until you reach her, the colleague until talked to. */
@@ -451,17 +516,31 @@ export class InductionDay {
     if (this.colleague !== null) setMarker(this.colleague, st === 'talk' ? 'PRACTICE' : null, PRACTICE);
   }
 
+  /** Has anything the card shows changed since it was built? Asked every frame, so nothing is allocated. */
+  private stale(): boolean {
+    const st = this.st;
+    const k = this.g.settings.keys;
+    if (st.step !== this.shownStep || st.sanityTold !== this.shownTold || this.g.save.gear.length !== this.shownGear) return true;
+    for (let i = 0; i < CARD_ACTIONS.length; i++) {
+      const a = CARD_ACTIONS[i];
+      if (a === undefined || k[a] !== this.shownKeys[i]) return true;
+    }
+    return false;
+  }
+
   private render(): void {
+    if (!this.stale()) return;
     const g = this.g;
     const st = this.st;
-    const keys = this.keys();
-    const card: Card = cardFor(st, keys);
-    const key = `${st.step}|${String(st.sanityTold)}|${Object.values(keys).join(',')}`;
+    this.shownStep = st.step;
+    this.shownTold = st.sanityTold;
+    this.shownGear = g.save.gear.length;
+    CARD_ACTIONS.forEach((a, i) => { this.shownKeys[i] = g.settings.keys[a]; });
+    const card: Card = cardFor(st, this.keys());
     g.hud.point(card.point);
-    if (key === this.shown) return;
-    this.shown = key;
-    const el = this.card;
     if (st.step !== 'done' && CARDS_SHOWN[CARDS_SHOWN.length - 1] !== st.step) CARDS_SHOWN.push(st.step);
+    const el = this.card;
+    if (el === null) return;
     el.dataset.step = st.step;
     el.replaceChildren();
     if (st.step === 'done') {
@@ -545,8 +624,10 @@ export class InductionDay {
       g.loggedOn.delete(t.it.id);
       this.terminal = null;
     }
-    this.card.remove();
-    g.hud.root.classList.remove('has-induction');
+    if (this.card !== null) {
+      this.card.remove();
+      g.hud.root.classList.remove('has-induction');
+    }
     g.hud.point(null);
   }
 }

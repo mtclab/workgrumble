@@ -65,19 +65,29 @@ have done what it says - look round, walk to Morag, talk down a practice
 colleague (it always works), a quick swing, a heavy swing and the label
 maker on Facilities' training dummy, then block and parry the dummy's
 swings (it winds up like everyone else; a blocked or parried practice swing
-costs nothing, the first one that gets through is where Sanity is explained),
+costs nothing, the first one that gets through is where Sanity is explained,
+and no practice swing takes Sanity below 10, so not even an Ironman can burn
+out on it), the label step hands over a label maker and a roll of labels if
+you are short,
 the one easy ticket on a computer put in the lobby for it, and the map. Only
 the prop the card is about answers E, and it wins the prompt over anything
 else in reach (the computer offers nothing before its step, and stands at
 least three cells from Morag and the colleague where the lobby allows). Until
 the block and parry are done nothing hostile on the floor notices you (no
-aggro, no approach, the boss does not start; hitting someone still does), and
-no staffing call or mentoring request comes. The HUD meters arrive when they
+aggro, no approach, anything summoned arrives calm, and the boss neither
+starts nor takes damage; hitting anyone else still starts that fight), and
+no staffing call or mentoring request comes. The practice ticket has no SLA
+and never breaches; if it goes missing it comes back. The HUD meters arrive when they
 matter: Sanity and the tool from the start, energy with the heavy swing, REP
 and the queue with the ticket, Löyly, promille and caffeine the first time
 each moves (a skipper sees everything). The step is saved with the career; a
 reload comes back at it. Morag, the colleague, the dummy and the lobby
-computer exist only while it runs. Taking the lift early ends it quietly.
+computer exist only while it runs. Only finishing it (the map, then Morag's
+last words) counts as done and ticks the skip box for next time; leaving the
+lobby floor mid-morning (the lift, once the floor is awake) abandons it
+quietly, and the next career's form still offers it. The dummy is not
+trouble: no red dot, not shielded by consultants, not counted toward the
+spawn cap or sneaking practice.
 
 - **Attributes**: Grit, Reflex, Tech, Charm, Patience, Liver.
 - **Skills rise by use** (Morrowind): Hardware (melee), Scripting (ranged),
@@ -573,6 +583,10 @@ its floor after a visible wind-up, and proves a strike is decided where the
 player stands when it lands. `e2e/helldesk-combat.spec.ts` plays the same
 with real keys on the served page (strafe out of a swing; stand still and
 take it; parry on the wind-up; a block held too early only blocks).
+`inductionday.test.ts` runs the real InductionDay headless on generated
+lobbies: clean disposal, the ticket that cannot be stranded, the label
+top-up, the map closing, no per-frame rebuilds, the E prompt with the real
+findPrompt, and the practice-damage floor through the real hurtPlayer.
 `induction.test.ts` covers the induction's step machine (each step moves only
 on its own action, nothing skips ahead, a saved step resumes), the floor
 waking after the block and parry, the meter reveal rules, the cards, where the

@@ -1131,11 +1131,25 @@ function barksFor(a: Actor): readonly string[] {
 const SILENT: readonly ActorKind[] = ['reply', 'jam', 'mosquito', 'turret'];
 
 /** Consultants cover everyone near them. Computed once a frame by the game. */
+/**
+ * Trouble on the floor: anyone hostile except Facilities' training dummy,
+ * which takes hits like a hostile but is not one for anything that counts
+ * them (the spawn cap, sneaking practice, a consultant's shield).
+ */
+export function isFoe(a: Actor): boolean {
+  return a.hostile && a.kind !== 'dummy';
+}
+
+/** Does something summoned now (a breach's manager, a nap's visitor) arrive already after you? Not while the floor sleeps. */
+export function spawnsAggro(ctx: Pick<GameCtx, 'floorAwake'>): boolean {
+  return ctx.floorAwake;
+}
+
 export function updateAuras(actors: readonly Actor[]): void {
   const consultants = actors.filter((c) => c.kind === 'consultant' && !c.resolved);
   for (const a of actors) {
     a.shielded = false;
-    if (!a.hostile || a.resolved || a.kind === 'consultant' || a.kind === 'boss') continue;
+    if (!isFoe(a) || a.resolved || a.kind === 'consultant' || a.kind === 'boss') continue;
     for (const c of consultants) {
       if (Math.hypot(c.pos.x - a.pos.x, c.pos.z - a.pos.z) < AURA_RADIUS) {
         a.shielded = true;
@@ -2054,6 +2068,13 @@ function rewind(ctx: GameCtx, a: Actor): void {
 
 export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null): void {
   if (a.resolved || !a.hostile) return;
+  // The corner office does not open for a new starter mid-induction: a hit is
+  // shrugged off (no damage, no fight) until the floor is awake. Otherwise a
+  // stapler at step 3 was a back door into the whole boss fight.
+  if (a.kind === 'boss' && !a.bossActive && !ctx.floorAwake) {
+    if (a.bubble === null) say(a, 'Not now. Finish your induction first.', 2.5);
+    return;
+  }
   a.hp -= dmg;
   a.flash = 1;
   if (a.kind === 'boss' && !a.bossActive) {

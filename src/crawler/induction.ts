@@ -146,6 +146,35 @@ export function propLive(prop: PropId, step: StepId | 'done'): boolean {
   return eTarget(step) === prop;
 }
 
+/**
+ * What loading a world does to an induction. On the lobby floor it runs.
+ * Finished (the map step done; a reload may have come before Morag's last
+ * words) it ends as a finished one. Anywhere else - the lift taken early once
+ * the floor was awake, the mökki - it is abandoned: it ends without counting
+ * as done, so the next career's form still offers it.
+ */
+export function inductionOnLoad(st: InductionState | null, location: 'office' | 'mokki', floor: number): 'none' | 'run' | 'finish' | 'abandon' {
+  if (st === null) return 'none';
+  if (st.step === 'done') return 'finish';
+  return location === 'office' && floor === 0 ? 'run' : 'abandon';
+}
+
+/** Practice swings never take Sanity below this: an Ironman cannot burn out on the dummy. */
+export const PRACTICE_SANITY_FLOOR = 10;
+
+/** A practice hit's damage, clamped so Sanity stays at or above the floor (never heals). */
+export function practiceDamage(dmg: number, sanity: number): number {
+  return Math.max(0, Math.min(dmg, sanity - PRACTICE_SANITY_FLOOR));
+}
+
+/** Labels the label step guarantees, so the step can always be done. */
+export const LABELS_FOR_STEP = 10;
+
+/** The induction's ticket: never breaches, and comes back if anything takes it away mid-step. */
+export function isPracticeTicket(q: { readonly from: string }): boolean {
+  return q.from === PRACTICE_TICKET_FROM;
+}
+
 /** A save's induction, checked: anything malformed is no induction at all. */
 export function normalizeInduction(raw: unknown): InductionState | null {
   if (typeof raw !== 'object' || raw === null) return null;
@@ -189,9 +218,9 @@ const MOVED = 0.5;
  * stays: the list only ever shrinks. With no induction running, energy and
  * REP have nothing left to wait for.
  */
-export function stillHidden(hidden: readonly HudMeter[], f: MeterFacts): HudMeter[] {
+export function stillHidden<T extends readonly HudMeter[]>(hidden: T, f: MeterFacts): T | HudMeter[] {
   const at = f.step === null ? Infinity : stepIndex(f.step);
-  return hidden.filter((m) => {
+  const waits = (m: HudMeter): boolean => {
     switch (m) {
       case 'energy': return at < stepIndex('heavy');
       case 'rep': return at < stepIndex('ticket');
@@ -200,7 +229,10 @@ export function stillHidden(hidden: readonly HudMeter[], f: MeterFacts): HudMete
       case 'caffeine': return f.caffeine <= 0 && f.crash <= 0;
     }
     return false;
-  });
+  };
+  // Asked every frame while anything waits: the same list back, unallocated,
+  // until something is actually revealed.
+  return hidden.every(waits) ? hidden : hidden.filter(waits);
 }
 
 // ================================================================== the cards

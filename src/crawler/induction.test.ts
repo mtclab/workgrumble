@@ -7,6 +7,7 @@ import {
   eTarget,
   floorAwake,
   HUD_METERS,
+  inductionOnLoad,
   type HudMeter,
   type InductionEvent,
   type InductionState,
@@ -15,6 +16,8 @@ import {
   normalizeInduction,
   partOf,
   PARTS,
+  practiceDamage,
+  PRACTICE_SANITY_FLOOR,
   type PropId,
   propLive,
   SANITY_LINE,
@@ -322,5 +325,35 @@ describe('E at each step: only the step\'s own prop answers', () => {
     expect(STEPS.filter((s) => propLive('terminal', s))).toEqual(['ticket']);
     expect(STEPS.filter((s) => propLive('colleague', s))).toEqual(['talk']);
     expect(PROPS.some((p) => propLive(p, 'done'))).toBe(false);
+  });
+});
+
+describe('loading a world with an induction running', () => {
+  const st = (step: StepId | 'done'): InductionState => ({ step, looked: 0, sanityTold: false });
+  it('runs on the lobby floor, finishes once the map step is done, and is abandoned anywhere else', () => {
+    expect(inductionOnLoad(null, 'office', 0)).toBe('none');
+    expect(inductionOnLoad(st('swing'), 'office', 0)).toBe('run');
+    expect(inductionOnLoad(st('done'), 'office', 0)).toBe('finish');
+    // The lift taken early (once the floor woke), or the mökki: abandoned, never counted as done.
+    expect(inductionOnLoad(st('map'), 'office', 1)).toBe('abandon');
+    expect(inductionOnLoad(st('ticket'), 'mokki', 0)).toBe('abandon');
+  });
+});
+
+describe('practice damage', () => {
+  it('never takes Sanity below the floor, never heals, and is untouched well above it', () => {
+    expect(practiceDamage(5, 100)).toBe(5);
+    expect(practiceDamage(50, PRACTICE_SANITY_FLOOR + 3)).toBe(3);
+    expect(practiceDamage(5, PRACTICE_SANITY_FLOOR)).toBe(0);
+    expect(practiceDamage(5, PRACTICE_SANITY_FLOOR - 4)).toBe(0);
+  });
+});
+
+describe('the meter reveal allocates nothing while nothing changes', () => {
+  it('the same list comes back until a meter is revealed', () => {
+    const hidden = [...HUD_METERS];
+    const f = { step: 'look' as const, loyly: 50, maxLoyly: 50, runes: 0, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
+    expect(stillHidden(hidden, f)).toBe(hidden);
+    expect(stillHidden(hidden, { ...f, caffeine: 90 })).not.toBe(hidden);
   });
 });

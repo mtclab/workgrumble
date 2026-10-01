@@ -26,6 +26,7 @@ import { adjustStanding, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
 import { questEvent } from './questing';
 import { questProgress } from './desk';
+import { practiceDamage } from './induction';
 import { cancelWindup, chargeShown, isParry, meleeStep, screenAngle, telegraphOpacity } from './windup';
 
 export interface Projectile {
@@ -635,6 +636,8 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   if (from !== null && (from.kind === 'boss' || from.kind === 'manager' || kind === 'boss')) dmg *= 1 - d.bossResist;
   if (g.sisuT > 0) dmg *= 0.5;
   if (s.hangover > 0 && !d.ultra) dmg *= 1.1;
+  // Practice never burns anybody out, Ironman included.
+  if (from?.kind === 'dummy') dmg = practiceDamage(dmg, s.sanity);
   s.sanity -= dmg;
   g.hurtFlash = Math.min(1, g.hurtFlash + 0.25 + dmg / 40);
   g.exercise('sisu', Math.min(1, dmg / 20));

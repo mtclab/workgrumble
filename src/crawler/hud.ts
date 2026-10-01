@@ -641,8 +641,11 @@ export class Hud {
   }
 }
 
-function actorColor(a: Actor): string {
+/** A person's dot on the minimap. Exported for the tests. */
+export function actorColor(a: Actor): string {
   if (a.kind === 'boss') return '#ff00ff';
+  // The training dummy is furniture with opinions, not trouble: canvas-coloured, never red.
+  if (a.kind === 'dummy') return '#c9b48c';
   if (a.elite !== null) return '#ff9a3a';
   switch (a.kind) {
     case 'healer': return '#ff9ad5';
