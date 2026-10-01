@@ -42,6 +42,8 @@ export interface QuestState {
   delegated?: boolean;
   /** You already tried to push back on it once. */
   pushed?: boolean;
+  /** Management took the assignment back; it still counts as this floor's staffing. */
+  returned?: boolean;
   /** Mentoring a teammate (`by` is who). */
   mentor?: boolean;
 }
@@ -355,7 +357,7 @@ export function questById(id: string): QuestDef | undefined {
 
 /** Journal quests still in play (not done, missed or handed off). */
 export function isActive(st: QuestState): boolean {
-  return !st.done && st.failed !== true && st.delegated !== true;
+  return !st.done && st.failed !== true && st.delegated !== true && st.returned !== true;
 }
 
 export function currentObjective(st: QuestState): Objective | undefined {

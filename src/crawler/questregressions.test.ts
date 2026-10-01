@@ -5,10 +5,10 @@ import { Game } from './game';
 import { talkManager } from './story';
 import { CONSUMABLES } from './items';
 import { generateLevel } from './level';
-import { placeQuestContent, questEvent } from './questing';
-import { QUESTS, sideQuestsFor, talkGiver } from './quests';
-import { Rng } from './rng';
-import { derive, freshFloorState, newSave, normalizeSave } from './state';
+import { assignStaffed, maybeStaff, offerStaffing, placeQuestContent, pushBack, questEvent, settleWeek, staffingNode } from './questing';
+import { isActive, QUESTS, sideQuestsFor, STAFFED, talkGiver } from './quests';
+import { fx, Rng } from './rng';
+import { derive, freshFloorState, newSave, normalizeSave, workload } from './state';
 import { THEMES } from './textures';
 import { drink } from './vices';
 
@@ -87,4 +87,29 @@ it('reloading mentoring creates no nameless giver and names the teammate in dial
   const node = talkGiver(g, 'm-pair', 'Sam');
   expect(node.text).toContain('Pair with Sam');
   expect(node.text).not.toContain('{m}');
+});
+
+
+it.each(['email', 'call'] as const)('pushed-back staffing counts toward the cap and cannot return this floor: %s', (route) => {
+  const g = host();
+  vi.spyOn(fx, 'chance').mockReturnValue(true);
+  const ids = ['s-patch', 's-kb', 's-incident'];
+  for (const id of ids) {
+    const def = STAFFED.find((q) => q.id === id)!;
+    if (route === 'email') {
+      assignStaffed(g, def, 'The PMO');
+      expect(pushBack(g, g.save.questLog.length - 1)).toContain('off your plate');
+    } else staffingNode(g, def, 'The PMO').options[1]!.pick();
+    expect(offerStaffing(g, 'The PMO', id), 'the same assignment cannot be offered again').toBe(false);
+  }
+  g.save = normalizeSave(JSON.parse(JSON.stringify(g.save)))!;
+  expect(g.save.questLog.filter((q) => q.staffed && q.floor === 1)).toHaveLength(3);
+  expect(g.save.questLog.some(isActive)).toBe(false);
+  expect(workload(g.save).active).toBe(0);
+  maybeStaff(g, 'The PMO', 1);
+  expect(g.afterDialogue, 'three calls are enough even when handed back').toBeNull();
+  expect(offerStaffing(g, 'The PMO')).toBe(false);
+  settleWeek(g);
+  expect(g.save.stats.staffedMissed, 'handing work back is not missing a deliverable').toBe(0);
+  expect(g.save.stats.staffedDone).toBe(0);
 });

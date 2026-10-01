@@ -404,6 +404,7 @@ export function tickQuests(g: Game, dt: number): void {
 
 /** Queue a staffing call (it rings once you are free to answer). */
 export function offerStaffing(g: Game, by: string, id?: string): boolean {
+  if (staffedThisFloor(g) >= 3) return false;
   const pool = staffable(g).filter((d) => id === undefined || d.id === id);
   if (pool.length === 0) return false;
   // P1s are rarer than the Friday kind.
@@ -461,6 +462,8 @@ export function staffingNode(g: Game, def: QuestDef, by: string, inPerson = fals
     { label: load.over > 0 ? `I am already at ${load.active}/${load.capacity}. I genuinely have no bandwidth.` : 'Can this go to someone with more capacity?', tag: `Soft Skills ${Math.round(odds * 100)}%`, pick: () => {
       g.exercise('soft', 1.5);
       if (fx.chance(odds)) {
+        s.questLog.push({ id: def.id, stage: 0, progress: 0, done: false, floor: g.floor, staffed: true, by, pushed: true, returned: true });
+        g.refreshDerived();
         g.achieve('boundaries');
         g.journal(`I pushed back on "${def.title}". It went to somebody else. Nothing caught fire.`);
         return said(by, 'Fine. Fine! I will find someone. Enjoy your "bandwidth".', 'neutral');
@@ -494,7 +497,7 @@ export function staffingNode(g: Game, def: QuestDef, by: string, inPerson = fals
 /** Put an assignment on your plate - or, with `delegate`, on a helper's. */
 export function assignStaffed(g: Game, def: QuestDef, by: string, delegate?: string): QuestState | null {
   const s = g.save;
-  if (s.questLog.some((st) => st.id === def.id && isActive(st))) return null;
+  if (s.questLog.some((st) => st.id === def.id && (isActive(st) || st.floor === g.floor))) return null;
   const overBefore = workload(s).over;
   const wasFull = workload(s).active >= workload(s).capacity;
   const st: QuestState = { id: def.id, stage: 0, progress: 0, done: false, floor: g.floor, staffed: true, by };
@@ -543,7 +546,8 @@ export function pushBack(g: Game, index: number): string {
   const def = questById(st.id);
   g.exercise('soft', 1.5);
   if (fx.chance(pushBackOdds(g))) {
-    g.save.questLog = g.save.questLog.filter((q) => q !== st);
+    st.returned = true;
+    delete st.deadline;
     g.achieve('boundaries');
     g.journal(`I emailed ${st.by ?? 'management'} about "${def?.title ?? st.id}" and it went to somebody else.`);
     g.refreshDerived();
@@ -559,7 +563,7 @@ export function settleWeek(g: Game): string {
   let delivered = 0;
   let missedN = 0;
   for (const st of s.questLog) {
-    if (st.staffed !== true) continue;
+    if (st.staffed !== true || st.returned === true) continue;
     const withHelper = st.delegated === true && !st.done && st.failed !== true;
     // Settled weeks stay settled; anything still open is due now, wherever it came from.
     if (st.floor !== g.floor && !isActive(st) && !withHelper) continue;
