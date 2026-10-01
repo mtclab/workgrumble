@@ -7,7 +7,7 @@ const source = readFileSync('scripts/helldesk-balance/run.mjs', 'utf8')
   .replace(/^import .*;\n/gm, '')
   .replaceAll('import.meta.url', "'file:///scripts/helldesk-balance/run.mjs'");
 
-async function run(seed = 1700000000) {
+async function run(seed = 1700000000, mission?: string, approach = 'quiet') {
   const calls: string[] = [];
   const lines: string[] = [];
   let output = '';
@@ -18,14 +18,16 @@ async function run(seed = 1700000000) {
     loadFloor: () => { calls.push(`spawn rung ${game.save.rung} seed ${game.save.seed}`); },
   };
   const floors = [0, 1, 2].map((floor) => ({ floor, floorSec: 10, combatSec: 4, combatShare: 0.4, aggroEpisodes: 2 }));
+  const m = { card: mission, seed, seconds: 120, maxTier: 1, detectedAt: null, noticedAt: 24, over: false, finish: 'done', result: { quiet: true, base: 120, bonus: 48, perResolve: 0, repTotal: 168 } };
   const bot = {
-    policy: {}, floors: [] as typeof floors, events: [], deaths: [],
+    policy: {}, cur: { combatSec: 3, minSanity: 0.9 }, floors: [] as typeof floors, events: [], deaths: [],
     seed: (n: number) => { calls.push(`bot seed ${n}`); },
-    run: (_sec: number, n: number) => { bot.floors = floors.slice(0, n); return { time: 30 }; },
+    run: (_sec: number, n: number) => { bot.floors = floors.slice(0, n); m.over = true; return { time: 30 }; },
   };
   const date = { now: () => 42 };
   const browserContext = {
-    window: { __crawler: game, __bot: bot }, Date: date,
+    window: { __crawler: game, __bot: bot, __helldesk: { mission: () => m } }, Date: date,
+    document: { querySelector: () => m.over ? {} : null },
     localStorage: { clear: () => undefined, setItem: () => undefined },
     arg: undefined as unknown,
   };
@@ -37,7 +39,9 @@ async function run(seed = 1700000000) {
     on: () => undefined,
     evaluate: (fn: { toString: () => string }, arg?: unknown) => Promise.resolve(evaluate(fn, arg)),
     addInitScript: (fn: { toString: () => string }, arg: unknown) => { calls.push('init'); evaluate(fn, arg); },
-    goto: () => { calls.push('navigate'); },
+    goto: (url: string) => { calls.push('navigate'); calls.push(url); },
+    waitForFunction: () => undefined,
+    keyboard: { press: (key: string) => { calls.push(key); game.screen = 'play'; } },
     reload: () => undefined,
     waitForTimeout: () => undefined,
     click: (text: string) => {
@@ -48,8 +52,9 @@ async function run(seed = 1700000000) {
   };
   const context = {
     chromium: { launch: () => ({ newPage: () => page, close: () => { calls.push('closed'); } }) },
-    process: { argv: ['node', 'run.mjs', JSON.stringify({ name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3 })], env: { OUT: 'result.json' } },
+    process: { argv: ['node', 'run.mjs', JSON.stringify({ name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3, ...(mission ? { mission, approach } : {}) })], env: { OUT: 'result.json' } },
     URL,
+    missionRecord: runInNewContext(readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replace('export ', '') + '\nmissionRecord') as unknown,
     readFileSync: () => '',
     writeFileSync: (_path: string, text: string) => { output = text; },
     console: { log: (...parts: unknown[]) => lines.push(parts.map(String).join(' ')) },
@@ -76,5 +81,26 @@ describe('seeded balance career', () => {
     await expect(run(-1)).rejects.toThrow('seed must be a uint32');
     await expect(run(1.5)).rejects.toThrow('seed must be a uint32');
     await expect(run(4294967296)).rejects.toThrow('seed must be a uint32');
+  });
+});
+
+
+describe('mission runner', () => {
+  it('loads the pinned card, takes the briefing with Enter and writes the displayed reward', async () => {
+    const r = await run(17, 'stapler');
+    expect(r.calls).toContain('http://localhost:4179/crawler.html?mission=stapler&seed=17');
+    expect(r.calls).toContain('Enter');
+    expect(r.calls).not.toContain('Skip the induction');
+    expect(JSON.parse(r.output)).toMatchObject({ mission: {
+      card: 'stapler', seed: 17, approach: 'quiet', finish: 'quiet', seconds: 120,
+      maxTier: 1, detectedAt: null, noticedAt: 24, repTotal: 168, repBase: 120,
+      repQuietBonus: 48, repResolves: 0, repPerMin: 84, combatSec: 3, minSanityPct: 90,
+    }, errors: [] });
+    expect(r.calls.at(-1)).toBe('closed');
+  });
+
+  it('rejects unknown cards and approaches before opening a browser', async () => {
+    await expect(run(17, 'unknown')).rejects.toThrow('mission must be stapler or vendor');
+    await expect(run(17, 'vendor', 'cheat')).rejects.toThrow('approach must be quiet, loud or auto');
   });
 });

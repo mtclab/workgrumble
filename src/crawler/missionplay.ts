@@ -6,7 +6,7 @@ import { disposeTree } from './dispose';
 import { type Actor, walkClear } from './entities';
 import type { Game } from './game';
 import { cellCenter, flowField, freeSpotIn, lineOfSight, type Room, toCell } from './level';
-import { type CrowdSpec, type Finish, type MissionCard, MissionRun, type Outcome, type Payout } from './mission';
+import { type CrowdSpec, type Finish, type MissionCard, MissionRun, type Outcome, payout, type Payout } from './mission';
 import { QUEST_ITEMS } from './quests';
 import { Rng } from './rng';
 import * as screens from './screens';
@@ -74,11 +74,16 @@ export class MissionPlay {
   private readonly repAtStart: number;
   private readonly standingAtStart: { management: number; staff: number };
   private tinted = false;
+  private detectedAt: number | null = null;
+  private noticedAt: number | null = null;
+  private noiseEvents = 0;
 
   constructor(private readonly g: Game, readonly card: MissionCard, readonly seed: number, readonly pinned: boolean, private readonly view: MissionView = domView(g, card)) {
     this.rng = new Rng(seed ^ 0x6d697373);
     const start: Tier = card.style === 'loud' ? 3 : 0;
     this.run = new MissionRun(card, start);
+    if (start >= 2) this.detectedAt = 0;
+    if (start >= 1) this.noticedAt = 0;
     this.watch = new Watch(g.level, { view: () => this.seen(), tierChanged: (to, from, by, why) => this.tierChanged(to, from, by, why) }, start);
     this.repAtStart = g.save.rep;
     this.standingAtStart = { management: g.save.standing.management, staff: g.save.standing.staff };
@@ -220,6 +225,7 @@ export class MissionPlay {
 
   noise(kind: NoiseKind): void {
     if (this.run.over) return;
+    this.noiseEvents++;
     this.watch.noise(kind, this.g.player.pos.x, this.g.player.pos.z, this.g.time);
   }
 
@@ -249,6 +255,8 @@ export class MissionPlay {
   private tierChanged(to: Tier, _from: Tier, by: Actor | null, why: string): void {
     const g = this.g;
     this.run.tier(to);
+    if (to >= 1 && this.noticedAt === null) this.noticedAt = this.run.seconds;
+    if (to >= 2 && this.detectedAt === null) this.detectedAt = this.run.seconds;
     if (to === 1) {
       sfx.ding();
       g.hud.toast(`NOTICED: ${why}.`, 'bad');
@@ -413,6 +421,10 @@ export class MissionPlay {
       tier: this.watch.tier, tierName: TIER_NAMES[this.watch.tier], maxTier: this.run.maxTier,
       seconds: this.run.seconds, objectiveDone: this.run.objectiveDone, progress: this.run.progress,
       spoiled: this.run.spoiled, over: this.run.over, finish: this.run.outcome?.finish ?? null,
+      detectedAt: this.detectedAt, noticedAt: this.noticedAt, noiseEvents: this.noiseEvents,
+      result: this.run.outcome === null ? null : {
+        ...payout(this.card, this.run.outcome), repTotal: Math.round(this.g.save.rep - this.repAtStart),
+      },
       actors: [...this.watch.watchers.values()].map((w) => ({
         id: w.actor.id, name: w.actor.name, kind: w.actor.kind, tag: w.tag, sort: w.sort,
         hostile: w.actor.hostile, aggro: w.actor.aggro, resolved: w.actor.resolved,
@@ -491,6 +503,10 @@ export interface MissionDebug {
   readonly spoiled: boolean;
   readonly over: boolean;
   readonly finish: Finish | null;
+  readonly detectedAt: number | null;
+  readonly noticedAt: number | null;
+  readonly noiseEvents: number;
+  readonly result: (Payout & { readonly repTotal: number }) | null;
   readonly actors: readonly {
     readonly id: number; readonly name: string; readonly kind: string; readonly tag: string | null; readonly sort: string;
     readonly hostile: boolean; readonly aggro: boolean; readonly resolved: boolean;

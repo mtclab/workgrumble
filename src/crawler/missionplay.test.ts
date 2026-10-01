@@ -467,3 +467,23 @@ describe('the browser test\'s setups (e2e/helldesk-mission.spec.ts) exist', () =
     expect(h.mission.watch.watchers.get(who.id)?.bark).not.toBe('');
   });
 });
+
+
+describe('mission measurements match the results card', () => {
+  it('keeps the first tier times, counts noise and exposes the actual Rep on the card', () => {
+    const h = new Host(STAPLER, 17);
+    const m = h.mission;
+    m.run.tick(12);
+    m.noise('swing');
+    const hr = m.crowd[0]!;
+    m.aggroed(hr);
+    m.run.tick(9);
+    m.aggroed(m.crowd[1]!);
+    m.run.took('redstapler');
+    m.finish('done');
+    expect(m.debug()).toMatchObject({ seconds: 21, detectedAt: 12, noticedAt: 12, noiseEvents: 1,
+      result: { repTotal: 120, base: 120, bonus: 0, perResolve: 0, quiet: false } });
+    expect(h.shown?.rows.get('Rep')).toBe('+120 (card 120, quiet bonus 0, resolves 0)');
+    expect(new Host(VENDOR_DAY, 17).mission.debug().detectedAt).toBe(0);
+  });
+});
