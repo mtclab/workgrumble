@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { expect, it, vi } from 'vitest';
-import { strike } from './combat';
-import { createActor } from './entities';
+import { hurtPlayer, splash, strike } from './combat';
+import { createActor, hurtActor } from './entities';
 import type { Game } from './game';
 import type { Level } from './level';
 import { Rng } from './rng';
@@ -18,7 +18,8 @@ function fight(awake: boolean): Game {
     player: { pos: new THREE.Vector3(10, 0, 10), yaw: 0 },
     level: { w: 20, h: 20, floor: new Uint8Array(400).fill(1), opaque: new Uint8Array(400), seen: new Uint8Array(400) } as Level,
     particles: { emit: vi.fn() }, fxMeshes: [], floaters: [], exercise: vi.fn(), healPlayer: vi.fn(),
-    refreshDerived: vi.fn(), bossStart: vi.fn(), floatText: vi.fn(), hud: { toast: vi.fn() },
+    refreshDerived: vi.fn(), bossStart: vi.fn(), noticed: vi.fn(), floatText: vi.fn(), shake: vi.fn(),
+    screen: 'play', hurtFlash: 0, hud: { toast: vi.fn(), flash: vi.fn(), hitFrom: vi.fn(), hitAround: vi.fn() },
   } as unknown as Game;
   g.actors.push(createActor(g, 'boss', 10, 8, 0, new Rng(7), 10));
   return g;
@@ -64,4 +65,31 @@ it('Vihtaisku healing comes from health actually lost, including shields', () =>
   const hp = b.hp;
   castSpell(g);
   expect(heal).toHaveBeenCalledWith((hp - b.hp) / 3, '');
+});
+
+it('counts landed player hits and incoming damage for combat time, excluding immune hits and teammate damage', () => {
+  const g = fight(false);
+  const hit = vi.fn();
+  g.onCombatDamage = hit;
+  const b = g.actors[0]!;
+  strike(g, b, 10, null, 'ranged');
+  expect(hit).not.toHaveBeenCalled();
+  Object.assign(g, { floorAwake: true });
+  hurtActor(g, b, 10, null, false);
+  splash(g, b.pos, 2, 10, -1, true);
+  expect(hit).not.toHaveBeenCalled();
+  b.aggro = false;
+  const hp = b.hp;
+  strike(g, b, 10, null, 'ranged');
+  expect(b.hp).toBeLessThan(hp);
+  expect(hit).toHaveBeenCalledTimes(1);
+  splash(g, b.pos, 2, 10);
+  expect(hit).toHaveBeenCalledTimes(2);
+  const sanity = g.save.sanity;
+  hurtPlayer(g, 10, null, 'ticket');
+  expect(g.save.sanity).toBeLessThan(sanity);
+  expect(hit).toHaveBeenCalledTimes(3);
+  g.save.sanity -= 1; // Passive drains do not announce a landed hit.
+  hurtPlayer(g, 0, null, 'ticket');
+  expect(hit).toHaveBeenCalledTimes(3);
 });

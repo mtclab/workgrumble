@@ -270,6 +270,8 @@ export interface GameCtx {
   readonly floor: number;
   readonly difficulty: number;
   readonly time: number;
+  /** A landed hit by or on the player, for balance measurements. */
+  onCombatDamage?: () => void;
   /** 0..1 how hard you are to notice right now (gear, skill, sneaking). */
   readonly stealth: number;
   readonly invisible: boolean;
@@ -1076,6 +1078,7 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.poisonT > 0) {
     a.poisonT -= dt;
     a.hp -= a.poisonDps * dt;
+    if (a.poisonDps > 0) ctx.onCombatDamage?.();
     a.hpFill.scale.x = Math.max(0.001, a.hp / a.maxHp);
     a.hpFill.position.x = -(1 - a.hpFill.scale.x) / 2;
   }
@@ -2109,7 +2112,7 @@ function updateDog(ctx: GameCtx, a: Actor, dt: number, dx: number, dz: number, d
     a.cooldown = 1.0;
     a.attackAnim = 1;
     const scale = ctx.helperDamageMult(a) * (1 + ctx.floor * 0.3) * ctx.difficulty;
-    hurtActor(ctx, target, 11 * scale, new THREE.Vector3(tx, 0, tz).normalize().multiplyScalar(2));
+    hurtActor(ctx, target, 11 * scale, new THREE.Vector3(tx, 0, tz).normalize().multiplyScalar(2), false);
     // Managers especially hate being barked at: they lose their train of thought.
     if (target.kind === 'manager') target.summonIn += 3;
     if (fx.chance(0.2)) say(a, 'GRRR-WUF!', 1.5, ...ALLY_BUBBLE);
@@ -2166,7 +2169,7 @@ function rewind(ctx: GameCtx, a: Actor): void {
   if (a.pending === 'boss.lasers') markLasers(ctx, a);
 }
 
-export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null): void {
+export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null, player = true): void {
   if (a.resolved || !a.hostile) return;
   // The corner office does not open for a new starter mid-induction: a hit is
   // shrugged off (no damage, no fight) until the floor is awake. Otherwise a
@@ -2176,6 +2179,7 @@ export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vect
     return;
   }
   a.hp -= dmg;
+  if (player && dmg > 0) ctx.onCombatDamage?.();
   a.flash = 1;
   if (a.kind === 'boss' && !a.bossActive) {
     // Hitting a boss starts the fight properly, wherever you hit it from.

@@ -70,7 +70,7 @@ export default defineConfig({
     // is the half of this product a browser cannot reach and wrangler is not
     // installed here, so if these did not run in the local gate they would not
     // run anywhere before a deploy.
-    include: ['src/**/*.test.ts', 'worker/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'worker/**/*.test.ts', 'scripts/helldesk-balance/*.test.ts'],
     setupFiles: ['./src/engine-api/vitest-setup.ts'],
   },
 });

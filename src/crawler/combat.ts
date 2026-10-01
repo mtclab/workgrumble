@@ -421,7 +421,7 @@ export function splash(g: Game, at: THREE.Vector3, radius: number, dmg: number, 
     if (!a.hostile || a.resolved || a.id === skip || (ally && allyIgnores(g, a))) continue;
     const dist = Math.hypot(a.pos.x - at.x, a.pos.z - at.z);
     if (dist > radius) continue;
-    hurtActor(g, a, dmg * (1 - dist / (radius * 1.5)) * (a.shielded ? 0.5 : 1), new THREE.Vector3(a.pos.x - at.x, 0, a.pos.z - at.z).normalize().multiplyScalar(5));
+    hurtActor(g, a, dmg * (1 - dist / (radius * 1.5)) * (a.shielded ? 0.5 : 1), new THREE.Vector3(a.pos.x - at.x, 0, a.pos.z - at.z).normalize().multiplyScalar(5), !ally);
   }
 }
 
@@ -519,12 +519,12 @@ export function updateProjectiles(g: Game, dt: number): void {
               a.poisonT = 6;
               a.poisonDps = p.damage;
             }
-            hurtActor(g, a, p.damage * 0.5, knock);
+            hurtActor(g, a, p.damage * 0.5, knock, p.owner === null);
           } else if (p.owner === null) {
             strike(g, a, p.damage, knock, 'ranged');
             if (a.kind === 'dummy') g.practice({ type: 'hit', how: p.kind === 'label' ? 'label' : 'other' });
           } else {
-            hurtActor(g, a, p.damage * (a.shielded ? 0.5 : 1), knock);
+            hurtActor(g, a, p.damage * (a.shielded ? 0.5 : 1), knock, false);
           }
           sfx.hit();
           dead = true;
@@ -652,6 +652,7 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   // Practice never burns anybody out, Ironman included.
   if (from?.kind === 'dummy') dmg = practiceDamage(dmg, s.sanity);
   s.sanity -= dmg;
+  if (dmg > 0) g.onCombatDamage?.();
   g.hurtFlash = Math.min(1, g.hurtFlash + 0.25 + dmg / 40);
   g.exercise('sisu', Math.min(1, dmg / 20));
   if (from?.elite === 'passive') s.energy = Math.max(0, s.energy - 12);
