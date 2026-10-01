@@ -84,6 +84,8 @@ export class MissionPlay {
     this.standingAtStart = { management: g.save.standing.management, staff: g.save.standing.staff };
     this.placeCrowd();
     if (card.objective.kind === 'take' && g.level.recipe !== undefined && g.level.recipe.closet >= 0) g.lockerItems.set(g.level.recipe.closet, card.objective.item);
+    // The eye and the objective are up from the briefing on.
+    this.drawHud();
   }
 
   /** What the watchers can know about the player. */

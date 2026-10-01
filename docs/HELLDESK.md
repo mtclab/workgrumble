@@ -536,6 +536,68 @@ it found so far: the first boss's summons had no cap, a woken boss chased
 you round the whole floor for ever, managers could chain meeting invites
 into a lock, and floor 3 (index 3) was a wall - all fixed (see Combat).
 
+## Spike: missions (0.3.0, behind ?mission=)
+
+A prototype of the 0.3.0 proposal (`docs/SPEC_HELLDESK_030.md` 6.0), for
+walking and measuring; nothing in it is decided. `crawler.html?mission=stapler`
+or `?mission=vendor` (add `&seed=N` to pin the map) puts a fresh trainee
+straight onto that card: no induction, no boss, no staffing, and nothing is
+saved, so career saves are untouched. Without the query the page is what it
+always was.
+
+- **Templates** (`templates.ts`): the corner-office row (T3) with a service
+  spine stub from the lobby's back door to HR's back door, and the meeting
+  ring (T2) of glass boxes, drawn as ASCII footprints and passed to
+  `generateLevel` as an optional `recipe`. Glass is solid and see-through.
+  Rooms are furnished by kind as before; a mission brings its own people.
+  The lift is in the lobby. No recipe builds exactly the floors it did
+  (`levelprint.test.ts`).
+- **Cards** (`mission.ts` rules, `missions.ts` data): #1 The Red Stapler,
+  Recovered (sneaky: take it from the locked closet in HR's office, HR must
+  not notice you) and #7 Vendor Day (loud: resolve four vendors, a
+  consultant shields them). E on the lift closes a card once its objective
+  is done, or offers to abort it; the results card shows quiet or loud,
+  time, Rep, standing and the escalation reached, with Again and Title. A
+  quiet finish (never above Noticed) pays the card plus 40%, Management +3,
+  Staff +2; a loud one pays the card, and its resolves paid as they happened.
+- **Stealth** (`stealth.ts`): suspicion 0-100 per person from a 110 degree
+  cone (users see 9 m, managers 13; crouching halves the rise; past 60% of
+  the range half again) and from noise (sprint 6 m +15, once a second;
+  swing 8 m +30; anything fired 18 m +60), which turns them to face the
+  spot. It decays at 8/s unseen, only below 40. At 40 they bark, show a
+  "?" and walk to where they saw or heard it, and nothing can make them
+  Alert during the first second of that walk; at 80 they are Alert, attack
+  no sooner than half a second later (then the wind-up), and everyone within
+  12 m (6 through a wall) is Noticed. Two people Alert and the mission is
+  Escalated: today's game, everyone hostile on sight. The tier (Quiet,
+  Noticed, Alert, Escalated) only goes up, and every change is announced (a
+  toast, the tannoy at Alert, the alarm tint and boss music at Escalated, the
+  HUD eye closed, half open, open red). Each person shows an amber bar as it
+  rises, through walls from 40 up. HR walks a seeded route of corridor
+  nodes with 2-4 s pauses; desk-bound people face the way into their room and
+  sweep a 90 degree look. A lock picked in someone's cone is a crime: an HR
+  warning and that witness Alert.
+- **Not in the spike**: light, disguises, hiding, distractions, talking a
+  Noticed person down, locked doors (the spine's doors are open), the
+  20-second-fight and mission-SLA escalations, saving mid-card, and the hub.
+- **Handles** (read-only, for the balance bot and the browser test):
+  `__helldesk.mission()` gives the card, the tier and the highest reached,
+  each watched person's suspicion, mood, last bark and patrol route, the
+  spine's cells and the run; `missionToSpine()` and `missionStandInView(id,
+  m)` only place the player.
+
+Code: `templates.ts`, `stealth.ts`, `mission.ts`, `missions.ts`,
+`missionplay.ts` (the game side: crowd, watch, HUD, bars, lift, results),
+with small hooks in `level.ts`, `entities.ts` (`GameCtx.watch`), `game.ts`,
+`interact.ts`, `combat.ts` and `main.ts`. Tests: `levelprint.test.ts`,
+`levelrecipe.test.ts` (each recipe connected on 150 seeds), `stealth.test.ts`
+(the real AI: no rise without sight or noise, crouch halves, noise jumps and
+turns, nobody from Quiet to a strike inside 1.5 s, earshot, escalation one
+way, the pay), `missionplay.test.ts` (the real MissionPlay on real recipe
+floors: the crowd placed and reachable on 150 seeds, the patrol, quiet and
+loud finishes, abort, the crime, the browser test's setups) and
+`e2e/helldesk-mission.spec.ts`.
+
 ## Performance
 
 `scripts/perf/bench.mjs` measures fixed scenes (title, floor 1, floor 4, the

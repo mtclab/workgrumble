@@ -2024,7 +2024,6 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.player.crouching && a.kind !== 'mosquito') this.hud.toast(`${a.name} spotted you.`, 'bad');
     this.mission?.aggroed(a);
   }
-
   bossStart(a: Actor): void { host.bossStart(this, a); }
   bossLeash(a: Actor): void { host.bossLeash(this, a); }
   bossParley(a: Actor): void { host.bossParley(this, a); }
