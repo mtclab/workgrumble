@@ -11,6 +11,7 @@ import {
   hurtPlayer,
   playerAttackInput,
   resolveActor,
+  restoreGearDrops,
   updateFx,
   updateHazards,
   updatePickups,
@@ -608,6 +609,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
         from: 'The Service Desk', goal: 1, progress: 0, reward: 0, done: false,
       });
     }
+    restoreGearDrops(this);
     // A boss already resolved: whatever it dropped is still lying there.
     if (fs.bossDone) redropBossLoot(this);
     placeQuestContent(this);

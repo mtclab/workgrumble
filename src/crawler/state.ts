@@ -104,6 +104,8 @@ export interface FloorState {
   picked: string[];
   /** Level spawns (by index) already resolved: they stay resolved on a reload. */
   resolved: number[];
+  /** Uncollected gear, at its current spot on this floor. */
+  gearDrops: { gear: GearInstance; x: number; z: number }[];
   /** People who turned up because of an earlier choice, so a reload keeps them. */
   extras: { kind: 'reply' | 'customer' | 'jam' | 'vendor'; x: number; z: number; name?: string }[];
   /** Once-a-floor saves already spent. */
@@ -223,7 +225,7 @@ export interface SaveState {
 }
 
 export function freshFloorState(floor: number): FloorState {
-  return { floor, bossDone: false, used: [], picked: [], resolved: [], extras: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0, suo: false, coldSteam: false };
+  return { floor, bossDone: false, used: [], picked: [], resolved: [], gearDrops: [], extras: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0, suo: false, coldSteam: false };
 }
 
 export function freshWeekend(): WeekendState {

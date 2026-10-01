@@ -710,7 +710,7 @@ export function redropBossLoot(g: Game): void {
   const s = g.save;
   const at = new THREE.Vector3(g.level.bossSpawn.x, 0, g.level.bossSpawn.z);
   const u = BOSS_UNIQUES[g.floor % BOSS_UNIQUES.length];
-  if (u !== undefined && s.flags[`unique_${u}`] !== true) {
+  if (u !== undefined && s.flags[`unique_${u}`] !== true && !g.pickups.some((p) => p.gear?.unique === u)) {
     const inst = uniqueInstance(u, g.lootRng);
     if (inst !== null) dropGear(g, at, inst);
   }
@@ -824,10 +824,13 @@ function pickupMesh(color: number, emissive: number, size = 0.3): THREE.Mesh {
   return new THREE.Mesh(new THREE.BoxGeometry(size, size, size), new THREE.MeshLambertMaterial({ color, emissive }));
 }
 
-function placeDrop(g: Game, at: THREE.Vector3, mesh: THREE.Object3D, pickup: Omit<Pickup, 'mesh' | 't'>): void {
-  mesh.position.set(at.x + fx.range(-0.8, 0.8), 0.4, at.z + fx.range(-0.8, 0.8));
+function placeDrop(g: Game, at: THREE.Vector3, mesh: THREE.Object3D, pickup: Omit<Pickup, 'mesh' | 't'>, scatter = true): void {
+  mesh.position.set(at.x + (scatter ? fx.range(-0.8, 0.8) : 0), 0.4, at.z + (scatter ? fx.range(-0.8, 0.8) : 0));
   g.scene.add(mesh);
   g.pickups.push({ ...pickup, mesh, t: 0 });
+  if (pickup.gear !== null && !g.save.floorState.gearDrops.some((p) => p.gear.uid === pickup.gear?.uid)) {
+    g.save.floorState.gearDrops.push({ gear: pickup.gear, x: mesh.position.x, z: mesh.position.z });
+  }
 }
 
 export function dropItem(g: Game, at: THREE.Vector3, id: string): void {
@@ -887,7 +890,7 @@ export function dropLoot(g: Game, at: THREE.Vector3, rich: boolean): void {
   dropItem(g, at, r.pick(pool));
 }
 
-export function dropGear(g: Game, at: THREE.Vector3, inst: GearInstance): void {
+export function dropGear(g: Game, at: THREE.Vector3, inst: GearInstance, scatter = true): void {
   const col = parseInt(RARITY_INFO[inst.rarity].color.slice(1), 16);
   // The shape says the rarity as well as the colour does (RARITY_SHAPE).
   const shape = RARITY_SHAPE[inst.rarity];
@@ -896,7 +899,12 @@ export function dropGear(g: Game, at: THREE.Vector3, inst: GearInstance): void {
       : shape === 'dodeca' ? new THREE.DodecahedronGeometry(0.26)
         : new THREE.IcosahedronGeometry(0.3);
   const mesh = new THREE.Mesh(geo,new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.4 }));
-  placeDrop(g, at, mesh, { kind: 'gear', id: inst.base, amount: 1, gear: inst, permanent: true });
+  placeDrop(g, at, mesh, { kind: 'gear', id: inst.base, amount: 1, gear: inst, permanent: true }, scatter);
+}
+
+/** Rebuild saved drops without scattering them or rolling another item. */
+export function restoreGearDrops(g: Game): void {
+  for (const p of g.save.floorState.gearDrops) dropGear(g, new THREE.Vector3(p.x, 0, p.z), p.gear, false);
 }
 
 /** A random piece of kit, scaled to the floor; elites and closets roll better. */
@@ -944,7 +952,15 @@ export function updatePickups(g: Game, dt: number): void {
       p.mesh.position.x += (pp.x - p.mesh.position.x) * dt * 6;
       p.mesh.position.z += (pp.z - p.mesh.position.z) * dt * 6;
     }
+    if (p.gear !== null) {
+      const record = s.floorState.gearDrops.find((r) => r.gear.uid === p.gear?.uid);
+      if (record !== undefined) {
+        record.x = p.mesh.position.x;
+        record.z = p.mesh.position.z;
+      }
+    }
     const remove = (): false => {
+      if (p.gear !== null) s.floorState.gearDrops = s.floorState.gearDrops.filter((r) => r.gear.uid !== p.gear?.uid);
       g.scene.remove(p.mesh);
       disposeTree(p.mesh, true);
       return false;
