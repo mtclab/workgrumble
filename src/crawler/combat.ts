@@ -1174,3 +1174,28 @@ export function stageDuel(g: Game, kind: ActorKind, dist: number): number {
   }
   return -1;
 }
+
+/**
+ * Stand the player `dist` metres from `a` on open floor, facing them, with
+ * nothing between: where a browser test starts the walk-up to somebody who
+ * will not hold still (a boss). It moves only the player; whatever happens
+ * next is the game's. False if no such spot is free.
+ */
+export function standBeforeActor(g: Game, a: Actor, dist: number): boolean {
+  const lv = g.level;
+  for (let k = 0; k < 24; k++) {
+    const ang = (k * Math.PI) / 12;
+    const x = a.pos.x + Math.sin(ang) * dist;
+    const z = a.pos.z + Math.cos(ang) * dist;
+    const cx = toCell(x);
+    const cz = toCell(z);
+    if (cx < 0 || cz < 0 || cx >= lv.w || cz >= lv.h || lv.solid[cz * lv.w + cx] !== 0 || lv.floor[cz * lv.w + cx] !== 1) continue;
+    if (!lineOfSight(lv, x, z, a.pos.x, a.pos.z) || !walkClear(lv, x, z, a.pos.x, a.pos.z)) continue;
+    g.player.pos.set(x, 0, z);
+    // The player faces -sin(yaw), -cos(yaw).
+    g.player.yaw = Math.atan2(x - a.pos.x, z - a.pos.z);
+    g.player.pitch = 0;
+    return true;
+  }
+  return false;
+}

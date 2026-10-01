@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { sfx } from './audio';
 import type { Game } from './game';
-import { isSolidAt, toCell } from './level';
+import { isSolidAt } from './level';
 import { fx } from './rng';
 import { hash } from './voxels';
 import { farthestCell, figureCell, SteamClock, SUO_LINES } from './suo';
@@ -318,35 +318,6 @@ export class Vision {
 }
 
 // ================================================================== handles for the browser tests
-
-/**
- * Stand the player in the cell beside this floor's kiuas, close and facing
- * it, so a browser test can press E on a real sauna. Only a spot where E
- * would reach the kiuas (and not, say, the tonttu) counts. False if the
- * floor has no kiuas to use.
- */
-export function standAtKiuas(g: Game, find: (g: Game) => void): boolean {
-  const lv = g.level;
-  for (const it of lv.interactables) {
-    if (it.kind !== 'kiuas' || it.used) continue;
-    const cx = toCell(it.x);
-    const cz = toCell(it.z);
-    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-      const i = (cz + oz) * lv.w + cx + ox;
-      if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
-      // Just inside the neighbouring cell, on the side towards the kiuas.
-      const x = it.x + ox * 1.4;
-      const z = it.z + oz * 1.4;
-      g.player.pos.set(x, 0, z);
-      g.player.yaw = Math.atan2(ox, oz);
-      g.player.pitch = 0;
-      find(g);
-      const t = g.promptTarget;
-      if (t !== null && t.kind === 'interact' && t.it === it) return true;
-    }
-  }
-  return false;
-}
 
 /**
  * Stand the player a short walk (1.6 m) from the Löylyhenki, facing it, so a

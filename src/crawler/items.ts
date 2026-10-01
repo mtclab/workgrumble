@@ -160,7 +160,6 @@ for (const b of BOOKS) {
 }
 
 export const DRINKS = CONSUMABLES.filter((c) => c.bac !== undefined).map((c) => c.id);
-export const CAFFEINATED = CONSUMABLES.filter((c) => c.mg !== undefined).map((c) => c.id);
 export const BOOK_IDS = CONSUMABLES.filter((c) => c.book !== undefined).map((c) => c.id);
 export const RUNES = CONSUMABLES.filter((c) => c.rune !== undefined).map((c) => c.id);
 /** Cans you can find lying about (not the king: he has his own odds). */

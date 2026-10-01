@@ -26,10 +26,6 @@ export const UPGRADES: readonly UpgradeDef[] = [
   { id: 'library', name: 'Reading Nook', desc: 'A shelf, a lamp, a chair. Every weekend you find a skill book on it.', price: 280 },
 ];
 
-export function upgradeById(id: string): UpgradeDef | undefined {
-  return UPGRADES.find((u) => u.id === id);
-}
-
 export interface FishDef {
   readonly id: string;
   readonly name: string;

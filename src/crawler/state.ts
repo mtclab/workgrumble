@@ -476,10 +476,6 @@ export function equippedGear(s: SaveState): GearInstance[] {
   return out;
 }
 
-export function hasUnique(s: SaveState, id: string): boolean {
-  return equippedGear(s).some((g) => g.unique === id);
-}
-
 function gearDefsOn(s: SaveState): GearDef[] {
   const out: GearDef[] = [];
   for (const slot of ['head', 'body', 'feet', 'trinket'] as const) {

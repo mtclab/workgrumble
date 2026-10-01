@@ -665,3 +665,17 @@ attack and block as bindings. `e2e/helldesk-firstlaunch.spec.ts` plays a
 first launch and the next one, a player's own pick, the loading card being
 painted, shake and flashes on and off through a real hit, and attack rebound
 to a key and to the right button.
+
+`e2e/helldesk-playthrough.spec.ts` is the shipped path, played: four
+careers from the title of the served build, each asserting what the player
+got. The keyboard into a new career and the whole induction, a user fought
+(wind-up seen, hits landed, resolved) and one talked down with a biscuit, a
+ticket fixed at a terminal (queue one shorter, on the status bar too); F5 and
+F9, a slot saved and loaded from pause; the floor-0 boss resolved by real
+swings, the lift to Friday, the mökki sauna and the drive back, Monday on
+floor 1; a burnout and Clock back in; a quality change made from pause,
+applied at once and still there after a reload. Its `window.__helldesk`
+handles (`standAt`, `face`, `toBoss`, `weakenBoss`, `wear`, `boss`) only
+place or turn the player, skip a long wait or read the fight; none resolves,
+fixes, saves or loads anything. A save keeps no position: every load,
+F9 included, stands the player at the floor's start.

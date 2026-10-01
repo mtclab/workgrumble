@@ -770,32 +770,6 @@ function faceGeometry(expr: Expression, o: Outfit): THREE.BufferGeometry {
   return paintShape(key, shapeOf(key, FACE, () => sculptFace(expr, glasses, dark)), paletteOf(o));
 }
 
-/** Kept for the HUD portrait: a 16x16 pixel face. */
-export function faceTexture(skin: number, expr: Expression, glasses: boolean): THREE.CanvasTexture | null {
-  if (typeof document === 'undefined') return null;
-  const c = document.createElement('canvas');
-  c.width = 16;
-  c.height = 16;
-  const g = c.getContext('2d');
-  if (g === null) return null;
-  g.fillStyle = `#${skin.toString(16).padStart(6, '0')}`;
-  g.fillRect(0, 0, 16, 16);
-  g.fillStyle = '#1a1410';
-  g.fillRect(4, 6, 2, 2);
-  g.fillRect(10, 6, 2, 2);
-  if (glasses) {
-    g.strokeStyle = '#111';
-    g.strokeRect(2.5, 5.5, 4, 3);
-    g.strokeRect(9.5, 5.5, 4, 3);
-  }
-  g.fillStyle = '#6a1f1f';
-  g.fillRect(6, expr === 'happy' || expr === 'kind' ? 11 : 12, 4, 1);
-  const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter;
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-}
-
 // ---------------------------------------------------------------- your arm
 
 /**

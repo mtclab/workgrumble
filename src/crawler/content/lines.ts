@@ -68,12 +68,6 @@ export const RESOLVED_LINES = [
   'Brilliant, cheers!',
 ];
 
-export const PLAYER_HURT_LINES = [
-  'Have you tried turning YOURSELF off and on again?',
-  'That is not in my job description.',
-  'Please raise a ticket.',
-];
-
 export const DEATH_LINES = [
   'You burned out. HR has scheduled a wellbeing webinar.',
   'Your sanity reached zero. The queue did not care.',

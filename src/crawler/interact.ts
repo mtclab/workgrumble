@@ -6,7 +6,7 @@ import { type Actor, setMarker, TALKERS } from './entities';
 import { FINAL_FLOOR, type Game, type PromptTarget } from './game';
 import * as host from './hosts';
 import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from './items';
-import { type Interactable, lineOfSight } from './level';
+import { type Interactable, lineOfSight, toCell } from './level';
 import { livePage } from './oncall';
 import { answerAtTerminal, carNote, driveOffTag, hasDish, villageOption } from './pager';
 import { currentObjective, isActive, QUEST_ITEMS, type QuestEvent, talkGiver } from './quests';
@@ -122,6 +122,37 @@ export function findPrompt(g: Game): void {
     bookshelf: w.book ? 'Nothing new on the shelf' : 'E: Browse the reading nook',
   };
   g.prompt = labels[it.kind];
+}
+
+/**
+ * Stand the player in a cell beside the first unused `kind` here (a kiuas,
+ * the lift, the car, a terminal), close and facing it, so a browser test can
+ * press E on the real thing. Only a spot where E would reach it (and not,
+ * say, somebody standing next to it) counts. It moves only the player; what
+ * E does there is the game's. False if there is no such spot.
+ */
+export function standAt(g: Game, kind: Interactable['kind']): boolean {
+  const lv = g.level;
+  for (const it of lv.interactables) {
+    if (it.kind !== kind || it.used) continue;
+    const cx = toCell(it.x);
+    const cz = toCell(it.z);
+    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+      if (cx + ox < 0 || cz + oz < 0 || cx + ox >= lv.w || cz + oz >= lv.h) continue;
+      const i = (cz + oz) * lv.w + cx + ox;
+      if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
+      // Just inside the neighbouring cell, on the side towards it.
+      const x = it.x + ox * 1.4;
+      const z = it.z + oz * 1.4;
+      g.player.pos.set(x, 0, z);
+      g.player.yaw = Math.atan2(ox, oz);
+      g.player.pitch = 0;
+      findPrompt(g);
+      const t = g.promptTarget;
+      if (t !== null && t.kind === 'interact' && t.it === it) return true;
+    }
+  }
+  return false;
 }
 
 export function interact(g: Game): void {

@@ -660,10 +660,6 @@ export function mainChapter(floor: number): MainChapter | undefined {
   return floor <= 4 ? MAIN[floor] : undefined;
 }
 
-export function evidenceCount(has: (id: string) => boolean): number {
-  return EVIDENCE.filter((e) => has(e)).length;
-}
-
 /** Side quests on offer for a floor, in a stable order. */
 export function sideQuestsFor(floor: number): QuestDef[] {
   return QUESTS.filter((q) => !q.main && q.staffed !== true && q.mentor !== true && q.floors.includes(floor % 5));

@@ -75,10 +75,6 @@ export function deleteSlot(id: SlotId): void {
   }
 }
 
-export function clearAllSlots(): void {
-  for (const id of SLOT_IDS) deleteSlot(id);
-}
-
 export function timeAgo(t: number): string {
   const s = Math.max(0, Math.round((Date.now() - t) / 1000));
   if (s < 60) return 'just now';
