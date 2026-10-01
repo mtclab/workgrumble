@@ -538,11 +538,14 @@ at the selected rung and employer.
 
 Floor JSON and the printed summary now include `floorSec`, `combatSec`,
 `combatShare` (a fraction, `combatSec / floorSec`, zero for zero time),
-`aggroEpisodes`, `talkdowns` and `resolvesByForce`. Time counts active office
+`aggroSec`, `aggroShare`, `aggroEpisodes`, `talkdowns` and `resolvesByForce`. Time counts active office
 simulation, excluding menus, hit stop and weekends; `minutes` keeps its old
-bot-clock meaning. Combat is a hostile, unresolved, aggro actor within 14 m
+bot-clock meaning. Aggro is a hostile, unresolved, aggro actor within 14 m
 in the floor plane, including bosses, sampled at tick start without a sight
-check. Episodes close after 3 quiet game seconds; quiet gaps add no combat
+check. Combat includes that aggro time and ticks where the player deals or
+takes damage, plus the next 2 game seconds. Teammate damage and passive
+sanity drains do not extend combat. `aggroEpisodes` follows this expanded
+combat definition and closes after 3 quiet game seconds; quiet gaps add no combat
 time. Resolve counts are floor deltas of `resolvedPeace` and `resolvedField`
 (force excludes bosses, turrets and mosquitoes).
 

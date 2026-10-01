@@ -426,7 +426,7 @@
       hostiles0: hostiles().filter((a) => PEOPLE.includes(a.kind)).length, staffedDone0: s.stats.staffedDone, staffedMissed0: s.stats.staffedMissed,
       mentored0: s.stats.mentored, perk0: s.perkPoints, quits: 0, moraleSum: 0, moraleN: 0, treats0: s.stats.treats, drinks0: s.stats.drinks, sideDone0: s.questLog.filter((q) => q.done && !q.staffed && !q.mentor).length,
       p1: 0, levelUps: 0,
-      floorSec: 0, combatSec: 0, aggroEpisodes: 0, aggroActive: false, quietSec: 0,
+      floorSec: 0, aggroSec: 0, combatSec: 0, aggroEpisodes: 0, combatActive: false, quietSec: 0, lastDamageAt: -Infinity,
       talkdowns0: s.stats.resolvedPeace, resolvesByForce0: s.stats.resolvedField,
     };
     ignored.clear();
@@ -440,6 +440,7 @@
     const rec = {
       floor: c.floor, rung: c.rung, level: c.level, minutes: +minutes.toFixed(1), reason,
       floorSec: c.floorSec, combatSec: c.combatSec, combatShare: c.floorSec > 0 ? c.combatSec / c.floorSec : 0, aggroEpisodes: c.aggroEpisodes,
+      aggroSec: c.aggroSec, aggroShare: c.floorSec > 0 ? c.aggroSec / c.floorSec : 0,
       talkdowns: s.stats.resolvedPeace - c.talkdowns0, resolvesByForce: s.stats.resolvedField - c.resolvesByForce0,
       burnouts: c.burnouts, minSanityPct: Math.round(c.minSanity * 100), overloadPct: Math.round((c.overloadT / Math.max(1, g.time - c.t0)) * 100), maxOver: c.maxOver,
       staffOffers: c.staffOffers, staffDone: s.stats.staffedDone - c.staffedDone0, staffMissed: s.stats.staffedMissed - c.staffedMissed0, pushTries: c.pushTries, pushOk: c.pushOk,
@@ -460,20 +461,23 @@
     const c = B.cur;
     const inFloor = c && g.screen === 'play' && g.save.location === 'office' && c.floor === g.save.floor;
     const p = g.player.pos;
-    const combat = inFloor && g.actors.some((a) => a.hostile && !a.resolved && a.aggro && Math.hypot(a.pos.x - p.x, a.pos.z - p.z) <= 14);
+    const aggro = inFloor && g.actors.some((a) => a.hostile && !a.resolved && a.aggro && Math.hypot(a.pos.x - p.x, a.pos.z - p.z) <= 14);
     const before = g.time;
     g.step(DT);
     const dt = g.time - before;
     if (!inFloor || dt <= 0) return;
     c.floorSec += dt;
-    if (combat) {
-      c.combatSec += dt;
-      if (!c.aggroActive) c.aggroEpisodes++;
-      c.aggroActive = true;
+    if (aggro) c.aggroSec += dt;
+    const combatDt = aggro ? dt : Math.max(0, Math.min(dt, c.lastDamageAt + 2 - before));
+    if (combatDt > 1e-9) {
+      c.combatSec += combatDt;
+      if (!c.combatActive) c.aggroEpisodes++;
+      c.combatActive = true;
       c.quietSec = 0;
-    } else if (c.aggroActive) {
-      c.quietSec += dt;
-      if (c.quietSec >= 3 - 1e-9) c.aggroActive = false;
+    }
+    if (c.combatActive) {
+      c.quietSec += dt - combatDt;
+      if (c.quietSec >= 3 - 1e-9) c.combatActive = false;
     }
   }
 
@@ -543,6 +547,10 @@
   B.hurtLog = [];
   B.deaths = [];
   B.totalBy = {};
+  g.onCombatDamage = () => {
+    const c = B.cur;
+    if (c && c.floor === g.save.floor && g.save.location === 'office' && g.screen === 'play') c.lastDamageAt = g.time;
+  };
   if (!g.__botHooked) {
     g.__botHooked = true;
     const orig = g.hurtPlayer.bind(g);

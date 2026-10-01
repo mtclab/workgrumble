@@ -9,6 +9,7 @@ const DT = 1 / 30;
 interface Floor {
   floor: number; reason: string;
   floorSec: number; combatSec: number; combatShare: number; aggroEpisodes: number;
+  aggroSec: number; aggroShare: number;
   talkdowns: number; resolvesByForce: number;
 }
 interface Bot {
@@ -32,6 +33,7 @@ function career() {
     level: { start: { x: 0, z: 0 } },
     derivedCache: { maxSanity: 100, overload: 0 },
     hurtPlayer: () => undefined,
+    onCombatDamage: () => undefined,
     close: () => { game.screen = 'play'; },
     goToWork: () => { game.screen = 'transition'; },
     step: (dt: number) => {
@@ -54,7 +56,7 @@ function career() {
     onStep = () => undefined;
     return bot.floors.at(-1);
   };
-  return { game, actor, bot, tick, finish, overlay: (fn: () => undefined) => { onOverlay = fn; } };
+  return { game, actor, bot, tick, finish, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
 }
 
 describe('floor combat measurements', () => {
@@ -82,7 +84,49 @@ describe('floor combat measurements', () => {
     expect(floor?.floorSec).toBeCloseTo(7 * DT);
     expect(floor?.combatSec).toBeCloseTo(2 * DT);
     expect(floor?.combatShare).toBeCloseTo(2 / 7);
+    expect(floor?.aggroSec).toBeCloseTo(2 * DT);
+    expect(floor?.aggroShare).toBeCloseTo(2 / 7);
     expect(floor).toMatchObject({ aggroEpisodes: 1, talkdowns: 2, resolvesByForce: 3 });
+  });
+
+  it('counts damage without nearby aggro, including the hit tick and exactly two more game seconds', () => {
+    const c = career();
+    c.actor.aggro = false;
+    c.onStep(() => { c.game.onCombatDamage(); });
+    c.tick();
+    c.onStep(() => undefined);
+    c.tick(60);
+    const afterDamage = c.bot.cur!;
+    expect(afterDamage.combatSec).toBeCloseTo(61 * DT);
+    c.tick(30);
+    const floor = c.finish()!;
+    expect(floor.combatSec).toBeCloseTo(61 * DT);
+    expect(floor.combatShare).toBeCloseTo(61 / 92);
+    expect(floor.aggroSec).toBe(0);
+    expect(floor.aggroShare).toBe(0);
+    expect(floor.aggroEpisodes).toBe(1);
+  });
+
+  it('closes damage-only episodes after three quiet game seconds and forgets damage between floors', () => {
+    const c = career();
+    c.actor.aggro = false;
+    const hit = () => {
+      c.onStep(() => { c.game.onCombatDamage(); });
+      c.tick();
+      c.onStep(() => undefined);
+    };
+    hit();
+    c.tick(149); // Two seconds of damage tail, then a gap shorter than three seconds.
+    hit();
+    c.tick(150);
+    hit();
+    expect(c.bot.cur?.aggroEpisodes).toBe(2);
+    c.finish();
+    c.game.save.location = 'office';
+    c.game.save.floor = 1;
+    c.tick();
+    expect(c.bot.cur?.combatSec).toBe(0);
+    expect(c.bot.cur?.aggroEpisodes).toBe(0);
   });
 
   it('merges short quiet gaps but starts a new fight after exactly 3 game seconds', () => {

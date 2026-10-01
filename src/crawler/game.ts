@@ -223,6 +223,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   lightIn = 0;
   saveIn = 60;
   time = 0;
+  onCombatDamage?: () => void;
   screen: Screen = 'title';
   // Combat.
   attackCd = 0;

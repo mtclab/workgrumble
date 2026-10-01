@@ -22,7 +22,7 @@ function measure(incomplete = false) {
       return { status: 0 };
     },
     readFileSync: () => JSON.stringify({
-      floors: [0, 1, 2].slice(0, incomplete ? 2 : 3).map((floor) => ({ floor, floorSec: 10, combatSec: floor + 1, combatShare: (floor + 1) / 10, aggroEpisodes: floor + 2, burnouts: 0 })),
+      floors: [0, 1, 2].slice(0, incomplete ? 2 : 3).map((floor) => ({ floor, floorSec: 10, aggroSec: 1, aggroShare: 0.1, combatSec: floor + 1, combatShare: (floor + 1) / 10, aggroEpisodes: floor + 2, burnouts: 0 })),
       errors: [], snaps: [],
     }),
     console: { log: (line: string) => lines.push(line) },
@@ -40,7 +40,7 @@ describe('combat-share matrix', () => {
     ]);
     expect(m.runs.slice(3).every((r) => r.name === 'senior' && r.rung === 6 && r.kit?.join(',') === 'cat6,cardigan')).toBe(true);
     expect(m.lines.filter((line) => /^(trainee|senior) \d/.test(line))).toHaveLength(18);
-    expect(m.lines).toContain('trainee 1700000000 0 10.0 1.0 0.1000 2 0');
+    expect(m.lines).toContain('trainee 1700000000 0 10.0 1.0 0.1000 1.0 0.1000 2 0');
     expect(m.lines).toContain('senior: mean combatShare 0.2000, spread 0.2000 (max-min over 9 floors)');
   });
 

@@ -13,7 +13,7 @@ const seeds = [1700000000, 1700000001, 1700000002];
 const dir = process.env.COMBAT_OUT ?? 'combat-share';
 mkdirSync(dir, { recursive: true });
 const runner = fileURLToPath(new URL('./run.mjs', import.meta.url));
-console.log('scenario seed floor floorSec combatSec combatShare aggroEpisodes burnouts');
+console.log('scenario seed floor floorSec aggroSec aggroShare combatSec combatShare aggroEpisodes burnouts');
 for (const scenario of scenarios) {
   const shares = [];
   for (const seed of seeds) {
@@ -27,11 +27,11 @@ for (const scenario of scenarios) {
       throw new Error(`${scenario.name} seed ${seed}: incomplete or errored career; inspect its JSON`);
     }
     for (const f of result.floors) {
-      if (![f.floorSec, f.combatSec, f.combatShare, f.aggroEpisodes].every(Number.isFinite) || f.floorSec <= 0) {
+      if (![f.floorSec, f.aggroSec, f.aggroShare, f.combatSec, f.combatShare, f.aggroEpisodes].every(Number.isFinite) || f.floorSec <= 0) {
         throw new Error(`${scenario.name} seed ${seed}: missing combat measurements`);
       }
       shares.push(f.combatShare);
-      console.log(`${scenario.name} ${seed} ${f.floor} ${f.floorSec.toFixed(1)} ${f.combatSec.toFixed(1)} ${f.combatShare.toFixed(4)} ${f.aggroEpisodes} ${f.burnouts}`);
+      console.log(`${scenario.name} ${seed} ${f.floor} ${f.floorSec.toFixed(1)} ${f.aggroSec.toFixed(1)} ${f.aggroShare.toFixed(4)} ${f.combatSec.toFixed(1)} ${f.combatShare.toFixed(4)} ${f.aggroEpisodes} ${f.burnouts}`);
     }
   }
   const mean = shares.reduce((a, b) => a + b, 0) / shares.length;
