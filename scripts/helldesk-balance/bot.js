@@ -1,4 +1,4 @@
-/* global window, document, performance */
+/* global window, document, performance, MouseEvent */
 // Helldesk balance bot: plays the real game headlessly, as a reasonable (not
 // perfect) player, and records what happens floor by floor. Injected into a
 // running crawler.html by run.mjs; see docs/HELLDESK.md ("Balance testing").
@@ -101,7 +101,7 @@
     }
     face(ax, az);
     inp.keys.add(K.forward);
-    if (d > 12 && g.save.energy > 60) inp.keys.add(K.sprint); else inp.keys.delete(K.sprint);
+    if (!B.quiet && d > 12 && g.save.energy > 60) inp.keys.add(K.sprint); else inp.keys.delete(K.sprint);
     // Unstick.
     if (jiggle > 0) { jiggle -= DT; inp.keys.add(R() < 0.5 ? K.left : K.right); } else { inp.keys.delete(K.left); inp.keys.delete(K.right); }
     return false;
@@ -112,7 +112,7 @@
     lastPosT += DT;
     if (lastPosT > 1.5) {
       const moved = Math.hypot(p.x - lastPos.x, p.z - lastPos.z);
-      if (wantMove && moved < 0.4) { jiggle = 0.6; inp.pressed.add(K.jump); }
+      if (wantMove && moved < 0.4) { jiggle = 0.6; if (!B.quiet) inp.pressed.add(K.jump); }
       lastPos = p.clone(); lastPosT = 0;
     }
   }
@@ -251,7 +251,117 @@
   B.DT = DT;
   const ignored = new Set();
 
+
+  let mission = null, spineRoute = [], spineIndex = 0, routeReturning = null;
+  const patrolLast = new Map();
+  function missionTarget(m) {
+    const threat = nearestOf(g.actors.filter((a) => a.hostile && a.aggro && !a.resolved), 14);
+    if (threat) return { kind: 'fight', actor: threat };
+    if (m.objectiveDone) {
+      const it = g.level.interactables.find((i) => i.kind === 'elevator');
+      return it ? { kind: 'use', it, x: it.x, z: it.z } : null;
+    }
+    if (m.card === 'vendor') {
+      const consultant = nearestOf(g.actors.filter((a) => a.kind === 'consultant' && !a.resolved));
+      const vendor = nearestOf(g.actors.filter((a) => a.kind === 'vendor' && !a.resolved));
+      const actor = consultant ?? vendor;
+      return actor ? { kind: 'fight', actor } : null;
+    }
+    const mark = g.markers.find((m) => m.icon === '◆');
+    const it = mark && g.level.interactables.find((i) => i.kind === 'locker' && Math.hypot(i.x - mark.x, i.z - mark.z) < 1);
+    return it ? { kind: 'use', it, x: it.x, z: it.z } : null;
+  }
+
+  function routeAlongSpine(m, goal) {
+    const L = g.level, W = L.w;
+    const cells = new Set(m.spine.map((p) => cell(p.z) * W + cell(p.x)).filter((c) => L.solid[c] === 0));
+    const from = field(g.player.pos.x, g.player.pos.z), to = field(goal.x, goal.z);
+    const closest = (f) => [...cells].filter((c) => f[c] >= 0).sort((a, b) => f[a] - f[b])[0];
+    const start = closest(from), end = closest(to);
+    if (start === undefined || end === undefined) return [];
+    const prev = new Map([[start, null]]), q = [start];
+    for (let i = 0; i < q.length && !prev.has(end); i++) {
+      const c = q[i];
+      for (const n of [c - 1, c + 1, c - W, c + W]) {
+        if (!cells.has(n) || prev.has(n) || Math.abs(n % W - c % W) > 1) continue;
+        prev.set(n, c); q.push(n);
+      }
+    }
+    if (!prev.has(end)) return [];
+    const route = [];
+    for (let c = end; c !== null; c = prev.get(c)) route.unshift({ x: cc(c % W), z: cc(Math.floor(c / W)) });
+    return route;
+  }
+
+  // Quiet reads only m.hud (eye, visible people/bars, learned patrols),
+  // m.spine, objectiveDone, map geometry/markers and the player's own state.
+  // m.actors is diagnostics and is never a quiet-policy input.
+  function quietAct(m) {
+    activity = 'idle';
+    inp.holdAttack(false); inp.holdBlock(false);
+    inp.keys.delete(K.sprint);
+    if (!g.player.crouching) press(K.sneak);
+    const mark = g.markers.find((a) => a.icon === '◆');
+    if (!mark) { release(); return; }
+    if (routeReturning !== m.objectiveDone) {
+      routeReturning = m.objectiveDone;
+      spineRoute = routeAlongSpine(m, mark); spineIndex = 0;
+    }
+    let node = spineRoute[spineIndex];
+    const p = g.player.pos;
+    if (node && Math.hypot(node.x - p.x, node.z - p.z) < 0.7) {
+      const ahead = spineRoute[spineIndex + 1] ?? mark;
+      const patrols = m.hud.actors.filter((a) => a.visible && a.sort === 'patrol' && a.patrol.length > 0);
+      const nearest = patrols.sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z))[0];
+      const last = nearest && patrolLast.get(nearest.id);
+      const approaching = nearest && last && (nearest.x - last.x) * (ahead.x - nearest.x) + (nearest.z - last.z) * (ahead.z - nearest.z) > 1e-6;
+      if (nearest && approaching && Math.hypot(nearest.x - p.x, nearest.z - p.z) <= 8) {
+        release(); face(nearest.x, nearest.z); return;
+      }
+      node = spineRoute[++spineIndex];
+    }
+    if (node) { goTo(node.x, node.z, 0.6); checkStuck(true); return; }
+    const it = g.level.interactables.find((i) => (m.objectiveDone ? i.kind === 'elevator' : i.kind === 'locker') && Math.hypot(i.x - mark.x, i.z - mark.z) < 1);
+    if (!it) { release(); return; }
+    useMissionObjective(it);
+  }
+
+  function useMissionObjective(it) {
+    const p = g.player.pos;
+    if (Math.hypot(it.x - p.x, it.z - p.z) < 3.4) { face(it.x, it.z); H.findPrompt(); }
+    const prompt = g.promptTarget;
+    if (prompt && prompt.kind === 'interact' && prompt.it === it) { release(); press(K.interact); }
+    else { goTo(it.x, it.z, 0.8); checkStuck(true); }
+  }
+
+  function missionPolicy(m) {
+    mission = m;
+    const quiet = B.policy.approach !== 'loud' && m.hud.tier < 2;
+    if (quiet !== B.quiet) { target = null; targetT = 0; }
+    B.quiet = quiet;
+    if (!quiet && g.player.crouching) press(K.sneak);
+    if (quiet) quietAct(m);
+    else act();
+    for (const a of m.hud.actors) if (a.visible) patrolLast.set(a.id, { x: a.x, z: a.z });
+  }
+
+  let lastPinAt = -Infinity;
+  function missionLock() {
+    release(); inp.holdAttack(false); inp.holdBlock(false);
+    const marker = document.querySelector('.lock-marker');
+    const zone = document.querySelector('.lock-zone');
+    const bar = document.querySelector('.lock-bar');
+    if (!marker || !zone || !bar) return;
+    const pos = parseFloat(marker.style.left), left = parseFloat(zone.style.left), width = parseFloat(zone.style.width);
+    // Aim inside the green, with a little margin; the animation runs in real time.
+    if (pos >= left + width * 0.2 && pos <= left + width * 0.8 && performance.now() - lastPinAt >= 100) {
+      bar.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+      lastPinAt = performance.now();
+    }
+  }
+
   function pickTarget() {
+    if (mission) return missionTarget(mission);
     const s = g.save, d = g.derivedCache;
     const ob = objectives();
     const low = s.sanity < d.maxSanity * 0.3;
@@ -580,14 +690,26 @@
       if (lost > 0) { const src = `${kind}:${from ? from.kind : '-'}${from && from.elite ? '*' : ''}`; B.hurtLog.push({ t: g.time, lost, src }); B.totalBy[src] = (B.totalBy[src] ?? 0) + lost; }
     };
   }
-  B.run = (seconds, maxFloors = Infinity) => {
+  B.run = (seconds, maxFloors = Infinity, wallMs = 20000) => {
     const s = g.save;
     const t0 = performance.now();
     const until = g.time + seconds;
     let steps = 0;
-    while (g.time < until && performance.now() - t0 < 20000) {
+    while (g.time < until && performance.now() - t0 < wallMs) {
       steps++;
       if (B.ended || B.floors.length >= maxFloors) break;
+      const m = H.mission?.();
+      if (m) {
+        if (m.over) { B.ended = true; release(); inp.holdAttack(false); break; }
+        if (g.lockpick.open) { missionLock(); break; }
+        if (g.screen !== 'play') { handleDialogue(); break; }
+        if (B.cur === null) newFloor();
+        missionPolicy(m);
+        sample();
+        step();
+        sample();
+        continue;
+      }
       if (g.screen === 'dialogue' || g.screen === 'minigame') { if (!handleDialogue()) { g.lockpick?.cancel?.(); if (g.screen !== 'play') { g.screen = 'play'; } } step('dialogue', true); continue; }
       if (g.screen === 'os') { if (g.currentTerminal) workTerminal(); else g.close(); step('terminal', true); continue; }
       if (g.screen !== 'play') { const doing = g.screen === 'paused' ? 'idle' : 'other'; handleOverlay(); step(doing, true); continue; }
@@ -635,6 +757,6 @@
       }
       if (s.location === 'mokki' && wasMokki === 'office') endFloor('friday');
     }
-    return { steps, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: target ? target.kind + (target.actor ? ':' + target.actor.kind : target.it ? ':' + target.it.kind : '') : null, ms: Math.round(performance.now() - t0) };
+    return { steps, lockpick: g.lockpick.open, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: target ? target.kind + (target.actor ? ':' + target.actor.kind : target.it ? ':' + target.it.kind : '') : null, ms: Math.round(performance.now() - t0) };
   };
 })();

@@ -56,6 +56,8 @@ export interface HudFrame {
   readonly overload: number;
   /** Quest targets on the map. */
   readonly markers: readonly MapMarker[];
+  /** Patrol routes learned by watching someone for five seconds. */
+  readonly patrolRoutes?: readonly (readonly { readonly x: number; readonly z: number }[])[];
   /** 0..1 power-attack wind-up. */
   readonly charge: number;
   readonly blocking: boolean;
@@ -645,6 +647,17 @@ export class Hud {
       g.fillRect(ox + cx * scale, oy + cz * scale, scale, scale);
     }
     for (const m of f.markers) diamond(g, ox + (m.x / TILE) * scale, oy + (m.z / TILE) * scale, 7, m.color);
+    g.strokeStyle = '#ffb020';
+    g.lineWidth = 2;
+    for (const route of f.patrolRoutes ?? []) {
+      g.beginPath();
+      route.forEach((p, i) => {
+        const x = ox + (p.x / TILE) * scale;
+        const z = oy + (p.z / TILE) * scale;
+        if (i === 0) g.moveTo(x, z); else g.lineTo(x, z);
+      });
+      g.stroke();
+    }
     const px = ox + (f.px / TILE) * scale;
     const py = oy + (f.pz / TILE) * scale;
     g.save();

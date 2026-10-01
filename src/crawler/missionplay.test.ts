@@ -487,3 +487,25 @@ describe('mission measurements match the results card', () => {
     expect(new Host(VENDOR_DAY, 17).mission.debug().detectedAt).toBe(0);
   });
 });
+
+
+describe('player patrol map', () => {
+  it('shows a patrol route only after five seconds in view and hides unseen bars below Investigate', () => {
+    const h = new Host(STAPLER, 17);
+    const m = h.mission;
+    const hr = m.crowd[0]!;
+    expect(m.standInView(hr.id, 2)).toBe(true);
+    h.player.yaw = Math.atan2(-(hr.pos.x - h.player.pos.x), -(hr.pos.z - h.player.pos.z));
+    m.update(4.9, false);
+    expect(m.hud().routes).toEqual([]);
+    m.update(0.1, false);
+    expect(m.hud().routes).toHaveLength(1);
+    expect(m.hud().actors.find((a) => a.id === hr.id)?.patrol.length).toBeGreaterThan(0);
+    h.player.yaw += Math.PI;
+    const w = m.watch.watchers.get(hr.id)!;
+    w.suspicion = 20;
+    expect(m.hud().actors.some((a) => a.id === hr.id)).toBe(false);
+    w.suspicion = 40;
+    expect(m.hud().actors.find((a) => a.id === hr.id)).toMatchObject({ visible: false, suspicion: 40, yaw: null });
+  });
+});

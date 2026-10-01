@@ -77,6 +77,7 @@ export class MissionPlay {
   private detectedAt: number | null = null;
   private noticedAt: number | null = null;
   private noiseEvents = 0;
+  private readonly observed = new Map<number, number>();
 
   constructor(private readonly g: Game, readonly card: MissionCard, readonly seed: number, readonly pinned: boolean, private readonly view: MissionView = domView(g, card)) {
     this.rng = new Rng(seed ^ 0x6d697373);
@@ -197,6 +198,9 @@ export class MissionPlay {
     if (this.run.over) return;
     const g = this.g;
     this.run.tick(dt);
+    for (const w of this.watch.watchers.values()) {
+      if (w.sort === 'patrol' && this.inView(w.actor)) this.observed.set(w.actor.id, (this.observed.get(w.actor.id) ?? 0) + dt);
+    }
     if (sprinting) {
       this.sprintIn -= dt;
       if (this.sprintIn <= 0) {
@@ -363,7 +367,7 @@ export class MissionPlay {
       const a = w.actor;
       let bar = this.bars.get(a.id);
       const shown = this.watch.tier < 3 && w.mood !== 'alert' && !a.resolved && w.suspicion > 0.5
-        && (w.suspicion >= INVESTIGATE || a.root.visible);
+        && (w.suspicion >= INVESTIGATE || this.inView(a));
       if (!shown) {
         if (bar !== undefined) bar.group.visible = false;
         continue;
@@ -409,6 +413,35 @@ export class MissionPlay {
 
   // ---------------------------------------------------------------- for the browser tests and the bot
 
+  /** In the player's view, also in headless play where render culling is not run. */
+  private inView(a: Actor): boolean {
+    const g = this.g;
+    const p = g.player.pos;
+    const dx = a.pos.x - p.x;
+    const dz = a.pos.z - p.z;
+    const d = Math.hypot(dx, dz);
+    const half = Math.atan(Math.tan(g.camera.fov * Math.PI / 360) * g.camera.aspect);
+    return !a.resolved && d <= 45 && (d < 0.1 || (-dx * Math.sin(g.player.yaw) - dz * Math.cos(g.player.yaw)) / d >= Math.cos(half))
+      && lineOfSight(g.level, p.x, p.z, a.pos.x, a.pos.z);
+  }
+
+  /** Only the eye, visible people/bars and patrol routes learned after five seconds in view. */
+  hud(): MissionHud {
+    const actors: MissionHud['actors'][number][] = [];
+    const routes: Point[][] = [];
+    for (const w of this.watch.watchers.values()) {
+      const patrol = (this.observed.get(w.actor.id) ?? 0) >= 5 - 1e-9 ? w.route.map((p) => ({ ...p })) : [];
+      if (patrol.length) routes.push(patrol);
+      const visible = this.inView(w.actor);
+      const bar = this.watch.tier < 3 && w.mood !== 'alert' && !w.actor.resolved && w.suspicion > 0.5 && (visible || w.suspicion >= INVESTIGATE);
+      if (!visible && !bar) continue;
+      actors.push({ id: w.actor.id, visible, sort: w.sort, hostile: w.actor.hostile, aggro: w.actor.aggro,
+        x: w.actor.pos.x, z: w.actor.pos.z, yaw: visible ? w.actor.yaw : null,
+        suspicion: bar ? w.suspicion : null, patrol });
+    }
+    return { tier: this.watch.tier, actors, routes };
+  }
+
   /**
    * Read-only state for the measurement bot and the browser tests: the tier,
    * every watched person's suspicion and route, the spine's cells, the run.
@@ -425,6 +458,7 @@ export class MissionPlay {
       result: this.run.outcome === null ? null : {
         ...payout(this.card, this.run.outcome), repTotal: Math.round(this.g.save.rep - this.repAtStart),
       },
+      hud: this.hud(),
       actors: [...this.watch.watchers.values()].map((w) => ({
         id: w.actor.id, name: w.actor.name, kind: w.actor.kind, tag: w.tag, sort: w.sort,
         hostile: w.actor.hostile, aggro: w.actor.aggro, resolved: w.actor.resolved,
@@ -507,6 +541,7 @@ export interface MissionDebug {
   readonly noticedAt: number | null;
   readonly noiseEvents: number;
   readonly result: (Payout & { readonly repTotal: number }) | null;
+  readonly hud: MissionHud;
   readonly actors: readonly {
     readonly id: number; readonly name: string; readonly kind: string; readonly tag: string | null; readonly sort: string;
     readonly hostile: boolean; readonly aggro: boolean; readonly resolved: boolean;
@@ -514,6 +549,17 @@ export interface MissionDebug {
     readonly x: number; readonly z: number; readonly yaw: number; readonly patrol: readonly Point[];
   }[];
   readonly spine: readonly Point[];
+}
+
+export interface MissionHud {
+  readonly tier: Tier;
+  readonly actors: readonly {
+    readonly id: number; readonly visible: boolean; readonly sort: string;
+    readonly hostile: boolean; readonly aggro: boolean;
+    readonly x: number; readonly z: number; readonly yaw: number | null;
+    readonly suspicion: number | null; readonly patrol: readonly Point[];
+  }[];
+  readonly routes: readonly (readonly Point[])[];
 }
 
 function makeBar(): Bar {

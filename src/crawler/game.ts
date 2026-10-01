@@ -1390,6 +1390,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       questLines: questLines(this),
       overload: this.save.location === 'office' ? this.derivedCache.overload : 0,
       markers: this.markers,
+      patrolRoutes: this.mission?.hud().routes ?? [],
       charge: this.derivedCache.weapon.kind === 'melee' ? chargeShown(this, POWER_TIME) : 0,
       blocking: this.blocking,
       dry: this.dryFire,

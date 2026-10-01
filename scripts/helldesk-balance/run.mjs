@@ -52,6 +52,7 @@ if (scenario.mission) {
     while (Date.now() - t0 < cap) {
       const r = await G((budget) => window.__bot.run(10, Infinity, budget), Math.min(1000, cap - (Date.now() - t0)));
       out.snaps.push(r);
+      if (r.lockpick) await page.waitForTimeout(20);
       const state = await G(() => ({ m: window.__helldesk.mission(), combatSec: window.__bot.cur?.combatSec ?? 0, minSanityPct: Math.round((window.__bot.cur?.minSanity ?? 1) * 100), shown: !!document.querySelector('.mission-result') }));
       if (state.m.over && state.shown) {
         out.mission = missionRecord(state.m, approach, state.combatSec, state.minSanityPct);

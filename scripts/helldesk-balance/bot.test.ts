@@ -18,10 +18,11 @@ interface Bot {
   seed: (seed: number) => void;
   floors: Floor[];
   cur: Floor | null;
-  policy: { buy: boolean };
+  policy: { buy: boolean; approach?: string };
+  quiet?: boolean;
 }
 
-function career() {
+function career(mode = false) {
   const save = newSave(1);
   save.sanity = 20;
   const actor = { kind: 'user', hostile: true, resolved: false, aggro: true, pos: { x: 14, z: 0 } };
@@ -32,11 +33,12 @@ function career() {
     loggedOn: new Set<string>(),
     markers: [] as { x: number; z: number; icon: string; color: string; label: string }[],
     input: { keys: new Set<string>(), pressed: new Set<string>(), holdAttack: () => undefined, holdBlock: () => undefined, tapAttack: () => undefined },
-    settings: { keys: { forward: 'w', left: 'a', right: 'd', sprint: 'shift', quickuse: 'q' } },
-    player: { pos: { x: 0, z: 0, clone: () => ({ x: 0, z: 0 }) } },
+    settings: { keys: { forward: 'w', left: 'a', right: 'd', sprint: 'shift', quickuse: 'q', sneak: 'c', interact: 'e' } },
+    player: { crouching: false, yaw: 0, pitch: 0, pos: { x: 0, z: 0, clone: () => ({ x: 0, z: 0 }) } },
+    promptTarget: null as { kind: string; it: object } | null,
     level: {
       start: { x: 0, z: 0 }, w: 20, h: 1, roomOf: new Int16Array(20), solid: new Uint8Array(20),
-      rooms: [], interactables: [],
+      rooms: [], interactables: [] as { id: number; kind: string; x: number; z: number }[],
     },
     derivedCache: { maxSanity: 100, overload: 0, workload: 0, capacity: 3, weapon: { kind: 'melee', range: 2.5 } },
     hurtPlayer: () => undefined,
@@ -52,13 +54,21 @@ function career() {
   };
   let onStep = () => undefined;
   let onOverlay = () => undefined;
-  const window = { __crawler: game, __helldesk: { rest: () => undefined, findPrompt: () => undefined } };
+  const mission = { card: 'stapler', objectiveDone: false, over: false, spine: [{ x: 1, z: 1 }, { x: 3, z: 1 }, { x: 5, z: 1 }],
+    hud: { tier: 0, actors: [] as { id: number; visible: boolean; sort: string; x: number; z: number; patrol: { x: number; z: number }[] }[] },
+  };
+  const lock = { marker: '20%', left: '40%', width: '20%', clicks: 0 };
+  const window = { __crawler: game, __helldesk: { rest: () => undefined, findPrompt: () => undefined,
+    ...(mode ? { mission: () => mission } : {}),
+  } };
   const document = {
     querySelectorAll: (selector: string) => selector === '.screen-btn' ? [{ click: () => onOverlay() }]
       : selector === '.dlg-opt' && game.screen === 'dialogue' ? [{ disabled: false, textContent: 'Continue', click: () => undefined }] : [],
-    querySelector: () => null,
+    querySelector: (selector: string) => selector === '.lock-marker' ? { style: { left: lock.marker } }
+      : selector === '.lock-zone' ? { style: { left: lock.left, width: lock.width } }
+      : selector === '.lock-bar' ? { dispatchEvent: () => { lock.clicks++; } } : null,
   };
-  runInNewContext(source, { window, document, performance: { now: () => 0 } });
+  runInNewContext(source, { window, document, performance: { now: () => 1000 }, MouseEvent: class { constructor(readonly type: string) {} } });
   const bot = (window as unknown as { __bot: Bot }).__bot;
   const tick = (n = 1, floors?: number) => { for (let i = 0; i < n; i++) bot.run(DT / 2, floors); };
   const finish = (floors?: number) => {
@@ -67,7 +77,7 @@ function career() {
     onStep = () => undefined;
     return bot.floors.at(-1);
   };
-  return { game, actor, bot, tick, finish, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
+  return { game, actor, bot, tick, finish, mission, lock, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
 }
 
 describe('floor combat measurements', () => {
@@ -324,5 +334,90 @@ describe('floor activity breakdown', () => {
     expect(floor.activitySec?.idle).toBeCloseTo(floor.floorSec);
     expect(floor.activitySec.walking).toBe(0);
     expect(floor.activitySec.fighting).toBe(0);
+  });
+});
+
+
+describe('mission approaches', () => {
+  function card() {
+    const c = career(true);
+    c.game.save.sanity = 100;
+    c.game.player.pos.x = 1; c.game.player.pos.z = 1;
+    c.actor.hostile = false;
+    c.game.markers = [{ x: 7, z: 1, icon: '◆', color: '#ffd54a', label: 'Closet' }];
+    c.game.level.interactables = [{ id: 1, kind: 'locker', x: 7, z: 1 }, { id: 2, kind: 'elevator', x: 1, z: 1 }];
+    return c;
+  }
+
+  it('crouches immediately, follows the spine without sprinting or attacking neutrals, uses the closet and returns to the lift', () => {
+    const c = card();
+    c.bot.policy.approach = 'quiet';
+    let swings = 0;
+    c.game.input.tapAttack = () => { swings++; };
+    c.tick();
+    expect(c.game.input.pressed.has('c')).toBe(true);
+    expect(c.bot.quiet).toBe(true);
+    expect(c.game.player.yaw).toBeCloseTo(-Math.PI / 2);
+    expect(c.game.input.keys.has('w')).toBe(true);
+    expect(c.game.input.keys.has('shift')).toBe(false);
+    for (const x of [3, 5, 7]) { c.game.player.pos.x = x; c.tick(); }
+    c.game.promptTarget = { kind: 'interact', it: c.game.level.interactables[0]! };
+    c.tick();
+    expect(c.game.input.pressed.has('e')).toBe(true);
+    expect(swings).toBe(0);
+    c.game.input.pressed.clear();
+    c.game.promptTarget = null;
+    c.mission.objectiveDone = true;
+    c.game.markers = [{ x: 1, z: 1, icon: '◆', color: '#ffd54a', label: 'Lift' }];
+    c.tick();
+    expect(c.game.player.yaw).toBeCloseTo(Math.PI / 2);
+    for (const x of [5, 3, 1]) { c.game.player.pos.x = x; c.tick(); }
+    c.game.promptTarget = { kind: 'interact', it: c.game.level.interactables[1]! };
+    c.tick();
+    expect(c.game.input.pressed.has('e')).toBe(true);
+  });
+
+  it('waits at a route node for a learned nearby patroller moving toward the next node', () => {
+    const c = card();
+    const patrol = { id: 4, visible: true, sort: 'patrol', x: 8, z: 1, patrol: [{ x: 3, z: 1 }] };
+    c.mission.hud.actors = [patrol];
+    c.game.player.pos.x = 0;
+    c.tick();
+    c.game.player.pos.x = 1;
+    patrol.x = 7;
+    c.tick();
+    expect(c.game.input.keys.has('w')).toBe(false);
+    patrol.x = 8; // Moving away: carry on.
+    c.tick();
+    expect(c.game.input.keys.has('w')).toBe(true);
+  });
+
+  it.each(['quiet', 'auto'])('finishes by fighting after Alert with approach %s', (approach) => {
+    const c = card();
+    c.bot.policy.approach = approach;
+    c.tick();
+    c.game.player.crouching = true;
+    c.actor.hostile = true; c.actor.pos.x = 1; c.actor.pos.z = 1;
+    c.mission.hud.tier = 2;
+    c.bot.policy.approach = approach;
+    let swings = 0;
+    c.game.input.tapAttack = () => { swings++; };
+    c.bot.seed(1);
+    c.tick();
+    expect(c.bot.quiet).toBe(false);
+    expect(swings).toBe(1);
+    c.mission.over = true;
+    c.tick();
+    expect(swings).toBe(1); // Leave the results card up.
+  });
+
+  it('attempts a lock only with the visible marker inside the green zone', () => {
+    const c = card();
+    c.game.lockpick.open = true;
+    c.tick();
+    expect(c.lock.clicks).toBe(0);
+    c.lock.marker = '50%';
+    c.tick();
+    expect(c.lock.clicks).toBe(1);
   });
 });
