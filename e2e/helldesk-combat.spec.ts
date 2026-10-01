@@ -48,6 +48,10 @@ interface Handles {
 type W = Window & { __crawler: Crawler; __helldesk: Handles };
 
 async function startCareer(page: Page): Promise<void> {
+  // One fixed world for every run: the duel needs open floor round the
+  // player, and a randomly generated lobby occasionally has none, which
+  // failed the setup rather than the game.
+  await page.addInitScript(() => { Date.now = () => 1_700_000_000_000; });
   await page.goto(HELLDESK);
   await page.evaluate(() => {
     localStorage.clear();
