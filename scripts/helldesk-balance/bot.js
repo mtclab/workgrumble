@@ -419,6 +419,7 @@
   // ---------------------------------------------------------------- the week
   function newFloor() {
     const s = g.save;
+    if (g.screen !== 'play' || s.location !== 'office' || B.floors.some((f) => f.floor === s.floor)) return;
     B.cur = {
       floor: s.floor, rung: s.rung, level: s.level, t0: g.time, rep0: s.rep, warnings0: s.warnings, burnouts: 0, minSanity: 1,
       overloadT: 0, maxOver: 0, staffOffers: 0, pushTries: 0, pushOk: 0, mentorAsks: 0, sideTaken: 0, fixed: 0, wrong: 0, terminalVisits: 0,
@@ -573,6 +574,7 @@
         continue;
       }
       if (B.cur === null || B.cur.floor !== s.floor) { if (B.cur) endFloor('changed'); newFloor(); }
+      if (B.cur === null) { step(); continue; }
       // Too long on a floor: a real player would find the boss eventually.
       if ((g.time - B.cur.t0) / 60 > B.policy.maxFloorMinutes * 1.6 && !B.cur.timedOut) {
         B.cur.timedOut = true;

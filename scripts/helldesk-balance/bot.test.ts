@@ -7,6 +7,7 @@ const source = readFileSync('scripts/helldesk-balance/bot.js', 'utf8');
 const DT = 1 / 30;
 
 interface Floor {
+  floor: number; reason: string;
   floorSec: number; combatSec: number; combatShare: number; aggroEpisodes: number;
   talkdowns: number; resolvesByForce: number;
 }
@@ -14,7 +15,8 @@ interface Bot {
   run: (sec: number, floors?: number) => { steps: number };
   seed: (seed: number) => void;
   floors: Floor[];
-  cur: Floor;
+  cur: Floor | null;
+  policy: { buy: boolean };
 }
 
 function career() {
@@ -31,6 +33,7 @@ function career() {
     derivedCache: { maxSanity: 100, overload: 0 },
     hurtPlayer: () => undefined,
     close: () => { game.screen = 'play'; },
+    goToWork: () => { game.screen = 'transition'; },
     step: (dt: number) => {
       if (game.screen !== 'play') return;
       if (game.hitStop > 0) { game.hitStop -= dt; return; }
@@ -39,17 +42,19 @@ function career() {
     },
   };
   let onStep = () => undefined;
-  const window = { __crawler: game, __helldesk: {} };
-  runInNewContext(source, { window, document: { querySelectorAll: () => [], querySelector: () => null }, performance: { now: () => 0 } });
+  let onOverlay = () => undefined;
+  const window = { __crawler: game, __helldesk: { rest: () => undefined } };
+  const document = { querySelectorAll: (selector: string) => selector === '.screen-btn' ? [{ click: () => onOverlay() }] : [], querySelector: () => null };
+  runInNewContext(source, { window, document, performance: { now: () => 0 } });
   const bot = (window as unknown as { __bot: Bot }).__bot;
-  const tick = (n = 1) => { for (let i = 0; i < n; i++) bot.run(DT / 2); };
-  const finish = () => {
+  const tick = (n = 1, floors?: number) => { for (let i = 0; i < n; i++) bot.run(DT / 2, floors); };
+  const finish = (floors?: number) => {
     onStep = () => { save.location = 'mokki'; };
-    tick();
+    tick(1, floors);
     onStep = () => undefined;
     return bot.floors.at(-1);
   };
-  return { game, actor, bot, tick, finish };
+  return { game, actor, bot, tick, finish, overlay: (fn: () => undefined) => { onOverlay = fn; } };
 }
 
 describe('floor combat measurements', () => {
@@ -123,6 +128,38 @@ describe('floor combat measurements', () => {
     expect(c.bot.floors).toHaveLength(1);
   });
 
+  it('counts three real work floors across Friday, mokki and delayed Monday loading', () => {
+    const c = career();
+    c.game.save.seed = 1700000000;
+    c.bot.seed(1700000000);
+    c.bot.policy.buy = false;
+    c.overlay(() => { c.game.screen = 'loading'; });
+    const betweenFloors: (Floor | null)[] = [];
+    for (let floor = 0; floor < 3; floor++) {
+      c.tick(5, 3);
+      c.finish(3);
+      betweenFloors.push(c.bot.cur);
+      if (floor === 2) break;
+      c.tick(4, 3); // Loading waits for the next event-loop turn, with the old floor index.
+      betweenFloors.push(c.bot.cur);
+      c.game.save.location = 'office';
+      c.tick(2, 3);
+      betweenFloors.push(c.bot.cur);
+      c.game.screen = 'play';
+      c.tick(2, 3); // A closed Friday floor must not reopen before Monday arrives.
+      betweenFloors.push(c.bot.cur);
+      c.game.save.floor = floor + 1;
+    }
+    expect(c.bot.floors.map((f) => f.floor)).toEqual([0, 1, 2]);
+    expect(c.bot.floors.every((f) => f.reason === 'friday' && f.floorSec > 0 && f.combatSec > 0)).toBe(true);
+    expect(betweenFloors.every((f) => f === null)).toBe(true);
+    expect(c.game.save).toMatchObject({ floor: 2, location: 'mokki' });
+    expect(c.game.screen).toBe('play');
+    expect(c.bot.run(60, 3).steps).toBe(1);
+    expect(c.bot.floors).toHaveLength(3);
+    expect(c.game.save.location).toBe('mokki');
+  });
+
   it('starts the next floor with fresh fight time, episodes and resolve baselines', () => {
     const c = career();
     c.tick(5);
@@ -131,7 +168,7 @@ describe('floor combat measurements', () => {
     c.game.save.location = 'office';
     c.game.save.floor = 1;
     c.tick();
-    const floor = c.bot.cur;
+    const floor = c.bot.cur!;
     expect(floor.floorSec).toBeCloseTo(DT);
     expect(floor.combatSec).toBeCloseTo(DT);
     expect(floor.aggroEpisodes).toBe(1);
