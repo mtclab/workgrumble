@@ -4,7 +4,8 @@ import { createActor } from './entities';
 import { Game } from './game';
 import { talkManager } from './story';
 import { CONSUMABLES } from './items';
-import { generateLevel } from './level';
+import { interact } from './interact';
+import { generateLevel, type Interactable } from './level';
 import { assignStaffed, maybeStaff, offerStaffing, placeQuestContent, pushBack, questEvent, settleWeek, staffingNode } from './questing';
 import { isActive, QUESTS, sideQuestsFor, STAFFED, talkGiver } from './quests';
 import { fx, Rng } from './rng';
@@ -112,4 +113,27 @@ it.each(['email', 'call'] as const)('pushed-back staffing counts toward the cap 
   settleWeek(g);
   expect(g.save.stats.staffedMissed, 'handing work back is not missing a deliverable').toBe(0);
   expect(g.save.stats.staffedDone).toBe(0);
+});
+
+
+it('the ergonomic survey counts a computer once across a reload and distinguishes floors', () => {
+  const g = host();
+  Object.assign(g, { openOs: vi.fn() });
+  g.save.questLog.push({ id: 'ergonomics', stage: 0, progress: 0, done: false, floor: 1 });
+  const logOn = (id: number): void => {
+    g.promptTarget = { kind: 'interact', it: { id, kind: 'terminal' } as Interactable };
+    interact(g);
+  };
+  logOn(501);
+  g.save = normalizeSave(JSON.parse(JSON.stringify(g.save)))!;
+  g.loggedOn.clear();
+  logOn(501);
+  expect(g.save.questLog[0]!.progress, 'returning to the same computer adds no survey credit').toBe(1);
+  logOn(502);
+  expect(g.save.questLog[0]!.progress).toBe(2);
+  g.save.floor = 2;
+  g.loggedOn.clear();
+  logOn(501);
+  expect(g.save.questLog[0]!.stage, 'three distinct computers finish the survey').toBe(1);
+  expect(g.save.questLog[0]!.terminals).toEqual(['1:501', '1:502', '2:501']);
 });

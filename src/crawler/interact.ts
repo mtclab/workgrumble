@@ -227,7 +227,7 @@ function useThing(g: Game, it: Interactable): void {
       }
       if (!g.loggedOn.has(it.id)) {
         g.loggedOn.add(it.id);
-        g.questEvent({ type: 'use', what: 'terminal' });
+        g.questEvent({ type: 'use', what: 'terminal', terminal: it.id });
       }
       g.openOs('desk');
       break;

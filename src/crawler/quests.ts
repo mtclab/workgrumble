@@ -21,12 +21,13 @@ export type QuestEvent =
   | { readonly type: 'room'; readonly room: RoomKind }
   | { readonly type: 'fix' }
   /** Something used: an interactable kind ('printer', 'kiuas', 'terminal', 'locker'...) or 'rune'. */
-  | { readonly type: 'use'; readonly what: string };
+  | { readonly type: 'use'; readonly what: string; readonly terminal?: number };
 
 export interface QuestState {
   readonly id: string;
   stage: number;
   progress: number;
+  terminals?: string[];
   done: boolean;
   /** Floor the quest was taken on. */
   readonly floor: number;
@@ -390,6 +391,12 @@ export function advance(st: QuestState, e: QuestEvent, floor: number): boolean {
       break;
     case 'use':
       if (e.type === 'use' && e.what === obj.use) {
+        if (e.what === 'terminal' && e.terminal !== undefined) {
+          const key = `${floor}:${e.terminal}`;
+          const terminals = st.terminals ??= [];
+          if (terminals.includes(key)) break;
+          terminals.push(key);
+        }
         st.progress += 1;
         hit = st.progress >= (obj.count ?? 1);
       }
