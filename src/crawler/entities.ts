@@ -1641,8 +1641,10 @@ function updateBoss(ctx: GameCtx, a: Actor, dt: number, dist: number, sees: bool
 
   if (a.charging > 0) {
     a.charging -= dt;
+    const start = a.pos.clone();
     moveActor(ctx, a, a.chargeDir.x, a.chargeDir.z, 13, dt);
-    if (dist < 2.2) {
+    new THREE.Line3(start, a.pos).closestPointToPoint(ctx.playerPos, true, tmp2);
+    if (Math.hypot(ctx.playerPos.x - tmp2.x, ctx.playerPos.z - tmp2.z) < a.radius + 0.45) {
       ctx.hurtPlayer(a.damage * 1.4, a, 'boss');
       ctx.shake(0.6);
       a.charging = 0;

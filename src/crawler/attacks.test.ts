@@ -632,3 +632,19 @@ it('a delivered Reply-All stays gone in the saved floor', () => {
   expect(JSON.parse(JSON.stringify(ctx.save.floorState)) as { resolved: number[] }).toMatchObject({ resolved: [12] });
   expect(ctx.save.stats.resolvedField, 'delivery earns no resolution credit').toBe(0);
 });
+
+
+it.each([
+  ['beside the lane', 2, 0, 0],
+  ['behind the boss', 0, -2, 0],
+  ['crossed this frame', 0, 3, 1],
+] as const)('a boss charge hits only its swept lane: %s', (_label, x, z, hits) => {
+  const ctx = new Arena();
+  const a = ctx.putBoss(null, 6);
+  a.charging = 0.9;
+  a.chargeDir.set(0, 0, 1);
+  ctx.playerPos.set(a.pos.x + x, 0, a.pos.z + z);
+  ctx.time = 0.3;
+  updateActor(ctx, a, 0.3);
+  expect(ctx.hits.filter((h) => h.effect === 'hurt').length, 'contact follows the segment actually moved').toBe(hits);
+});
