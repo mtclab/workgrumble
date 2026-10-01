@@ -34,6 +34,8 @@ export interface MissionCard {
   /** Its number in the spec's starter catalogue. */
   readonly number: number;
   readonly title: string;
+  /** The place named on the HUD, independent of the floor's look. */
+  readonly place: string;
   /** Who put it on the board, and what they said. */
   readonly source: string;
   readonly voice: string;

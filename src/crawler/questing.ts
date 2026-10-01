@@ -120,7 +120,7 @@ function ensureKind(g: Game, obj: Objective, st: QuestState): void {
 
 /** Whatever a stage needs in the world when it becomes the current one. */
 export function startStage(g: Game, st: QuestState): void {
-  if (g.save.location !== 'office' || !isActive(st)) return;
+  if (g.mission || g.save.location !== 'office' || !isActive(st)) return;
   const obj = currentObjective(st);
   if (obj === undefined) return;
   if (obj.kind === 'item' && obj.item !== undefined && obj.place !== undefined) placeItem(g, obj.item, obj.place);
@@ -163,6 +163,7 @@ function spawnGiver(g: Game, questId: string): Actor | null {
 
 /** Called on every floor load. */
 export function placeQuestContent(g: Game): void {
+  if (g.mission) return;
   const s = g.save;
   const f = g.floor;
   // Main story evidence on this floor.
@@ -600,6 +601,7 @@ export function settleWeek(g: Game): string {
 // ================================================================== what the HUD shows
 
 export function questLines(g: Game): string[] {
+  if (g.mission) return [];
   const s = g.save;
   const out: string[] = [];
   if (s.location === 'office') {
@@ -626,6 +628,7 @@ export function questLines(g: Game): string[] {
 }
 
 export function questMarkers(g: Game): CompassMarker[] {
+  if (g.mission) return g.mission.markers();
   const s = g.save;
   const out: CompassMarker[] = [];
   const gold = '#ffd54a';

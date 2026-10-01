@@ -1,15 +1,18 @@
 import * as THREE from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { markResolved } from './combat';
 import type { DialogueNode } from './dialogue';
 import { type Actor, createActor, type GameCtx, type SpawnOpts, updateActor, walkClear } from './entities';
-import type { Game } from './game';
+import { Game } from './game';
+import { Hud, type HudFrame } from './hud';
 import { flowField, generateLevel, type Level, lineOfSight, NEIGHBOURS8, toCell } from './level';
 import type { MissionCard } from './mission';
 import { type MissionView, MissionPlay } from './missionplay';
 import { MISSIONS, STAPLER, VENDOR_DAY } from './missions';
+import { placeQuestContent, questMarkers, questOf, startStage } from './questing';
+import { EVIDENCE, mainChapter } from './quests';
 import { Rng } from './rng';
-import { derive, newSave, type SaveState } from './state';
+import { derive, freshFloorState, newSave, type SaveState } from './state';
 import { INVESTIGATE, inCone, sightRange, type Tier } from './stealth';
 import { THEMES } from './textures';
 
@@ -60,12 +63,17 @@ class Host implements GameCtx {
   tiersDrawn: Tier[] = [];
   readonly rng = new Rng(17);
   readonly mission: MissionPlay;
+  markers: Game['markers'];
+  markersIn = 0.3;
 
-  constructor(readonly card: MissionCard, seed: number) {
+  constructor(readonly card: MissionCard, seed: number, markers: Game['markers'] = []) {
+    this.markers = markers;
     const theme = THEMES[card.floor % THEMES.length];
     if (theme === undefined) throw new Error('theme');
     this.level = generateLevel(card.floor, theme, seed, true, false, card.recipe);
     this.floor = card.floor;
+    this.save.floor = card.floor;
+    this.save.floorState = freshFloorState(card.floor);
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     const view: MissionView = {
@@ -140,6 +148,130 @@ function reachable(level: Level, field: Int16Array, x: number, z: number): boole
 }
 
 const SEEDS = Array.from({ length: 150 }, (_, i) => (i + 1) * 6007);
+
+class HudNode {
+  className = '';
+  textContent = '';
+  children: HudNode[] = [];
+  style = { display: '', setProperty: () => undefined };
+  dataset = {};
+  classList = { contains: () => false, toggle: () => undefined, add: () => undefined, remove: () => undefined };
+  append(...children: HudNode[]): void { this.children.push(...children); }
+  replaceChildren(...children: HudNode[]): void { this.children = children; }
+  getContext(): object { return {}; }
+}
+
+/** The harness's world through the real Game HUD and quest entry points. */
+function hudGame(h: Host): Game {
+  const g = Object.create(Game.prototype) as Game;
+  Object.assign(g, {
+    save: h.save, level: h.level, scene: h.scene, actors: h.actors, player: h.player,
+    mission: h.mission, derivedCache: h.derivedCache, lockerItems: h.lockerItems,
+    pickups: [], floaters: [], levelRng: h.rng, lootRng: new Rng(7), boss: null, mentorAsk: null,
+    markers: [], elevatorOpen: true, screen: 'play', input: { locked: true }, prompt: '',
+    faceMood: 'normal', chargeT: 0, effects: () => [], ammoText: () => 'Melee',
+    spawnAt: h.spawnAt.bind(h),
+  });
+  return g;
+}
+
+function drawHud(g: Game): { frame: HudFrame; quests: HudNode; floor: HudNode } {
+  vi.stubGlobal('document', { createElement: () => new HudNode() });
+  const drawing = Hud.prototype as unknown as { drawFace: () => void; drawMini: () => void };
+  vi.spyOn(drawing, 'drawFace').mockImplementation(() => undefined);
+  vi.spyOn(drawing, 'drawMini').mockImplementation(() => undefined);
+  const mount = new HudNode();
+  const hud = new Hud(mount as unknown as HTMLElement);
+  g.derivedCache = derive(g.save);
+  const frame = (g as unknown as { hudFrame(): HudFrame }).hudFrame();
+  hud.update(frame, DT);
+  const children = mount.children[0]!.children;
+  return { frame, quests: children.find((n) => n.className === 'hud-quests')!, floor: children.find((n) => n.className === 'hud-floor')! };
+}
+
+describe.each(MISSIONS.map((m) => [m.id, m] as const))('mission HUD %s', (_id, card) => {
+  afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+  it('hides and empties the ordinary quest tracker', () => {
+    const g = hudGame(new Host(card, 77));
+    g.save.questLog.push({ id: 'descaler', stage: 0, progress: 0, done: false, floor: card.floor });
+    const { frame, quests } = drawHud(g);
+    expect(frame.questLines, 'mission HUD has no ordinary quest lines').toEqual([]);
+    expect(quests.textContent).toBe('');
+    expect(quests.style.display).toBe('none');
+  });
+
+  it('places no ordinary story evidence, side-quest givers or quest markers', () => {
+    const g = hudGame(new Host(card, 77));
+    const crowd = g.actors.map((a) => a.name);
+    const lockers = [...g.lockerItems];
+    placeQuestContent(g);
+    expect(g.actors.map((a) => a.name), 'mission has only its own crowd, no ordinary quest givers').toEqual(crowd);
+    expect([...g.lockerItems], 'mission has only its own closet item').toEqual(lockers);
+    expect(g.pickups).toEqual([]);
+    expect(g.actors.some((a) => questOf(a) !== undefined)).toBe(false);
+  });
+
+  it('cannot place an ordinary side quest when its stage starts', () => {
+    const g = hudGame(new Host(card, 77));
+    const lockers = [...g.lockerItems];
+    const st = { id: 'descaler', stage: 0, progress: 0, done: false, floor: card.floor };
+    g.save.questLog.push(st);
+    startStage(g, st);
+    expect([...g.lockerItems], 'ordinary side-quest items stay off a mission').toEqual(lockers);
+    expect(g.pickups).toEqual([]);
+  });
+
+  it('shows only card objectives on the compass and map', () => {
+    const g = hudGame(new Host(card, 77));
+    const locker = g.level.interactables.find((it) => it.kind === 'locker' && !g.lockerItems.has(it.id))!;
+    g.lockerItems.set(locker.id, 'descaler');
+    g.save.questLog.push({ id: 's-printers', stage: 0, progress: 0, done: false, floor: card.floor, staffed: true });
+    const expected = card.objective.kind === 'take' ? ["HR's closet"] : g.actors.filter((a) => a.kind === 'vendor').map((a) => a.name);
+    expect(questMarkers(g).map((m) => m.label), 'mission compass has only card objectives').toEqual(expected);
+    for (const a of g.actors) a.resolved = true;
+    g.save.questItems.push('redstapler');
+    g.mission!.update(DT, false);
+    expect(questMarkers(g).map((m) => m.label)).toEqual(['The lift']);
+  });
+
+  it('replaces cached ordinary compass targets as soon as the card loads', () => {
+    const h = new Host(card, 77, [{ x: 0, z: 0, icon: '!', color: '#ffd54a', label: 'Ordinary floor objective' }]);
+    const expected = card.objective.kind === 'take' ? ["HR's closet"] : h.mission.crowd.filter((a) => a.kind === 'vendor').map((a) => a.name);
+    expect(h.markers.map((m) => m.label), 'mission immediately replaces ordinary compass targets').toEqual(expected);
+    expect(h.markersIn).toBe(0);
+  });
+
+  it('names the card place and title on the floor label', () => {
+    const g = hudGame(new Host(card, 77));
+    const place = card.id === 'stapler' ? 'HR corridor' : 'Atrium loop';
+    expect(drawHud(g).floor.textContent, 'mission floor label names the card place').toBe(`${place} - ${card.title}`);
+    g.mission = { card: { ...card, place: 'Test corridor' } } as MissionPlay;
+    expect(drawHud(g).floor.textContent).toBe(`Test corridor - ${card.title}`);
+  });
+
+  it('keeps ordinary trackers, story evidence, givers and floor labels without a mission', () => {
+    const g = hudGame(new Host(card, 77));
+    g.mission = null;
+    g.actors.length = 0;
+    g.lockerItems.clear();
+    g.save.questLog.push({ id: 'descaler', stage: 0, progress: 0, done: false, floor: card.floor });
+    placeQuestContent(g);
+    const { frame, quests, floor } = drawHud(g);
+    expect(frame.questLines).toContain('Workload 1/3');
+    expect(frame.questLines.some((line) => line.includes('Phoenix:'))).toBe(true);
+    expect(frame.questLines.some((line) => line.includes('The Coffee Cartel'))).toBe(true);
+    expect(quests.textContent).toContain('QUESTS & TASKS');
+    expect(quests.style.display).toBe('block');
+    expect(floor.textContent).toBe(`Floor ${card.floor === 0 ? 'B1' : card.floor} - ${THEMES[card.floor]!.name}`);
+    const items = [...g.lockerItems.values(), ...g.pickups.filter((p) => p.kind === 'quest').map((p) => p.id)];
+    expect(items).toContain(mainChapter(card.floor)!.evidence!.item);
+    expect(items.some((id) => (EVIDENCE as readonly string[]).includes(id))).toBe(true);
+    expect(items).toContain('descaler');
+    expect(g.actors.some((a) => questOf(a) !== undefined)).toBe(true);
+    expect(questMarkers(g).some((m) => m.label.includes('Descaler'))).toBe(true);
+  });
+});
 
 describe.each(MISSIONS.map((m) => [m.id, m] as const))('card %s', (_id, card) => {
   it('places its whole crowd where the lift reaches, on 150 seeds', { timeout: 60_000 }, () => {

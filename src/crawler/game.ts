@@ -492,6 +492,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   floorName(): string {
+    if (this.mission) return `${this.mission.card.place} - ${this.mission.card.title}`;
     if (this.save.location === 'mokki') return `The Mökki - weekend ${this.save.week}`;
     const theme = THEMES[this.save.floor % THEMES.length];
     const n = this.save.floor;
@@ -1274,7 +1275,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.markersIn -= dt;
     if (this.markersIn <= 0) {
       this.markersIn = 0.3;
-      this.markers = this.mission ? this.mission.markers() : questMarkers(this);
+      this.markers = questMarkers(this);
     }
   }
 
@@ -1338,7 +1339,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.markersIn -= dt;
       if (this.markersIn <= 0) {
         this.markersIn = 0.3;
-        this.markers = this.mission ? this.mission.markers() : questMarkers(this);
+        this.markers = questMarkers(this);
       }
       this.hud.update(this.hudFrame(), dt);
       if (this.settings.compass) this.compass.update(this.player.pos.x, this.player.pos.z, this.player.yaw, this.markers);
