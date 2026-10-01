@@ -7,7 +7,7 @@ import { flowField, type Level } from './level';
 import { MissionRun, payout, QUIET_BONUS, type Outcome } from './mission';
 import { STAPLER, VENDOR_DAY } from './missions';
 import { Rng } from './rng';
-import { ALERT, CONE, EARSHOT, INVESTIGATE, inCone, NOISE, type NoiseKind, sightRange, type Sort, type Tier, Watch, type WatchView } from './stealth';
+import { ALERT, CONE, INVESTIGATE, inCone, NOISE, type NoiseKind, sightRange, type Sort, type Tier, Watch, type WatchView } from './stealth';
 
 // Speech bubbles and markers are canvas text; the rules do not need to see them.
 vi.mock('./textures', async (orig) => ({
