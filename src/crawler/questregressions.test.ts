@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createActor } from './entities';
 import { Game } from './game';
-import { talkManager } from './story';
+import { storyNpcFor, talkManager, talkStory } from './story';
 import { CONSUMABLES } from './items';
 import { interact } from './interact';
 import { generateLevel, type Interactable } from './level';
@@ -136,4 +136,38 @@ it('the ergonomic survey counts a computer once across a reload and distinguishe
   logOn(501);
   expect(g.save.questLog[0]!.stage, 'three distinct computers finish the survey').toBe(1);
   expect(g.save.questLog[0]!.terminals).toEqual(['1:501', '1:502', '2:501']);
+});
+
+
+it.each([1, 2, 3])('floor %s story rewards are paid once per career, including after a reload', (n) => {
+  const g = host(n);
+  const npc = storyNpcFor(n);
+  const person = () => createActor(g, 'npc', g.level.start.x, g.level.start.z, 0, g.levelRng, 10, { npc });
+  const choose = (a: ReturnType<typeof person>): void => {
+    const node = talkStory(g, a);
+    (node.options.find((o) => o.label.includes('the truth')) ?? node.options[0])?.pick();
+  };
+  choose(person());
+  g.save = normalizeSave(JSON.parse(JSON.stringify(g.save)))!;
+  const rep = g.save.rep;
+  const standing = { ...g.save.standing };
+  g.save.floor = n + 5;
+  choose(person());
+  expect(g.save.rep, 'Overtime cannot pay the same story reward again').toBe(rep);
+  expect(g.save.standing, 'Overtime cannot pay the same standing again').toEqual(standing);
+  // Careers saved before career-wide flags also remember their first telling.
+  delete g.save.flags[`story_${npc.id}`];
+  g.save.flags[`story_${npc.id}_${n}`] = true;
+  choose(person());
+  expect(g.save.rep).toBe(rep);
+  expect(g.save.standing).toEqual(standing);
+});
+
+it('floor 9 has one Jukka when the story and his side quest both need him', () => {
+  const g = host(9);
+  g.save.questLog.push({ id: 'jukka', stage: 0, progress: 0, done: false, floor: 4 });
+  g.spawnFloorActors();
+  placeQuestContent(g);
+  expect(g.actors.filter((a) => a.npcId === 'jukka'), 'one person handles the story and the quest').toHaveLength(1);
+  expect(g.actors.filter((a) => a.name === 'Jukka from Finance')).toHaveLength(1);
 });

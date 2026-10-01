@@ -205,7 +205,7 @@ function talkTo(g: Game, a: Actor): void {
   } else if (a.kind === 'npc') {
     g.openDialogue(talkStory(g, a), () => {
       if (a.talked) {
-        s.flags[`story_${a.npcId ?? ''}_${s.floor}`] = true;
+        s.flags[`story_${a.npcId ?? ''}`] = true;
         setMarker(a, null);
       }
     });

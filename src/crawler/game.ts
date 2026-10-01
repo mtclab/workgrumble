@@ -131,7 +131,7 @@ import {
   skill,
   useSkill,
 } from './state';
-import { disciplinary, levelUpNode, performanceReview, type StoryHost, storyNpcFor } from './story';
+import { disciplinary, levelUpNode, performanceReview, type StoryHost, storyBeatDone, storyNpcFor } from './story';
 import { THEMES } from './textures';
 import { overflowDecision, type LoylySource, SUO_LINES } from './suo';
 import { CROSSING_STOP, Vision, type VisionEnd } from './vision';
@@ -662,7 +662,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
         }
       } else if (sp.kind === 'npc') {
         // The PA has nothing left to offer once the story is over.
-        if (s.flags[`story_${npc.id}_${s.floor}`] === true || (npc.id === 'pa' && s.won)) rollActor('npc', s.floor, this.levelRng, TICKETS.length, { npc });
+        if (storyBeatDone(s.flags, npc.id) || (npc.id === 'pa' && s.won)) rollActor('npc', s.floor, this.levelRng, TICKETS.length, { npc });
         else this.spawnAt('npc', sp.x, sp.z, sp.room, false, { npc });
       } else {
         // Roll the elite either way, so the same people are elites after a reload.

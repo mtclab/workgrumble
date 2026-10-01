@@ -135,6 +135,11 @@ function spawnGiver(g: Game, questId: string): Actor | null {
   if (def === undefined || def.staffed === true || def.mentor === true) return null;
   const s = g.save;
   const st = s.questLog.find((q) => q.id === questId);
+  const existing = g.actors.find((a) => !a.resolved && a.npcId === def.npc);
+  if (existing !== undefined) {
+    giverOf.set(existing, questId);
+    return existing;
+  }
   // Josh starts at the lift, lost. Everyone else waits somewhere sensible.
   if (def.npc === 'josh') {
     const a = g.spawnAt('helper', g.level.start.x + 2, g.level.start.z + 2, 0, false, { role: 'intern', npc: { id: 'josh', name: 'Josh (Intern, first day)' } });

@@ -380,15 +380,19 @@ export function storyNpcFor(floor: number): StoryNpc {
   }
 }
 
+export function storyBeatDone(flags: Readonly<Record<string, boolean | number>>, id: string): boolean {
+  return flags[`story_${id}`] === true || Object.entries(flags).some(([key, value]) => value === true && key.startsWith(`story_${id}_`));
+}
+
 export function talkStory(h: StoryHost, a: Actor): DialogueNode {
   // The flag that stops a story repeating is set the moment a choice is made,
   // so a save taken straight afterwards already has it.
   const done = (text: string, mood: DialogueNode['mood'] = 'neutral'): DialogueNode => {
     a.talked = true;
-    h.flag(`story_${a.npcId ?? ''}_${h.floor}`);
+    h.flag(`story_${a.npcId ?? ''}`);
     return said(a.name, text, mood);
   };
-  if (a.talked) return said(a.name, 'We have said what needed saying.', 'neutral');
+  if (a.talked || storyBeatDone(h.save.flags, a.npcId ?? '')) return said(a.name, 'We have said what needed saying.', 'neutral');
   switch (a.npcId) {
     case 'marcus':
       return {
@@ -431,7 +435,7 @@ export function talkStory(h: StoryHost, a: Actor): DialogueNode {
           () => { h.flag('doctored'); h.clearFindings(); h.journal('I doctored the access logs. The Auditor will find nothing. I will know.'); return done('Clean as a whistle. We never spoke.', 'neutral'); },
           () => { h.finding(2, 'Log tampering, badly done.'); h.warn('Caught tampering with audit logs'); return done('You... left an edit history. On the audit log. We are finished.', 'bad'); }),
         { label: 'We tell the Auditor the truth.', pick: () => { h.standing('staff', 3); h.journal('I will face the Auditor honestly, with whatever findings I have earned.'); return done('Your funeral. Well, both of ours.', 'neutral'); } },
-        { label: 'Blame it all on Derek.', pick: () => { h.standing('management', 5); h.standing('staff', -5); h.flag('blamedDerek'); h.journal('I pinned the findings on Derek. He did not take it well.'); a.talked = true; h.flag(`story_derek_${h.floor}`); h.spawnHostile('manager', 1, 'Derek (bitter)'); return said(a.name, 'You WHAT? Right. RIGHT.', 'bad'); } },
+        { label: 'Blame it all on Derek.', pick: () => { h.standing('management', 5); h.standing('staff', -5); h.flag('blamedDerek'); h.journal('I pinned the findings on Derek. He did not take it well.'); a.talked = true; h.flag('story_derek'); h.spawnHostile('manager', 1, 'Derek (bitter)'); return said(a.name, 'You WHAT? Right. RIGHT.', 'bad'); } },
       ];
       if (h.save.findings >= 2) {
         opts.push({ label: 'Hand the Auditor everything - including management\'s mess.', tag: 'Whistleblow', pick: () => { h.flag('whistleblower'); h.clearFindings(); h.standing('management', -20); h.standing('staff', 10); h.journal('I gave the Auditor the whole story. Management will never forgive me. The Auditor might even be on my side.'); return done('You would burn it all down? ...Huh. Respect.', 'mystic'); } });
@@ -444,7 +448,7 @@ export function talkStory(h: StoryHost, a: Actor): DialogueNode {
       // Whatever you choose here, the PA is done with you.
       const settle = (): void => {
         a.talked = true;
-        h.flag(`story_${a.npcId ?? ''}_${h.floor}`);
+        h.flag(`story_${a.npcId ?? ''}`);
       };
       if (ev >= MAIN_ENDING_EVIDENCE) {
         opts.push({ label: 'Tell him I have the Phoenix file. All of it. And I am sending it to the regulator.', tag: `Evidence ${ev}/4`, pick: () => { settle(); h.bossDeal('expose'); return null; } });
