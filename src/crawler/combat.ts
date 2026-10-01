@@ -704,7 +704,7 @@ export function lastStand(g: Game): boolean {
 export const EXTRA_BASE = 100000;
 
 /** Remember that a level spawn is dealt with, so a reload does not bring it back. */
-function markResolved(g: Game, a: Actor): void {
+export function markResolved(g: Game, a: Actor): void {
   if (a.spawnIndex >= 0 && g.save.location === 'office' && !g.save.floorState.resolved.includes(a.spawnIndex)) g.save.floorState.resolved.push(a.spawnIndex);
 }
 

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { type Actor, allyIgnores, createActor, type GameCtx, hurtActor, isFoe, type ProjectileSpec, shrugsOff, spawnsAggro, stun, updateActor, updateAuras } from './entities';
 import { actorColor } from './hud';
-import { shove } from './combat';
+import { markResolved, shove } from './combat';
 import type { Game } from './game';
 import { newSave } from './state';
 import { floorAwake, type InductionState, STEPS } from './induction';
@@ -80,6 +80,7 @@ class Arena implements GameCtx {
   /** Awake unless a test says the induction is still running. */
   floorAwake = true;
   field: Int16Array;
+  readonly save = newSave(7);
   readonly hits: Hit[] = [];
   readonly rng = new Rng(7);
 
@@ -94,6 +95,7 @@ class Arena implements GameCtx {
   hurtPlayer(): void { this.note('hurt'); }
   fire(p: { hostile: boolean }): void { if (p.hostile) this.note('fire'); }
   hazard(): void { this.note('hazard'); }
+  markResolved(a: Actor): void { markResolved(this as unknown as Game, a); }
   rootPlayer(): void { this.note('root'); }
   spawn(): Actor | null { this.note('summon'); return null; }
   enqueueTicket(): void { /* joins the queue: not a hit of its own */ }
@@ -618,4 +620,15 @@ describe('Budget Freeze checks where you are at release', () => {
     });
     expect(ctx.hits.filter((h) => h.effect === 'root').length, 'freeze only reaches a player still in sight and range').toBe(dodge === 'standing' ? 1 : 0);
   });
+});
+
+
+it('a delivered Reply-All stays gone in the saved floor', () => {
+  const ctx = new Arena();
+  const a = ctx.put('reply', 1);
+  a.spawnIndex = 12;
+  fight(ctx, a, 2);
+  expect(a.expired).toBe(true);
+  expect(JSON.parse(JSON.stringify(ctx.save.floorState)) as { resolved: number[] }).toMatchObject({ resolved: [12] });
+  expect(ctx.save.stats.resolvedField, 'delivery earns no resolution credit').toBe(0);
 });

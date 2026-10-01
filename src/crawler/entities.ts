@@ -267,6 +267,7 @@ export interface GameCtx {
   field: Int16Array;
   hurtPlayer(amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): void;
   enqueueTicket(from: Actor, gold: boolean): void;
+  markResolved(a: Actor): void;
   fire(p: ProjectileSpec): void;
   spawn(kind: ActorKind, x: number, z: number, room: number): Actor | null;
   floatText(pos: THREE.Vector3, text: string, color: string): void;
@@ -1527,6 +1528,7 @@ function strikeGrunt(ctx: GameCtx, a: Actor, id: AttackId, sees: boolean, dmg: n
         a.resolved = true;
         a.expired = true;
         a.removeIn = 0.3;
+        ctx.markResolved(a);
       }
       break;
     case 'mosquito.bite':

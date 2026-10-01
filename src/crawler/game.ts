@@ -57,7 +57,7 @@ import { InductionDay } from './inductionday';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
-import { EXTRA_BASE, lastStand, redropBossLoot } from './combat';
+import { EXTRA_BASE, lastStand, markResolved, redropBossLoot } from './combat';
 import { itemById } from './items';
 import { spellById } from './magic';
 import { FishingUI } from './minigames';
@@ -813,6 +813,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.actors.push(a);
     return a;
   }
+
+  markResolved(a: Actor): void { markResolved(this, a); }
 
   spawn(kind: ActorKind, x: number, z: number, room: number): Actor | null {
     if (this.actors.filter((a) => !a.resolved && isFoe(a)).length > 70) return null;
