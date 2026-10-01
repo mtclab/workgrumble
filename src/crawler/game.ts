@@ -127,6 +127,7 @@ import {
   type QueuedTicket,
   raiseSkill,
   type SaveState,
+  workload,
   skill,
   useSkill,
 } from './state';
@@ -266,7 +267,18 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   boss: Actor | null = null;
   bossMult = 1;
   elevatorOpen = false;
-  derivedCache: Derived;
+  private derivedValue!: Derived;
+
+  /** Workload can change at a desk or in dialogue, between play updates. */
+  get derivedCache(): Derived {
+    const load = workload(this.save);
+    if (load.active !== this.derivedValue.workload || load.capacity !== this.derivedValue.capacity) this.refreshDerived();
+    return this.derivedValue;
+  }
+
+  set derivedCache(value: Derived) {
+    this.derivedValue = value;
+  }
   currentTerminal: Interactable | null = null;
   slackedTerminals = new Set<number>();
   caughtPending = false;
