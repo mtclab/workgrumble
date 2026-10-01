@@ -202,6 +202,7 @@ export function tickCaffeine(g: Game, dt: number): void {
   // Way past sense: a proper scare.
   if (!ultra && eff > 650) {
     s.caffeine *= 0.55;
+    if (caffeineBand(s.caffeine, s.caffeineTol) !== band) g.refreshDerived();
     s.sanity -= g.derivedCache.maxSanity * 0.35;
     g.rootPlayer(4, 'Sitting down, very suddenly');
     g.hud.toast('CARDIAC SCARE. You sit down on the carpet and count your heartbeats. There are a lot of them.', 'bad');
