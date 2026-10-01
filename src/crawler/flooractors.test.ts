@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type Actor, createActor } from './entities';
 import { Game } from './game';
 import { generateLevel } from './level';
-import { Rng } from './rng';
+import { fx, Rng } from './rng';
 import { derive, newSave } from './state';
 import { storyNpcFor } from './story';
 import { THEMES } from './textures';
@@ -31,7 +31,10 @@ function identity(a: Actor) {
 }
 
 describe('the people on a saved floor', () => {
+  afterEach(() => vi.restoreAllMocks());
   it('every survivor keeps their name role kind elite and outfit after early resolutions', () => {
+    // Keep collision nudges identical so this compares the actor rolls.
+    vi.spyOn(fx, 'range').mockReturnValue(0);
     for (const n of [0, 1, 2, 3, 4]) {
       for (const seed of [77, 1234, 9012]) {
         const fresh = floor(seed, n);

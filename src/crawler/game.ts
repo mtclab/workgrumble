@@ -893,6 +893,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   /** Buffs and timers that belong to the moment, not the save. */
   resetTransient(): void {
     this.currentTerminal = null;
+    this.abilityCd = 0;
     this.invisT = 0;
     this.sisuT = 0;
     this.saunaT = 0;
