@@ -282,6 +282,7 @@ export function showChargen(g: Game): void {
 }
 
 export function startPlay(g: Game): void {
+  g.currentTerminal = null;
   sfx.unlock();
   sfx.boot();
   hideOverlay(g);
@@ -329,6 +330,7 @@ function leaveForTitle(g: Game, save: boolean): void {
 }
 
 export function resume(g: Game): void {
+  g.currentTerminal = null;
   hideOverlay(g);
   g.screen = 'play';
   g.input.enabled = true;

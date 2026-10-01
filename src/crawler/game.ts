@@ -481,6 +481,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   // ================================================================== world
 
   clearWorld(): void {
+    this.currentTerminal = null;
     // A load or a new career mid-vision lands in the normal world: SUO comes
     // off before the floor it was dressing goes.
     this.abortVision();
@@ -891,6 +892,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   /** Buffs and timers that belong to the moment, not the save. */
   resetTransient(): void {
+    this.currentTerminal = null;
     this.invisT = 0;
     this.sisuT = 0;
     this.saunaT = 0;
@@ -1046,6 +1048,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   openOs(mode: 'desk' | 'itdesk' | 'pack', first?: Parameters<Os['open']>[1]): void {
+    if (mode === 'pack') this.currentTerminal = null;
     this.screen = 'os';
     screens.hideOverlay(this);
     this.input.enabled = false;
