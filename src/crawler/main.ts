@@ -6,6 +6,8 @@ import { rest } from './hosts';
 import { findPrompt, interact, standAt } from './interact';
 import { CARDS_SHOWN, INDUCTION_TERMINAL_ID } from './inductionday';
 import type { InteractKind } from './level';
+import { type MissionDebug, startMission } from './missionplay';
+import { missionById } from './missions';
 import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
@@ -80,7 +82,22 @@ try {
     },
     // A long shift's hits already taken: Sanity down to `left` (never up). The last hit is somebody's.
     wear: (left: number): void => { game.save.sanity = Math.max(1, Math.min(game.save.sanity, left)); },
+    // Missions (the 0.3.0 spike, e2e/helldesk-mission.spec.ts and the balance bot): read-only state -
+    // the tier, each person's suspicion and patrol, the spine's cells, the run - and two that only place the player.
+    mission: (): MissionDebug | null => game.mission?.debug() ?? null,
+    missionStandInView: (id: number, dist: number): boolean => game.mission?.standInView(id, dist) ?? false,
+    missionToSpine: (): boolean => game.mission?.toSpine() ?? false,
   };
+  // `crawler.html?mission=stapler` (or vendor): a fresh trainee straight into
+  // that card, no induction, nothing saved. `&seed=N` pins its map. With no
+  // query (or an unknown card) the page is what it always was.
+  const params = new URLSearchParams(window.location.search);
+  const card = missionById(params.get('mission'));
+  if (card !== undefined) {
+    const asked = params.get('seed');
+    const pinned = asked !== null && /^\d+$/.test(asked);
+    startMission(game, card, pinned ? Number(asked) >>> 0 : Date.now() >>> 0, pinned);
+  }
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'
     + '<p class="title-blurb">The workstation could not start WebGL. Try a different browser, or turn hardware acceleration on.</p></div>';

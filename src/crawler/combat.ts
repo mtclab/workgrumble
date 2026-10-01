@@ -258,6 +258,8 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
   g.attackCd = (w.cooldown / rate) * (power ? 1.3 : 1);
   g.player.swing = 1;
   if (g.invisT > 0) g.invisT = 0;
+  // Heard on a mission: a swing carries 8 m, anything fired 18 m.
+  g.mission?.noise(w.kind === 'melee' ? 'swing' : 'gun');
   const pp = g.player.pos;
   const yawFwd = fwdOf(g.player.yaw);
   // Shaky hands: the jitters and the drink both spoil your aim.

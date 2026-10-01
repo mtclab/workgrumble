@@ -106,7 +106,7 @@ export function findPrompt(g: Game): void {
     coffee: it.used ? 'Coffee machine (descaling)' : 'E: Coffee machine (90 mg)',
     vending: 'E: Vending machine (₡10, mostly cans)',
     itdesk: 'E: Internal IT Service Desk (requisition gear, sell kit)',
-    elevator: g.elevatorOpen ? 'E: Take the lift - Friday, the mökki' : 'Lift locked - Major Incident in progress',
+    elevator: g.mission ? g.mission.liftPrompt() : g.elevatorOpen ? 'E: Take the lift - Friday, the mökki' : 'Lift locked - Major Incident in progress',
     crate: it.used ? 'Empty spares crate' : 'E: Rummage in the spares crate',
     kiuas: s.location === 'mokki' ? (w.saunas >= saunaMax ? 'The kiuas is cooling (next weekend)' : 'E: Throw löyly (sauna)') : it.used ? 'The kiuas is cooling' : 'E: Throw löyly (sauna)',
     locker: it.used ? 'Supply closet (empty)' : `E: Pick the supply-closet lock (lock ${it.lock})${g.lockerItems.has(it.id) ? ' ◆' : ''}`,
@@ -305,6 +305,11 @@ function useThing(g: Game, it: Interactable): void {
       if (g.lootRng.chance(0.3)) dropGearFrom(g, new THREE.Vector3(it.x, 0, it.z));
       break;
     case 'elevator':
+      // On a mission card the lift closes the card (or aborts it).
+      if (g.mission) {
+        g.mission.lift();
+        break;
+      }
       if (!g.elevatorOpen) {
         sfx.error();
         g.hud.toast(`The lift is locked while ${g.boss?.name ?? 'the boss'} is unresolved.`, 'bad');
@@ -510,6 +515,8 @@ function fish(g: Game): void {
 
 function witnesses(g: Game, range: number, kinds: readonly Actor['kind'][]): Actor[] {
   if (g.player.crouching && perk(g.save, 'socialeng') > 0) return [];
+  // On a mission only someone with you in their cone sees anything.
+  if (g.mission) return g.mission.witnesses(range, kinds);
   const pp = g.player.pos;
   return g.actors.filter((a) => !a.resolved && kinds.includes(a.kind)
     && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < range
@@ -582,6 +589,8 @@ function pickLock(g: Game, it: Interactable): void {
       if (seen.length > 0) {
         adjustStanding(s, 'staff', -4);
         g.warn(`${seen[0]?.name ?? 'Someone'} saw you breaking into a supply closet`);
+        // On a mission a witnessed crime makes the witnesses Alert.
+        g.mission?.crime(seen);
       }
     }
     g.refreshDerived();

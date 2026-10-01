@@ -443,3 +443,20 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #0b0d0c; col
   .loading-badge { animation: none; }
 }
 @keyframes charge-ready-still { from { opacity: 1; } to { opacity: 0.45; } }
+
+/* ---------------- Missions (the 0.3.0 spike, ?mission=) ---------------- */
+/* The eye (closed, half, open red) and the tier, over the card's objective line. */
+.mission-hud { position: absolute; left: 12px; top: 34px; max-width: min(420px, calc(100vw - 220px)); display: none; background: var(--hud-panel); border: 1px solid var(--hud-edge); border-left: 4px solid #ffb020; padding: 5px 10px 6px; border-radius: 3px; color: var(--hud-ink); }
+.mission-hud[data-tier="2"], .mission-hud[data-tier="3"] { border-left-color: #ff4030; }
+.mission-eye-row { display: flex; align-items: center; gap: 8px; }
+.mission-eye { width: 34px; height: 21px; color: #ffb020; }
+.mission-hud[data-tier="2"] .mission-eye, .mission-hud[data-tier="3"] .mission-eye { color: #ff4030; }
+.mission-tier { font: bold 13px monospace; letter-spacing: 1px; color: #ffd98a; }
+.mission-hud[data-tier="2"] .mission-tier, .mission-hud[data-tier="3"] .mission-tier { color: #ff8a70; }
+.mission-hud[data-tier="3"] .mission-tier { animation: mission-alarm 0.8s steps(2) infinite; }
+@keyframes mission-alarm { 50% { opacity: 0.45; } }
+.mission-goal { margin-top: 3px; font: 13px/1.4 var(--read); color: #d8d0c0; }
+.mission-result { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 18px; max-width: min(640px, calc(100vw - 32px)); margin: 4px 0 8px; text-align: left; font: 16px/1.45 var(--read); color: #d8d0c0; }
+.mission-result dt { font: bold 13px Tahoma, Verdana, sans-serif; color: #9fb8aa; padding-top: 2px; }
+.mission-result dd { margin: 0; }
+@media (prefers-reduced-motion: reduce) { .mission-hud[data-tier="3"] .mission-tier { animation: none; } }

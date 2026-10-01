@@ -54,6 +54,8 @@ import {
 import { Hud, type HudFrame } from './hud';
 import { floorAwake, HUD_METERS, inductionOnLoad, type InductionEvent, isPracticeTicket, type MeterFacts, MORAG, startInduction, stillHidden, welcomeLine } from './induction';
 import { InductionDay } from './inductionday';
+import type { MissionCard } from './mission';
+import { MissionPlay } from './missionplay';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
@@ -322,6 +324,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   private readonly moveDir = new THREE.Vector2();
   /** Induction day's props and card, while it runs on floor 0 (the step itself is in the save). */
   inductionDay: InductionDay | null = null;
+  /** A mission card being played (the 0.3.0 spike, `?mission=`), or null: then nothing below changes anything. */
+  mission: MissionPlay | null = null;
   /** What the meter reveal looks at, refilled in place each frame (no allocation while meters wait). */
   private readonly meterFacts: { -readonly [K in keyof MeterFacts]: MeterFacts[K] } = { step: null, loyly: 0, maxLoyly: 0, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
 
@@ -463,6 +467,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     return floorAwake(this.save.induction);
   }
 
+  get watch(): MissionPlay['watch'] | null {
+    return this.mission?.watch ?? null;
+  }
+
   get staffStanding(): number {
     return this.save.standing.staff;
   }
@@ -501,6 +509,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     // The morning's props first: the computer is not part of the level's group.
     this.inductionDay?.dispose();
     this.inductionDay = null;
+    this.mission?.dispose();
+    this.mission = null;
     for (const a of this.actors) disposeActor(this.scene, a);
     this.actors = [];
     for (const p of this.projectiles) this.scene.remove(p.mesh);
@@ -569,18 +579,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.levelRng = new Rng(seed ^ 0x5bd1e995);
     this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
     this.level = generateLevel(n, theme, seed);
-    this.scene.add(this.level.group);
-    this.scene.fog = new THREE.Fog(theme.fog, 6, 42);
-    this.scene.background = new THREE.Color(theme.fog);
-    this.hemi.color.setHex(theme.light);
-    this.hemi.groundColor.setHex(theme.ambient);
-    this.hemi.intensity = n === 0 ? 0.7 : 1.05;
-    this.sun.intensity = 0;
-    this.renderer.toneMappingExposure = 1.15;
-    this.pipeline.bloom.strength = 0.5;
-    this.pipeline.bloom.threshold = 0.82;
-    this.player.outdoor = false;
-    for (const l of this.lights) l.color.setHex(theme.light);
+    this.dressOffice(theme, n);
     // Whatever you already used on this floor stays used after a reload.
     for (const it of this.level.interactables) if (fs.used.includes(it.id)) it.used = true;
 
@@ -646,6 +645,63 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     sfx.setBoss(false);
     sfx.setAmbient('office');
     if (!fromSave) this.autosave();
+  }
+
+  /** The office's air and light around a floor just generated. */
+  private dressOffice(theme: (typeof THEMES)[number], n: number): void {
+    this.scene.add(this.level.group);
+    this.scene.fog = new THREE.Fog(theme.fog, 6, 42);
+    this.scene.background = new THREE.Color(theme.fog);
+    this.hemi.color.setHex(theme.light);
+    this.hemi.groundColor.setHex(theme.ambient);
+    this.hemi.intensity = n === 0 ? 0.7 : 1.05;
+    this.sun.intensity = 0;
+    this.renderer.toneMappingExposure = 1.15;
+    this.pipeline.bloom.strength = 0.5;
+    this.pipeline.bloom.threshold = 0.82;
+    this.player.outdoor = false;
+    for (const l of this.lights) l.color.setHex(theme.light);
+  }
+
+  /**
+   * A mission card (the 0.3.0 spike, missionplay.ts): a fresh trainee on the
+   * card's recipe map, with its people and its watch. No boss, no quests, no
+   * staffing or mentoring, and nothing is saved.
+   */
+  loadMission(card: MissionCard, seed: number, pinned: boolean): void {
+    this.clearWorld();
+    const s = newSave(seed);
+    s.floor = card.floor;
+    s.location = 'office';
+    s.floorState = freshFloorState(card.floor);
+    this.save = s;
+    this.derivedCache = derive(s);
+    this.resetTransient();
+    this.fixCache = new WeakMap();
+    const theme = THEMES[card.floor % THEMES.length] ?? THEMES[0];
+    if (theme === undefined) throw new Error('no theme');
+    this.levelRng = new Rng(seed ^ 0x5bd1e995);
+    this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
+    this.level = generateLevel(card.floor, theme, seed, false, true, card.recipe);
+    this.dressOffice(theme, card.floor);
+    this.elevatorOpen = true;
+    this.pendingStaff = null;
+    this.staffIn = Infinity;
+    this.mentorIn = Infinity;
+    this.slackedTerminals.clear();
+    this.loggedOn.clear();
+    this.player.pos.set(this.level.start.x, 0, this.level.start.z);
+    this.player.yaw = Math.PI;
+    this.player.pitch = 0;
+    this.player.crouching = false;
+    this.mission = new MissionPlay(this, card, seed, pinned);
+    this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
+    this.refreshDerived();
+    this.markSeen();
+    this.updateLights(true);
+    this.settleWorld();
+    sfx.setBoss(false);
+    sfx.setAmbient('office');
   }
 
   spawnFloorActors(): void {
@@ -851,8 +907,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
-    // A vision is never saved: whatever asks waits until you surface.
-    if (this.vision !== null) return false;
+    // A vision is never saved: whatever asks waits until you surface. Nor is a mission card's trainee.
+    if (this.vision !== null || this.mission) return false;
     if (s === this.save && this.boss !== null && !this.boss.resolved && !s.floorState.bossDone) {
       s.floorState.boss = { hp: this.boss.hp, phase: this.boss.phase };
     }
@@ -874,6 +930,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.hud.toast('Ironman: no quicksaves. The building only remembers what you did.', 'bad');
       return;
     }
+    if (this.mission) {
+      this.hud.toast('A mission card is not saved. Again from the results card replays it.', 'info');
+      return;
+    }
     if (this.writeSlotFor('quick')) this.hud.toast('Quicksaved. (F9 to load)', 'good');
     else this.hud.toast('Could not save: this browser is not keeping anything.', 'bad');
   }
@@ -881,6 +941,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   quickload(): void {
     if (this.save.ironman) {
       this.hud.toast('Ironman: there is no going back.', 'bad');
+      return;
+    }
+    if (this.mission) {
+      this.hud.toast('A mission card is not saved: the lift aborts it.', 'info');
       return;
     }
     this.loadSlot('quick');
@@ -1210,7 +1274,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.markersIn -= dt;
     if (this.markersIn <= 0) {
       this.markersIn = 0.3;
-      this.markers = questMarkers(this);
+      this.markers = this.mission ? this.mission.markers() : questMarkers(this);
     }
   }
 
@@ -1274,12 +1338,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.markersIn -= dt;
       if (this.markersIn <= 0) {
         this.markersIn = 0.3;
-        this.markers = questMarkers(this);
+        this.markers = this.mission ? this.mission.markers() : questMarkers(this);
       }
       this.hud.update(this.hudFrame(), dt);
       if (this.settings.compass) this.compass.update(this.player.pos.x, this.player.pos.z, this.player.yaw, this.markers);
     }
     this.hud.root.style.display = visible ? 'block' : 'none';
+    this.mission?.show(visible);
     this.rootedCard.update(rootedView(this.screen === 'play' && this.vision === null, this.rootT, this.rootMax, this.rootReason, rootDrain(perk(this.save, 'teflon'))));
     this.compass.visible = visible && this.settings.compass;
     this.hud.crosshair.style.display = this.screen === 'play' ? 'block' : 'none';
@@ -1310,7 +1375,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       title: this.title,
       spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : spellLabel(this, sp),
       abilityText: domainReady ? `${s.domain ?? ''} (G): ${this.abilityCd > 0 ? `${Math.ceil(this.abilityCd)}s` : 'ready'}` : '',
-      hidden: this.player.crouching ? !this.actors.some((a) => a.hostile && a.aggro && !a.resolved) : null,
+      // On a mission the eye is the mission's (missionplay.ts): one eye on screen.
+      hidden: this.player.crouching && !this.mission ? !this.actors.some((a) => a.hostile && a.aggro && !a.resolved) : null,
       bandLabel: BAND_EFFECTS[bandFor(s.bac, this.derivedCache.specials.has('flask'))].label,
       promille: promille(s.bac),
       bacForecast: Math.min(100, s.bac + s.stomach),
@@ -1484,6 +1550,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     }
     const jump = this.hit('jump') && this.rootT <= 0 && !this.player.crouching;
     this.player.move(this.level, wx, wz, speed, jump, dt, d.jump);
+    this.mission?.update(dt, sprint && speed > 0);
     if (moving && speed > 0 && this.player.onGround) {
       this.stepIn -= dt * speed;
       if (this.stepIn <= 0) {
@@ -1575,6 +1642,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.screen === 'os') {
       this.os.hide();
       this.currentTerminal = null;
+    }
+    // A burnout on a mission card ends the card, not a career.
+    if (this.mission) {
+      this.mission.finish('burnout');
+      return;
     }
     screens.showDead(this);
   }
@@ -1948,7 +2020,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   kitchenStanding(): number { return this.derivedCache.band.healerMult === 0 ? -100 : this.save.standing.kitchen; }
   ticketTitle(a: Actor): string { return TICKETS[a.ticket]?.title ?? 'It is broken'; }
   ticketFix(a: Actor): string { return TICKETS[a.ticket]?.fixes[0] ?? 'Turn it off and on again'; }
-  noticed(a: Actor): void { if (this.player.crouching && a.kind !== 'mosquito') this.hud.toast(`${a.name} spotted you.`, 'bad'); }
+  noticed(a: Actor): void {
+    if (this.player.crouching && a.kind !== 'mosquito') this.hud.toast(`${a.name} spotted you.`, 'bad');
+    this.mission?.aggroed(a);
+  }
+
   bossStart(a: Actor): void { host.bossStart(this, a); }
   bossLeash(a: Actor): void { host.bossLeash(this, a); }
   bossParley(a: Actor): void { host.bossParley(this, a); }
