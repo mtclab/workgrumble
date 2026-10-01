@@ -3,6 +3,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from './rng';
 import { normalMapFrom } from './graphics';
+import { layRecipe, type RecipeId, type RecipePlan, walkableCell } from './templates';
 import {
   woodTexture,
   carpetTexture,
@@ -112,6 +113,23 @@ export interface Level {
   readonly group: THREE.Group;
   /** Which cells the player has seen, for the automap. */
   readonly seen: Uint8Array;
+  /** Glass cells (solid, see-through): only a recipe's floors have any. */
+  readonly glass?: Uint8Array;
+  /** A recipe's floor: what its mission needs to find in it (templates.ts). */
+  readonly recipe?: RecipeLayout;
+}
+
+/** Where things are on a floor built from a recipe. */
+export interface RecipeLayout {
+  readonly id: RecipeId;
+  /** Room ids by the footprint's tag ('lobby', 'hr', 'office', 'open', 'meeting'). */
+  readonly rooms: Readonly<Record<string, readonly number[]>>;
+  /** The service spine's cells, its doors included (empty when the recipe has none). */
+  readonly spine: readonly number[];
+  /** Corridor nodes: where patrols walk to and pause. */
+  readonly nodes: readonly number[];
+  /** The locked supply closet in HR's office (an interactable id), or -1. */
+  readonly closet: number;
 }
 
 export function cellCenter(c: number): number {
@@ -497,12 +515,21 @@ export function repairFloorAccess(level: Pick<Level, 'w' | 'h' | 'floor' | 'soli
   for (let k = spawns.length - 1; k >= 0; k--) if (dropped.has(spawns[k]!)) spawns.splice(k, 1);
 }
 
-export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures): Level {
+/**
+ * A floor. With no `recipe` it is the dungeon it always was: rectangles
+ * rejection-sampled and joined by corridors (`levelprint.test.ts` holds it
+ * to that, seed for seed). With one, the rooms and corridors are a
+ * template's hand-placed footprint instead (templates.ts, the 0.3.0 spike),
+ * furnished by room kind the same way, with nobody in it: a mission brings
+ * its own people.
+ */
+export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures, recipe?: RecipeId): Level {
   headless = noTextures;
   decor = withDecor;
   const r = new Rng(seed);
-  const w = 44 + Math.min(floorIndex, 4) * 4;
-  const h = w;
+  const plan: RecipePlan | null = recipe === undefined ? null : layRecipe(recipe, r);
+  const w = plan?.w ?? 44 + Math.min(floorIndex, 4) * 4;
+  const h = plan?.h ?? w;
   const floor = new Uint8Array(w * h);
   const solid = new Uint8Array(w * h).fill(1);
   const opaque = new Uint8Array(w * h).fill(1);
@@ -518,112 +545,136 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     if (room >= 0) roomOf[i] = room;
   };
 
-  // Rooms: rejection-sampled rectangles with a one-cell wall between.
-  const target = 9 + Math.min(floorIndex, 4) * 2;
-  for (let tries = 0; tries < 600 && rooms.length < target; tries++) {
-    const big = rooms.length === 0 ? false : tries % 7 === 0;
-    const rw = big ? r.int(9, 12) : r.int(5, 9);
-    const rh = big ? r.int(9, 12) : r.int(5, 9);
-    const rx = r.int(2, w - rw - 3);
-    const ry = r.int(2, h - rh - 3);
-    const clash = rooms.some((o) =>
-      rx < o.x + o.w + 2 && rx + rw + 2 > o.x && ry < o.y + o.h + 2 && ry + rh + 2 > o.y);
-    if (clash) continue;
-    rooms.push({ x: rx, y: ry, w: rw, h: rh, kind: 'cubicles', id: rooms.length });
-  }
-
-  for (const room of rooms) {
-    for (let y = room.y; y < room.y + room.h; y++) {
-      for (let x = room.x; x < room.x + room.w; x++) carve(x, y, room.id);
+  // Glass: in the way, but not in the view. Only a recipe lays any.
+  const glassCells = new Uint8Array(w * h);
+  let bossIdx = 0;
+  let npcRoom: Room | undefined;
+  if (plan === null) {
+    // Rooms: rejection-sampled rectangles with a one-cell wall between.
+    const target = 9 + Math.min(floorIndex, 4) * 2;
+    for (let tries = 0; tries < 600 && rooms.length < target; tries++) {
+      const big = rooms.length === 0 ? false : tries % 7 === 0;
+      const rw = big ? r.int(9, 12) : r.int(5, 9);
+      const rh = big ? r.int(9, 12) : r.int(5, 9);
+      const rx = r.int(2, w - rw - 3);
+      const ry = r.int(2, h - rh - 3);
+      const clash = rooms.some((o) =>
+        rx < o.x + o.w + 2 && rx + rw + 2 > o.x && ry < o.y + o.h + 2 && ry + rh + 2 > o.y);
+      if (clash) continue;
+      rooms.push({ x: rx, y: ry, w: rw, h: rh, kind: 'cubicles', id: rooms.length });
     }
-  }
 
-  // Corridors: a minimum spanning tree by centre distance, plus a few loops so
-  // it plays like a dungeon rather than a tree.
-  const centre = (rm: Room): [number, number] => [Math.floor(rm.x + rm.w / 2), Math.floor(rm.y + rm.h / 2)];
-  const connected = new Set<number>([0]);
-  const edges: [number, number][] = [];
-  while (connected.size < rooms.length) {
-    let best: [number, number, number] | null = null;
-    for (const a of connected) {
-      const ra = rooms[a] as Room;
-      for (const rb of rooms) {
-        if (connected.has(rb.id)) continue;
-        const [ax, ay] = centre(ra);
-        const [bx, by] = centre(rb);
-        const d = Math.abs(ax - bx) + Math.abs(ay - by);
-        if (best === null || d < best[2]) best = [a, rb.id, d];
+    for (const room of rooms) {
+      for (let y = room.y; y < room.y + room.h; y++) {
+        for (let x = room.x; x < room.x + room.w; x++) carve(x, y, room.id);
       }
     }
-    if (best === null) break;
-    connected.add(best[1]);
-    edges.push([best[0], best[1]]);
-  }
-  for (let i = 0; i < Math.floor(rooms.length / 3); i++) {
-    edges.push([r.int(0, rooms.length - 1), r.int(0, rooms.length - 1)]);
-  }
-  for (const [a, b] of edges) {
-    if (a === b) continue;
-    const [ax, ay] = centre(rooms[a] as Room);
-    const [bx, by] = centre(rooms[b] as Room);
-    const horizontalFirst = r.chance(0.5);
-    const cx = horizontalFirst ? bx : ax;
-    const cy = horizontalFirst ? ay : by;
-    const carveLine = (x0: number, y0: number, x1: number, y1: number): void => {
-      const sx = Math.sign(x1 - x0);
-      const sy = Math.sign(y1 - y0);
-      let x = x0;
-      let y = y0;
-      for (;;) {
-        carve(x, y, -1);
-        carve(x + (sy !== 0 ? 1 : 0), y + (sx !== 0 ? 1 : 0), -1);
-        if (x === x1 && y === y1) break;
-        x += sx;
-        y += sy;
-      }
-    };
-    carveLine(ax, ay, cx, cy);
-    carveLine(cx, cy, bx, by);
-  }
-  // Corridor cells that ended up inside a room keep the room id they had.
 
-  // Assign kinds. Lobby = room 0, boss = farthest room from it.
-  const [lx, ly] = centre(rooms[0] as Room);
-  let bossIdx = 1;
-  let bestD = -1;
-  for (const rm of rooms) {
-    if (rm.id === 0) continue;
-    const [x, y] = centre(rm);
-    const d = Math.abs(x - lx) + Math.abs(y - ly);
-    if (d > bestD && rm.w >= 7 && rm.h >= 7) {
-      bestD = d;
-      bossIdx = rm.id;
+    // Corridors: a minimum spanning tree by centre distance, plus a few loops so
+    // it plays like a dungeon rather than a tree.
+    const centre = (rm: Room): [number, number] => [Math.floor(rm.x + rm.w / 2), Math.floor(rm.y + rm.h / 2)];
+    const connected = new Set<number>([0]);
+    const edges: [number, number][] = [];
+    while (connected.size < rooms.length) {
+      let best: [number, number, number] | null = null;
+      for (const a of connected) {
+        const ra = rooms[a] as Room;
+        for (const rb of rooms) {
+          if (connected.has(rb.id)) continue;
+          const [ax, ay] = centre(ra);
+          const [bx, by] = centre(rb);
+          const d = Math.abs(ax - bx) + Math.abs(ay - by);
+          if (best === null || d < best[2]) best = [a, rb.id, d];
+        }
+      }
+      if (best === null) break;
+      connected.add(best[1]);
+      edges.push([best[0], best[1]]);
     }
-  }
-  if (bestD < 0) {
+    for (let i = 0; i < Math.floor(rooms.length / 3); i++) {
+      edges.push([r.int(0, rooms.length - 1), r.int(0, rooms.length - 1)]);
+    }
+    for (const [a, b] of edges) {
+      if (a === b) continue;
+      const [ax, ay] = centre(rooms[a] as Room);
+      const [bx, by] = centre(rooms[b] as Room);
+      const horizontalFirst = r.chance(0.5);
+      const cx = horizontalFirst ? bx : ax;
+      const cy = horizontalFirst ? ay : by;
+      const carveLine = (x0: number, y0: number, x1: number, y1: number): void => {
+        const sx = Math.sign(x1 - x0);
+        const sy = Math.sign(y1 - y0);
+        let x = x0;
+        let y = y0;
+        for (;;) {
+          carve(x, y, -1);
+          carve(x + (sy !== 0 ? 1 : 0), y + (sx !== 0 ? 1 : 0), -1);
+          if (x === x1 && y === y1) break;
+          x += sx;
+          y += sy;
+        }
+      };
+      carveLine(ax, ay, cx, cy);
+      carveLine(cx, cy, bx, by);
+    }
+    // Corridor cells that ended up inside a room keep the room id they had.
+
+    // Assign kinds. Lobby = room 0, boss = farthest room from it.
+    const [lx, ly] = centre(rooms[0] as Room);
+    bossIdx = 1;
+    let bestD = -1;
     for (const rm of rooms) {
       if (rm.id === 0) continue;
       const [x, y] = centre(rm);
       const d = Math.abs(x - lx) + Math.abs(y - ly);
-      if (d > bestD) {
+      if (d > bestD && rm.w >= 7 && rm.h >= 7) {
         bestD = d;
         bossIdx = rm.id;
       }
     }
+    if (bestD < 0) {
+      for (const rm of rooms) {
+        if (rm.id === 0) continue;
+        const [x, y] = centre(rm);
+        const d = Math.abs(x - lx) + Math.abs(y - ly);
+        if (d > bestD) {
+          bestD = d;
+          bossIdx = rm.id;
+        }
+      }
+    }
+    (rooms[0] as Room).kind = 'lobby';
+    (rooms[bossIdx] as Room).kind = 'boss';
+    const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && rm.id !== bossIdx));
+    // A sauna on most floors: Finnish building regulations, probably.
+    const plan: RoomKind[] = ['kitchen', 'it', 'server', 'meeting', 'print', 'office', 'sauna', 'kitchen', 'server', 'meeting'];
+    const hasSauna = r.chance(0.7);
+    others.forEach((rm, i) => {
+      const k = plan[i];
+      if (k === 'sauna' && !hasSauna) rm.kind = 'cubicles';
+      else rm.kind = k !== undefined && (i < 7 || r.chance(0.5)) ? k : 'cubicles';
+    });
+    // The story NPC for this floor waits in an office, meeting room or desk area.
+    npcRoom = others.find((rm) => rm.kind === 'office') ?? others.find((rm) => rm.kind === 'meeting') ?? others.find((rm) => rm.kind === 'cubicles') ?? others[0];
+  } else {
+    // A template's footprint, cell for cell: rooms where its letters are,
+    // corridors (doors, the spine) where its floor is, glass where it says.
+    plan.rooms.forEach((pr, id) => rooms.push({ x: pr.x, y: pr.y, w: pr.w, h: pr.h, kind: pr.kind, id }));
+    const roomAt = new Int16Array(w * h).fill(-1);
+    for (const rm of rooms) {
+      for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) roomAt[y * w + x] = rm.id;
+    }
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const c = plan.rows[y]?.[x] ?? '#';
+        if (walkableCell(c)) carve(x, y, roomAt[y * w + x] ?? -1);
+      }
+    }
+    for (const i of plan.glass) {
+      glassCells[i] = 1;
+      opaque[i] = 0;
+    }
   }
-  (rooms[0] as Room).kind = 'lobby';
-  (rooms[bossIdx] as Room).kind = 'boss';
-  const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && rm.id !== bossIdx));
-  // A sauna on most floors: Finnish building regulations, probably.
-  const plan: RoomKind[] = ['kitchen', 'it', 'server', 'meeting', 'print', 'office', 'sauna', 'kitchen', 'server', 'meeting'];
-  const hasSauna = r.chance(0.7);
-  others.forEach((rm, i) => {
-    const k = plan[i];
-    if (k === 'sauna' && !hasSauna) rm.kind = 'cubicles';
-    else rm.kind = k !== undefined && (i < 7 || r.chance(0.5)) ? k : 'cubicles';
-  });
-  // The story NPC for this floor waits in an office, meeting room or desk area.
-  const npcRoom = others.find((rm) => rm.kind === 'office') ?? others.find((rm) => rm.kind === 'meeting') ?? others.find((rm) => rm.kind === 'cubicles') ?? others[0];
 
   const group = new THREE.Group();
   const builder: Builder = { boxes: new Map() };
@@ -721,7 +772,10 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   };
 
   const poster = (x: number, y: number, rm: Room): void => {
-    // Stick a poster on the outside wall face next to (x,y).
+    // Stick a poster on the outside wall face next to (x,y). Not on glass.
+    const ox = x === rm.x ? -1 : x === rm.x + rm.w - 1 ? 1 : 0;
+    const oy = ox !== 0 ? 0 : y === rm.y ? -1 : 1;
+    if (glassCells[(y + oy) * w + x + ox] === 1) return;
     const cx = cellCenter(x);
     const cz = cellCenter(y);
     const text = r.pick(POSTERS);
@@ -1009,12 +1063,38 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     }
   }
 
+  // A recipe's floor is furnished, but its people come with the mission; and
+  // HR's office always has its locked closet (the stapler card's objective).
+  let closet = -1;
+  if (plan !== null) {
+    spawns.length = 0;
+    const hr = rooms[plan.rooms.findIndex((pr) => pr.tag === 'hr')];
+    if (hr !== undefined) {
+      closet = interactables.find((it) => it.kind === 'locker' && it.room === hr.id)?.id ?? -1;
+      const l = closet < 0 ? wallSpot(hr) : null;
+      if (l !== null) {
+        const m = lockerMesh();
+        m.position.set(cellCenter(l[0]), 0, cellCenter(l[1]));
+        m.rotation.y = facingInto(l[0], l[1], hr);
+        group.add(m);
+        block(l[0], l[1], true);
+        addInteract('locker', l[0], l[1], hr.id, m);
+        closet = nextId - 1;
+      }
+      const it = interactables.find((x) => x.id === closet);
+      if (it !== undefined) it.lock = 15 + floorIndex * 8;
+    }
+    // The corridors' nodes hang lights of their own: the rooms' alone leave a ring in the dark.
+    for (const i of plan.nodes) lightSpots.push(new THREE.Vector3(cellCenter(i % w), WALL_H - 0.3, cellCenter(Math.floor(i / w))));
+  }
+
   // Elevators: arrival in the lobby, exit in the boss room. The doors go on a
-  // stretch of wall with no corridor opening next to it.
+  // stretch of wall with no corridor opening next to it. A recipe's floor has
+  // the one lift, in the lobby: you leave the way you came.
   const lobby = rooms[0] as Room;
   const start = { x: cellCenter(Math.floor(lobby.x + lobby.w / 2)), z: cellCenter(Math.floor(lobby.y + lobby.h / 2)) };
   const bossRoom = rooms[bossIdx] as Room;
-  const bossSpawn = { x: cellCenter(Math.floor(bossRoom.x + bossRoom.w / 2)), z: cellCenter(Math.floor(bossRoom.y + bossRoom.h / 2)) };
+  const bossSpawn = plan !== null ? start : { x: cellCenter(Math.floor(bossRoom.x + bossRoom.w / 2)), z: cellCenter(Math.floor(bossRoom.y + bossRoom.h / 2)) };
   const liftSpot = (rm: Room, first: 'top' | 'bottom'): { x: number; y: number; px: number; pz: number; rot: number } => {
     const sides = first === 'bottom' ? ['bottom', 'top', 'left', 'right'] as const : ['top', 'bottom', 'left', 'right'] as const;
     const mid = (a: number, n: number): number[] => {
@@ -1046,7 +1126,14 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     const y = rm.y + rm.h - 1;
     return { x, y, px: cellCenter(x), pz: cellCenter(y) + TILE / 2 - 0.15, rot: Math.PI };
   };
-  {
+  if (plan !== null) {
+    const entry = liftSpot(lobby, 'top');
+    const doors = elevatorMesh();
+    doors.position.set(entry.px, 0, entry.pz);
+    doors.rotation.y = entry.rot;
+    group.add(doors);
+    addInteract('elevator', entry.x, entry.y, lobby.id, doors);
+  } else {
     const exit = liftSpot(bossRoom, 'bottom');
     const doors = elevatorMesh();
     doors.position.set(exit.px, 0, exit.pz);
@@ -1069,9 +1156,23 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   const wallTex = paint(() => wallTexture(theme));
   const wallMat = std({ map: wallTex, normalMap: paint(() => normalMapFrom(wallTex, 1.2)), roughness: 0.92, metalness: 0 });
   const wallGeoms: THREE.BufferGeometry[] = [];
+  const glassGeoms: THREE.BufferGeometry[] = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (floor[y * w + x] === 1) continue;
+      if (glassCells[y * w + x] === 1) {
+        // A pane down the middle of the cell, along the run of glass, framed top and bottom.
+        const along = glassCells[y * w + x - 1] === 1 || glassCells[y * w + x + 1] === 1;
+        const pane = new THREE.BoxGeometry(along ? TILE : 0.06, WALL_H - 0.3, along ? 0.06 : TILE);
+        pane.translate(cellCenter(x), (WALL_H - 0.3) / 2 + 0.15, cellCenter(y));
+        glassGeoms.push(pane);
+        for (const fy of [0.075, WALL_H - 0.075]) {
+          const rail = new THREE.BoxGeometry(along ? TILE : 0.14, 0.15, along ? 0.14 : TILE);
+          rail.translate(cellCenter(x), fy, cellCenter(y));
+          wallGeoms.push(rail);
+        }
+        continue;
+      }
       let touches = false;
       for (const [ox, oy] of NEIGHBOURS8) {
         const nx = x + ox;
@@ -1090,6 +1191,11 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     walls.castShadow = true;
     walls.userData.suo = 'wall';
     group.add(walls);
+  }
+  if (glassGeoms.length > 0) {
+    const panes = new THREE.Mesh(mergeGeometries(glassGeoms), std({ color: 0xbfe0ea, transparent: true, opacity: 0.22, roughness: 0.05, metalness: 0.1, depthWrite: false }));
+    panes.userData.suo = 'hide';
+    group.add(panes);
   }
 
   const carpet = paint(() => carpetTexture(theme, seed));
@@ -1318,14 +1424,18 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     group.add(m);
     for (const g of geoms) g.dispose();
   }
-  for (const list of [wallGeoms, panelGeoms, frameGeoms, trim, lintels, vents, jambs, extGeoms, ...ledGeoms]) for (const g of list) g.dispose();
+  for (const list of [wallGeoms, glassGeoms, panelGeoms, frameGeoms, trim, lintels, vents, jambs, extGeoms, ...ledGeoms]) for (const g of list) g.dispose();
   // Interactive props cast shadows too.
   for (const it of interactables) it.mesh?.traverse((o) => { if (o instanceof THREE.Mesh) o.castShadow = true; });
 
-  return {
+  const level: Level = {
     w, h, floor, solid, opaque, roomOf, rooms, interactables, spawns, start, bossSpawn,
     lightSpots, group, seen: new Uint8Array(w * h),
   };
+  if (plan === null) return level;
+  const tagged: Record<string, number[]> = {};
+  plan.rooms.forEach((pr, id) => (tagged[pr.tag] ??= []).push(id));
+  return { ...level, glass: glassCells, recipe: { id: plan.id, rooms: tagged, spine: plan.spine, nodes: plan.nodes, closet } };
 }
 
 // ---- Interactive prop meshes ----
