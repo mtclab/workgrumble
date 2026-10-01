@@ -599,6 +599,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.boss = this.spawnAt('boss', this.level.bossSpawn.x, this.level.bossSpawn.z, bossRoom, false);
       this.bossMult = 1;
       this.rescaleBoss();
+      if (this.boss !== null && fs.boss !== undefined) {
+        this.boss.hp = Math.min(this.boss.maxHp, fs.boss.hp);
+        this.boss.phase = fs.boss.phase;
+      }
       // Carrying the Phoenix file, the Auditor would rather talk.
       if (this.boss !== null && n === 3 && evidenceHeld(this) >= 3 && s.flags.auditorFought !== true && s.flags.auditorAlly !== true) this.boss.docile = true;
     }
@@ -846,6 +850,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
     // A vision is never saved: whatever asks waits until you surface.
     if (this.vision !== null) return false;
+    if (s === this.save && this.boss !== null && !this.boss.resolved && !s.floorState.bossDone) {
+      s.floorState.boss = { hp: this.boss.hp, phase: this.boss.phase };
+    }
     return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
   }
 

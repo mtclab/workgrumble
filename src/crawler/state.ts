@@ -98,6 +98,7 @@ export interface CharacterSetup {
 export interface FloorState {
   floor: number;
   bossDone: boolean;
+  boss?: { hp: number; phase: 1 | 2 };
   /** Interactable ids already used, looted or picked. */
   used: number[];
   /** Quest pickups already taken. */
