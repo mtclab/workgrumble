@@ -170,7 +170,7 @@ export function placeQuestContent(g: Game): void {
     if (st.staffed !== true) spawnGiver(g, st.id);
   }
   // New offers: up to three per floor.
-  const offers = sideQuestsFor(f).filter((q) => !s.questLog.some((st) => st.id === q.id));
+  const offers = sideQuestsFor(f, s.floorState.bossDone).filter((q) => !s.questLog.some((st) => st.id === q.id));
   for (const q of g.levelRng.shuffle(offers).slice(0, 3)) spawnGiver(g, q.id);
   refreshGiverMarkers(g);
 }
@@ -317,11 +317,10 @@ function completed(g: Game, st: QuestState, def: QuestDef): void {
   }
 }
 
-/** A drink in the office, with Sanna's bet still on: the bet is off. */
+/** A drink with Sanna's bet still on: the bet is off. */
 export function drankOnDuty(g: Game): void {
   const s = g.save;
-  if (s.location !== 'office') return;
-  const bet = s.questLog.find((q) => q.id === 'dryweek' && isActive(q) && currentObjective(q)?.kind === 'boss');
+  const bet = s.questLog.find((q) => q.id === 'dryweek' && isActive(q));
   if (bet === undefined) return;
   bet.failed = true;
   g.hud.toast('Dry Week: FAILED. Sanna will know. Sanna always knows.', 'bad');

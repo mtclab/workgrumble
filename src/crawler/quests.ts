@@ -661,6 +661,6 @@ export function mainChapter(floor: number): MainChapter | undefined {
 }
 
 /** Side quests on offer for a floor, in a stable order. */
-export function sideQuestsFor(floor: number): QuestDef[] {
-  return QUESTS.filter((q) => !q.main && q.staffed !== true && q.mentor !== true && q.floors.includes(floor % 5));
+export function sideQuestsFor(floor: number, bossDone = false): QuestDef[] {
+  return QUESTS.filter((q) => !q.main && q.staffed !== true && q.mentor !== true && q.floors.includes(floor % 5) && !(q.id === 'dryweek' && bossDone));
 }
