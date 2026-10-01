@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { afterEach, expect, it, vi } from 'vitest';
+import { createActor } from './entities';
 import { Game } from './game';
+import { talkManager } from './story';
 import { CONSUMABLES } from './items';
 import { generateLevel } from './level';
 import { questEvent } from './questing';
@@ -48,4 +50,27 @@ it.each(['before boss', 'after boss', 'next floor', 'weekend'] as const)('any dr
 it('Dry Week is offered only while the floor boss is unresolved', () => {
   expect(sideQuestsFor(1).some((q) => q.id === 'dryweek')).toBe(true);
   expect(sideQuestsFor(1, true).some((q) => q.id === 'dryweek'), 'no impossible bet on a cleared floor').toBe(false);
+});
+
+
+it.each([false, true])('delegating a meeting protects the mentee, with another helper: %s', (another) => {
+  const g = host();
+  g.save.rung = 9;
+  const mentee = createActor(g, 'helper', g.level.start.x, g.level.start.z, 0, g.levelRng, 10, { role: 'intern' });
+  mentee.name = 'Sam (Intern)';
+  mentee.recruited = true;
+  g.actors.push(mentee);
+  g.save.questLog.push({ id: 'm-pair', stage: 0, progress: 0, done: false, floor: 1, mentor: true, by: mentee.name });
+  if (another) {
+    const other = createActor(g, 'helper', g.level.start.x + 1, g.level.start.z, 0, g.levelRng, 10, { role: 'security' });
+    other.name = 'Alex (Security)';
+    other.recruited = true;
+    g.actors.push(other);
+  }
+  const manager = createActor(g, 'manager', g.level.start.x + 2, g.level.start.z, 0, g.levelRng, 10);
+  const choice = talkManager(g, manager).options.find((o) => o.label.startsWith('Delegate it'));
+  expect(choice?.label, 'only a helper outside mentoring can attend the meeting').toBe(another ? 'Delegate it to Alex (Security).' : undefined);
+  choice?.pick();
+  expect(mentee.recruited).toBe(true);
+  expect(mentee.resolved).toBe(false);
 });

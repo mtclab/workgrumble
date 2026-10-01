@@ -12,6 +12,7 @@ import { adjustStanding, canTakePerk, levelUpReady } from './state';
 import { levelUpNode, talkAuditor } from './story';
 import { caffeinate, drink } from './vices';
 import { treePerk } from './perks';
+import { isActive } from './quests';
 import { CAFFEINE_EFFECTS, caffeineBand } from './caffeine';
 
 export { caughtCheck } from './vices';
@@ -179,7 +180,8 @@ export function enrage(g: Game, a: Actor): boolean {
 }
 
 export function recruitedHelper(g: Game): Actor | null {
-  return g.actors.find((a) => a.kind === 'helper' && a.recruited && !a.resolved && a.role !== 'clone' && a.role !== 'spirit' && a.role !== 'dog' && a.npcId === null) ?? null;
+  const mentees = new Set(g.save.questLog.filter((q) => q.mentor === true && isActive(q)).map((q) => q.by));
+  return g.actors.find((a) => !mentees.has(a.name) && a.kind === 'helper' && a.recruited && !a.resolved && a.role !== 'clone' && a.role !== 'spirit' && a.role !== 'dog' && a.npcId === null) ?? null;
 }
 
 export function dismiss(_g: Game, a: Actor): void {
