@@ -550,6 +550,60 @@ export interface SpawnOpts {
   readonly outfit?: Outfit;
 }
 
+/** Roll the same person even when a saved resolution means no mesh is needed. */
+export function rollActor(kind: ActorKind, floor: number, r: Rng, ticketCount: number, opts: SpawnOpts = {}) {
+  let name = '';
+  let role: HelperRole | null = opts.role ?? null;
+  let outfit: Outfit | null = null;
+  if (kind === 'chatbot') name = r.pick(['HelpBot 3000', 'Clippy (Returns)', 'AskIT Assistant', 'Chatty McChatface']);
+  else if (kind === 'boss') {
+    const boss = BOSSES[floor % BOSSES.length];
+    if (boss === undefined) throw new Error('no boss');
+    name = floor >= BOSSES.length ? `${boss.name} (Overtime)` : boss.name;
+    outfit = boss.outfit;
+  } else if (kind === 'reply') name = 'RE: RE: RE: FW: All Staff';
+  else if (kind === 'jam') name = 'Paper Jam (Tray 2)';
+  else if (kind === 'mosquito') name = 'Hyttynen';
+  else if (kind === 'turret') name = 'Unsanctioned Deployment';
+  else if (kind === 'dummy') name = 'Facilities training dummy';
+  else if (kind === 'helper' && role === 'dog') { /* Musti has no outfit. */ }
+  else if (kind === 'helper' && (role === 'clone' || role === 'spirit')) {
+    outfit = role === 'spirit' ? outfitFor('tonttu', r) : { skin: 0x9fe0ff, hair: 0x5fb6ff, top: 0x5fb6ff, legs: 0x2a6fb0, face: 'neutral', glasses: true };
+  } else outfit = opts.outfit ?? outfitFor(kind, r);
+
+  if (kind === 'healer') {
+    const [n, dept] = r.pick(HEALER_NAMES);
+    name = `${n} from ${dept}`;
+  } else if (kind === 'tonttu') name = 'Saunatonttu';
+  else if (kind === 'npc') name = opts.npc?.name ?? 'Someone';
+  else if (kind === 'helper') {
+    if (role === null) role = r.pick(['sysadmin', 'sysadmin', 'security', 'intern'] as const);
+    name = opts.npc?.name ?? (role === 'sysadmin'
+      ? r.pick(['Dave (Senior Sysadmin)', 'Old Bob (Mainframe)', 'Priya (Network Eng.)', 'Mikko (Sysadmin)'])
+      : role === 'security' ? r.pick(['Sunil (Security)', 'Bev (Security)'])
+        : role === 'clone' ? 'Pat (autoscaled instance)'
+          : role === 'spirit' ? 'Saunatonttu (summoned)'
+            : role === 'dog' ? 'Musti' : r.pick(['Josh (Intern)', 'Ellie (Intern)', 'Aino (Intern)']));
+  } else if (kind !== 'boss' && kind !== 'dummy') {
+    const first = r.pick(USER_NAMES);
+    const dept = r.pick(['Sales', 'Marketing', 'Legal', 'Ops', 'Finance', 'HR', 'Comms']);
+    switch (kind) {
+      case 'manager': name = r.pick(MANAGER_NAMES); break;
+      case 'customer': name = `${first} (Client, Gold SLA)`; break;
+      case 'caller': name = `${first} (on the phone)`; break;
+      case 'consultant': name = `${first} (${r.pick(['McKinsley', 'Bane & Co', 'Deloittish', 'Accentual'])})`; break;
+      case 'shadowit': name = `${first} from ${dept} (Shadow IT)`; break;
+      case 'vendor': name = `${first} (${r.pick(['SynergyNow', 'CloudSprout', 'AIforce', 'VendorLock Inc'])})`; break;
+      case 'user': name = `${first} from ${dept}`; break;
+      default: break;
+    }
+  }
+  const elite = kind !== 'healer' && kind !== 'helper' && kind !== 'npc' && kind !== 'tonttu' && kind !== 'boss' && kind !== 'turret' && kind !== 'reply' && kind !== 'mosquito' ? opts.elite ?? null : null;
+  const staff = opts.staffStanding ?? 0;
+  const docile = (kind === 'user' || kind === 'caller') && elite === null && staff > 20 && r.chance((staff - 20) / 120);
+  return { name, role, outfit, docile, yaw: r.range(0, Math.PI * 2), cooldown: r.range(0.5, 2), ticket: r.int(0, ticketCount - 1), barkIn: r.range(3, 12), blinkIn: r.range(3, 6) };
+}
+
 export function createActor(
   ctx: Pick<GameCtx, 'scene' | 'floor' | 'difficulty'>,
   kind: ActorKind,
@@ -561,50 +615,44 @@ export function createActor(
   opts: SpawnOpts = {},
 ): Actor {
   const f = ctx.floor;
+  const rolled = rollActor(kind, f, r, ticketCount, opts);
   let rig: Rig | null = null;
   let dog: DogParts | null = null;
   const root = new THREE.Group();
-  let name = '';
+  let name = rolled.name;
   let hp: number;
   let speed: number;
   let damage = 5;
   let radius = 0.4;
   let rep = 0;
   let boss: BossDef | null = null;
-  let role: HelperRole | null = opts.role ?? null;
+  const role = rolled.role;
   let glowBase = 0;
   const hostile = kind !== 'healer' && kind !== 'helper' && kind !== 'npc' && kind !== 'tonttu';
 
   if (kind === 'reply') {
     root.add(envelopeMesh());
-    name = 'RE: RE: RE: FW: All Staff';
   } else if (kind === 'jam') {
     root.add(jamMesh());
-    name = 'Paper Jam (Tray 2)';
   } else if (kind === 'mosquito') {
     root.add(mosquitoMesh());
-    name = 'Hyttynen';
   } else if (kind === 'chatbot') {
     root.add(chatbotMesh());
-    name = r.pick(['HelpBot 3000', 'Clippy (Returns)', 'AskIT Assistant', 'Chatty McChatface']);
   } else if (kind === 'turret') {
     root.add(turretMesh());
-    name = 'Unsanctioned Deployment';
   } else if (kind === 'boss') {
     boss = BOSSES[f % BOSSES.length] ?? null;
     if (boss === null) throw new Error('no boss');
     rig = buildRig(boss.outfit);
     root.add(rig.root);
-    name = f >= BOSSES.length ? `${boss.name} (Overtime)` : boss.name;
   } else if (kind === 'dummy') {
     root.add(dummyMesh());
-    name = 'Facilities training dummy';
   } else if (kind === 'helper' && role === 'dog') {
     const d = dogMesh();
     root.add(d.root);
     dog = { legs: d.legs, tail: d.tail, head: d.head };
   } else if (kind === 'helper' && (role === 'clone' || role === 'spirit')) {
-    rig = buildRig(role === 'spirit' ? outfitFor('tonttu', r) : { skin: 0x9fe0ff, hair: 0x5fb6ff, top: 0x5fb6ff, legs: 0x2a6fb0, face: 'neutral', glasses: true });
+    rig = buildRig(rolled.outfit as Outfit);
     if (role === 'clone') {
       glowBase = 0x113355;
       for (const m of rig.materials) {
@@ -614,7 +662,7 @@ export function createActor(
     }
     root.add(rig.root);
   } else {
-    rig = buildRig(opts.outfit ?? outfitFor(kind, r));
+    rig = buildRig(rolled.outfit as Outfit);
     root.add(rig.root);
   }
   if (kind === 'consultant') root.add(auraMesh());
@@ -629,16 +677,12 @@ export function createActor(
     radius = 0.9;
     rep = Math.round((300 + f * 120) * ctx.difficulty);
   } else if (kind === 'healer') {
-    const [n, dept] = r.pick(HEALER_NAMES);
-    name = `${n} from ${dept}`;
     hp = 1;
     speed = 1.4;
   } else if (kind === 'tonttu') {
-    name = 'Saunatonttu';
     hp = 1;
     speed = 1;
   } else if (kind === 'npc') {
-    name = opts.npc?.name ?? 'Someone';
     hp = 1;
     speed = 1;
   } else if (kind === 'dummy') {
@@ -649,13 +693,6 @@ export function createActor(
     damage = 5;
     radius = 0.45;
   } else if (kind === 'helper') {
-    if (role === null) role = r.pick(['sysadmin', 'sysadmin', 'security', 'intern'] as const);
-    name = opts.npc?.name ?? (role === 'sysadmin'
-      ? r.pick(['Dave (Senior Sysadmin)', 'Old Bob (Mainframe)', 'Priya (Network Eng.)', 'Mikko (Sysadmin)'])
-      : role === 'security' ? r.pick(['Sunil (Security)', 'Bev (Security)'])
-        : role === 'clone' ? 'Pat (autoscaled instance)'
-          : role === 'spirit' ? 'Saunatonttu (summoned)'
-            : role === 'dog' ? 'Musti' : r.pick(['Josh (Intern)', 'Ellie (Intern)', 'Aino (Intern)']));
     hp = 1;
     speed = role === 'dog' ? 5.2 : 3.6;
     radius = role === 'dog' ? 0.35 : 0.4;
@@ -666,18 +703,6 @@ export function createActor(
     damage = st.damage * diff;
     radius = st.radius;
     rep = Math.round(st.rep * (1 + f * 0.25) * (0.6 + ctx.difficulty * 0.4));
-    const first = r.pick(USER_NAMES);
-    const dept = r.pick(['Sales', 'Marketing', 'Legal', 'Ops', 'Finance', 'HR', 'Comms']);
-    switch (kind) {
-      case 'manager': name = r.pick(MANAGER_NAMES); break;
-      case 'customer': name = `${first} (Client, Gold SLA)`; break;
-      case 'caller': name = `${first} (on the phone)`; break;
-      case 'consultant': name = `${first} (${r.pick(['McKinsley', 'Bane & Co', 'Deloittish', 'Accentual'])})`; break;
-      case 'shadowit': name = `${first} from ${dept} (Shadow IT)`; break;
-      case 'vendor': name = `${first} (${r.pick(['SynergyNow', 'CloudSprout', 'AIforce', 'VendorLock Inc'])})`; break;
-      case 'user': name = `${first} from ${dept}`; break;
-      default: break;
-    }
   }
 
   const elite = hostile && kind !== 'boss' && kind !== 'turret' && kind !== 'reply' && kind !== 'mosquito' ? opts.elite ?? null : null;
@@ -698,17 +723,16 @@ export function createActor(
   root.position.set(x, 0, z);
   ctx.scene.add(root);
 
-  const staff = opts.staffStanding ?? 0;
-  const docile = (kind === 'user' || kind === 'caller') && elite === null && staff > 20 && r.chance((staff - 20) / 120);
+  const docile = rolled.docile;
 
   const a: Actor = {
     id: nextActorId++,
     kind, name, hostile, root, rig, dog,
     pos: root.position,
     push: new THREE.Vector3(),
-    yaw: r.range(0, Math.PI * 2),
+    yaw: rolled.yaw,
     radius, hp, maxHp: hp, speed, damage,
-    cooldown: r.range(0.5, 2),
+    cooldown: rolled.cooldown,
     aggro: false,
     resolved: false,
     calm: false,
@@ -723,10 +747,10 @@ export function createActor(
     patternAng: 0,
     glowMats: null,
     tinted: false,
-    ticket: r.int(0, ticketCount - 1),
+    ticket: rolled.ticket,
     bubble: null,
     bubbleTime: 0,
-    barkIn: r.range(3, 12),
+    barkIn: rolled.barkIn,
     hpBar: bar.group,
     hpFill: bar.fill,
     marker: null,
@@ -750,7 +774,7 @@ export function createActor(
     charging: 0,
     chargeDir: new THREE.Vector3(),
     summonIn: kind === 'shadowit' ? 5 : 10,
-    blinkIn: r.range(3, 6),
+    blinkIn: rolled.blinkIn,
     fleeT: 0,
     stolen: 0,
     shielded: false,

@@ -33,6 +33,7 @@ import {
   type Actor,
   type ActorKind,
   createActor,
+  rollActor,
   disposeActor,
   isFoe,
   spawnsAggro,
@@ -568,33 +569,19 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     // Whatever you already used on this floor stays used after a reload.
     for (const it of this.level.interactables) if (fs.used.includes(it.id)) it.used = true;
 
-    const npc = storyNpcFor(n);
-    // Whoever you already resolved on this floor stays resolved after a reload.
+    this.spawnFloorActors();
     const gone = new Set(fs.resolved);
-    this.level.spawns.forEach((sp, k) => {
-      if (sp.kind === 'reply') {
-        for (let i = 0; i < 3; i++) {
-          const idx = k * 4 + i;
-          if (!gone.has(idx)) this.spawnAt(sp.kind, sp.x + (i - 1) * 0.8, sp.z + (i % 2) * 0.6, sp.room, false, { spawnIndex: idx });
-        }
-      } else if (sp.kind === 'npc') {
-        // The PA has nothing left to offer once the story is over.
-        if (s.flags[`story_${npc.id}_${n}`] !== true && !(npc.id === 'pa' && s.won)) this.spawnAt('npc', sp.x, sp.z, sp.room, false, { npc });
-      } else {
-        // Roll the elite either way, so the same people are elites after a reload.
-        const elite = this.rollElite(sp.kind);
-        if (!gone.has(k * 4)) this.spawnAt(sp.kind, sp.x, sp.z, sp.room, false, { elite, spawnIndex: k * 4 });
-      }
-    });
     fs.extras.forEach((x, i) => {
-      if (fromSave && !gone.has(EXTRA_BASE + i)) {
+      if (fromSave && gone.has(EXTRA_BASE + i)) rollActor(x.kind, s.floor, this.levelRng, TICKETS.length, { staffStanding: s.standing.staff });
+      else if (fromSave) {
         const a = this.spawnAt(x.kind, x.x, x.z, 0, false, { spawnIndex: EXTRA_BASE + i });
         if (a !== null && x.name !== undefined) a.name = x.name;
       }
     });
     const bossRoom = this.level.roomOf[toCell(this.level.bossSpawn.z) * this.level.w + toCell(this.level.bossSpawn.x)] ?? -1;
     this.elevatorOpen = fs.bossDone;
-    if (!fs.bossDone) {
+    if (fs.bossDone) rollActor('boss', s.floor, this.levelRng, TICKETS.length);
+    else {
       this.boss = this.spawnAt('boss', this.level.bossSpawn.x, this.level.bossSpawn.z, bossRoom, false);
       this.bossMult = 1;
       this.rescaleBoss();
@@ -639,6 +626,31 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     sfx.setBoss(false);
     sfx.setAmbient('office');
     if (!fromSave) this.autosave();
+  }
+
+  spawnFloorActors(): void {
+    const s = this.save;
+    const npc = storyNpcFor(s.floor);
+    // Whoever you already resolved on this floor stays resolved after a reload.
+    const gone = new Set(s.floorState.resolved);
+    this.level.spawns.forEach((sp, k) => {
+      if (sp.kind === 'reply') {
+        for (let i = 0; i < 3; i++) {
+          const idx = k * 4 + i;
+          if (gone.has(idx)) rollActor(sp.kind, s.floor, this.levelRng, TICKETS.length, { staffStanding: s.standing.staff });
+          else this.spawnAt(sp.kind, sp.x + (i - 1) * 0.8, sp.z + (i % 2) * 0.6, sp.room, false, { spawnIndex: idx });
+        }
+      } else if (sp.kind === 'npc') {
+        // The PA has nothing left to offer once the story is over.
+        if (s.flags[`story_${npc.id}_${s.floor}`] === true || (npc.id === 'pa' && s.won)) rollActor('npc', s.floor, this.levelRng, TICKETS.length, { npc });
+        else this.spawnAt('npc', sp.x, sp.z, sp.room, false, { npc });
+      } else {
+        // Roll the elite either way, so the same people are elites after a reload.
+        const elite = this.rollElite(sp.kind);
+        if (gone.has(k * 4)) rollActor(sp.kind, s.floor, this.levelRng, TICKETS.length, { elite, staffStanding: s.standing.staff });
+        else this.spawnAt(sp.kind, sp.x, sp.z, sp.room, false, { elite, spawnIndex: k * 4 });
+      }
+    });
   }
 
   /** Elites get commoner as you climb the building and the ladder. */
