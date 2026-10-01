@@ -1329,6 +1329,24 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     };
   }
 
+  updateActors(dt: number): void {
+    updateAuras(this.actors);
+    for (const a of this.actors) {
+      const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > ACTOR_RANGE;
+      a.root.visible = !far;
+      if (far && !a.aggro && !a.recruited && !a.resolved && !(a.hostile && a.hp <= 0)) continue;
+      updateActor(this, a, dt);
+      if (a.hostile && !a.resolved && a.hp <= 0) resolveActor(this, a);
+    }
+    this.actors = this.actors.filter((a) => {
+      if (a.resolved && a.removeIn <= 0) {
+        disposeActor(this.scene, a);
+        return false;
+      }
+      return true;
+    });
+  }
+
   refreshDerived(): void {
     this.derivedCache = derive(this.save);
     this.player.setTool(this.derivedCache.weapon.id);
@@ -1506,21 +1524,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.fieldIn = 0.35;
       this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     }
-    updateAuras(this.actors);
-    for (const a of this.actors) {
-      const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > ACTOR_RANGE;
-      a.root.visible = !far;
-      if (far && !a.aggro && !a.recruited) continue;
-      updateActor(this, a, dt);
-      if (a.hostile && !a.resolved && a.hp <= 0) resolveActor(this, a);
-    }
-    this.actors = this.actors.filter((a) => {
-      if (a.resolved && a.removeIn <= 0) {
-        disposeActor(this.scene, a);
-        return false;
-      }
-      return true;
-    });
+    this.updateActors(dt);
     updateProjectiles(this, dt);
     updatePickups(this, dt);
     updateHazards(this, dt);

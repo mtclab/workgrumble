@@ -77,3 +77,21 @@ describe('the people on a saved floor', () => {
     `);
   });
 });
+
+
+it('far calm actors leave on time and zero-health grunts are resolved without approaching', () => {
+  const g = floor(77, 0);
+  Object.assign(g, { player: { pos: new THREE.Vector3(-100, 0, -100) }, time: 0 });
+  const calm = createActor(g, 'user', g.level.start.x, g.level.start.z, 0, g.levelRng, 10);
+  calm.resolved = true;
+  calm.calm = true;
+  calm.removeIn = 0.3;
+  const grunt = createActor(g, 'user', g.level.start.x, g.level.start.z, 0, g.levelRng, 10);
+  grunt.hp = 0;
+  grunt.expired = true;
+  grunt.spawnIndex = 16;
+  g.actors.push(calm, grunt);
+  for (let i = 0; i < 20; i++) g.updateActors(0.1);
+  expect(g.actors, 'both actors leave while the player stays far away').toEqual([]);
+  expect(g.save.floorState.resolved).toContain(16);
+});
