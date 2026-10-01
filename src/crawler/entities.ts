@@ -243,6 +243,24 @@ export interface TelegraphSpec {
   readonly beam?: { readonly angle: number; readonly length: number };
 }
 
+/**
+ * What a calm person on a mission does this frame, as a mission's watch
+ * decides (stealth.ts): today's rules ('legacy': hostile on sight), an idle
+ * wander that notices nothing, a walk or a turn of its own, or Alert (they
+ * come for you, after `pause` seconds: never straight from calm to a hit).
+ */
+export type WatchAct =
+  | { readonly kind: 'legacy' }
+  | { readonly kind: 'wander' }
+  | { readonly kind: 'alert'; readonly pause: number }
+  | { readonly kind: 'move'; readonly dx: number; readonly dz: number; readonly speed: number; readonly yaw: number | null };
+
+/** A mission's watchers: who is watched, and what each calm one does with what it sees and hears. */
+export interface WatchCtx {
+  watches(a: Actor): boolean;
+  look(a: Actor, dt: number, sees: boolean, dist: number): WatchAct;
+}
+
 /** What the AI needs from the game. The Game implements it. */
 export interface GameCtx {
   readonly level: Level;
@@ -264,6 +282,8 @@ export interface GameCtx {
    * nobody aggroes, nobody approaches, the boss does not start.
    */
   readonly floorAwake: boolean;
+  /** A mission's stealth (the 0.3.0 spike), or none: then everyone is as they always were. */
+  readonly watch?: WatchCtx | null;
   field: Int16Array;
   hurtPlayer(amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): void;
   enqueueTicket(from: Actor, gold: boolean): void;
@@ -1141,6 +1161,14 @@ function animateDog(d: DogParts, speed: number, time: number, attack: number): v
   d.head.rotation.x = attack > 0 ? 0.4 * attack : Math.sin(time * 1.3) * 0.05;
 }
 
+/** Turn toward a bearing, not snap to it. */
+function turnTo(a: Actor, yaw: number, dt: number): void {
+  let d = yaw - a.yaw;
+  while (d > Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  a.yaw += d * Math.min(1, dt * 6);
+}
+
 function aggroRange(ctx: GameCtx, a: Actor): number {
   const base = a.kind === 'boss' ? 16 : a.kind === 'manager' || a.kind === 'consultant' ? 13 : a.kind === 'caller' || a.kind === 'turret' ? 14 : a.kind === 'mosquito' ? 9 : 11;
   return base * (1 - ctx.stealth);
@@ -1230,7 +1258,23 @@ function updateHostile(ctx: GameCtx, a: Actor, dt: number): void {
   }
 
   if (!a.aggro) {
-    if (a.kind === 'boss') {
+    // On a mission the watch decides who notices you, and how (stealth.ts).
+    const act = a.kind === 'boss' || a.kind === 'dummy' ? null : ctx.watch?.look(a, dt, sees, dist) ?? null;
+    if (act !== null && act.kind === 'move') {
+      cancelWindup(a);
+      moveActor(ctx, a, act.dx, act.dz, act.speed, dt);
+      if (act.yaw !== null) turnTo(a, act.yaw, dt);
+      return;
+    }
+    if (act !== null && act.kind === 'alert') {
+      a.aggro = true;
+      a.docile = false;
+      // Alert comes a beat before the first wind-up: the cooldown gates every attack.
+      a.cooldown = Math.max(a.cooldown, act.pause);
+      ctx.noticed(a);
+    } else if (act !== null && act.kind === 'wander') {
+      // Calm on a mission: being in view is the watch's business, not a reason to fight.
+    } else if (a.kind === 'boss') {
       const cx = toCell(ctx.playerPos.x);
       const cz = toCell(ctx.playerPos.z);
       if (!ctx.invisible && ctx.floorAwake && lv.roomOf[cz * lv.w + cx] === a.room) {
