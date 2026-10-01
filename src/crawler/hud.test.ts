@@ -54,3 +54,30 @@ describe('HUD effect labels', () => {
     expect(effects.children[0]!.textContent).toBe('Sisu');
   });
 });
+
+
+describe('learned patrol routes on the automap', () => {
+  it('draws the HUD-visible route in amber for the player', () => {
+    const paths: { color: string; points: number[][] }[] = [];
+    let points: number[][] = [];
+    const ctx = {
+      strokeStyle: '',
+      fillRect: () => undefined, fillText: () => undefined,
+      beginPath: () => { points = []; },
+      moveTo: (x: number, z: number) => { points.push([x, z]); },
+      lineTo: (x: number, z: number) => { points.push([x, z]); },
+      stroke: () => { paths.push({ color: ctx.strokeStyle, points: [...points] }); },
+      save: () => undefined, translate: () => undefined, rotate: () => undefined,
+      closePath: () => undefined, fill: () => undefined, restore: () => undefined,
+    };
+    const hud = Object.create(Hud.prototype) as { drawMap: (frame: HudFrame) => void };
+    Reflect.set(hud, 'mapCtx', ctx);
+    const frame = {
+      level: { w: 4, h: 4, seen: new Uint8Array(16), floor: new Uint8Array(16), rooms: [], interactables: [] },
+      markers: [], px: 1, pz: 1, yaw: 0,
+      patrolRoutes: [[{ x: 1, z: 1 }, { x: 3, z: 1 }]],
+    } as unknown as HudFrame;
+    hud.drawMap(frame);
+    expect(paths).toEqual([{ color: '#ffb020', points: [[80, 80], [240, 80]] }]);
+  });
+});

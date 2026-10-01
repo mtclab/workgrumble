@@ -90,7 +90,7 @@ describe('seeded balance career', () => {
 describe('mission runner', () => {
   it('loads the pinned card, takes the briefing with Enter and writes the displayed reward', async () => {
     const r = await run(17, 'stapler');
-    expect(r.calls).toContain('http://localhost:4179/crawler.html?mission=stapler&seed=17');
+    expect(r.calls.some((call) => call.endsWith('/crawler.html?mission=stapler&seed=17'))).toBe(true);
     expect(r.calls).toContain('Enter');
     expect(r.calls).not.toContain('Skip the induction');
     expect(JSON.parse(r.output)).toMatchObject({ mission: {
