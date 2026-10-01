@@ -1552,8 +1552,17 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (s.sanity < d.maxSanity * 0.3) this.tip('lowsanity');
     if (d.overEncumbered) this.tip('encumbered');
 
-    // Sisu, Unbreakable and the Nokia stand between you and a burnout, whatever did it.
-    if (s.sanity <= 0 && this.screen === 'play' && !lastStand(this)) screens.showDead(this);
+    this.checkBurnout();
+  }
+
+  /** Sisu, Unbreakable and the Nokia protect you at a computer too. */
+  checkBurnout(): void {
+    if (this.save.sanity > 0 || (this.screen !== 'play' && this.screen !== 'os') || lastStand(this)) return;
+    if (this.screen === 'os') {
+      this.os.hide();
+      this.currentTerminal = null;
+    }
+    screens.showDead(this);
   }
 
   /** Mouse look. */
@@ -1973,6 +1982,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   takePerk(id: string): void { host.takePerk(this, id); }
   resolve(q: QueuedTicket, label: string): { ok: boolean; message: string } {
     const r = host.resolveTicket(this, q, label);
+    this.checkBurnout();
     if (r.ok && isPracticeTicket(q)) this.practice({ type: 'fixed' });
     return r;
   }
