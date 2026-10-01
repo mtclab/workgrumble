@@ -21,6 +21,7 @@
     "e2e",
     "src",
     "worker",
+    "scripts/helldesk-balance/*.test.ts",
     "vite.config.ts",
     "playwright.config.ts"
   ]

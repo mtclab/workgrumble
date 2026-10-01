@@ -531,6 +531,40 @@ node scripts/helldesk-balance/run.mjs '{"name":"trainee","floors":5,"wallMinutes
 node scripts/helldesk-balance/run.mjs '{"name":"senior","rung":6,"kit":["cat6","cardigan"]}'
 ```
 
+Add `"seed":1700000000` (uint32) to pin `Date.now` before startup and seed
+the bot's decisions. The career uses `Date.now() >>> 0`; floor N uses
+`(seed + N * 977) >>> 0`. Runs skip induction and spawn the starting enemies
+at the selected rung and employer.
+
+Floor JSON and the printed summary now include `floorSec`, `combatSec`,
+`combatShare` (a fraction, `combatSec / floorSec`, zero for zero time),
+`aggroEpisodes`, `talkdowns` and `resolvesByForce`. Time counts active office
+simulation, excluding menus, hit stop and weekends; `minutes` keeps its old
+bot-clock meaning. Combat is a hostile, unresolved, aggro actor within 14 m
+in the floor plane, including bosses, sampled at tick start without a sight
+check. Episodes close after 3 quiet game seconds; quiet gaps add no combat
+time. Resolve counts are floor deltas of `resolvedPeace` and `resolvedField`
+(force excludes bosses, turrets and mosquitoes).
+
+Against an already served build, run the six careers one browser at a time:
+
+```
+HELLDESK_URL="$BALANCE_URL" CHROMIUM="$CHROMIUM_BIN" COMBAT_OUT=balance-results node scripts/helldesk-balance/combat-share.mjs
+```
+
+Set `BALANCE_URL` to the served `crawler.html` URL and `CHROMIUM_BIN` to the
+browser executable. The matrix runs trainee rung 0 and senior rung 6 with
+cat6/cardigan on seeds 1700000000-1700000002, three floors each. It prints
+times, share, episodes and burnouts, plus mean and max-min share over each
+scenario's nine floors; incomplete or errored careers fail. Repeat with
+another `COMBAT_OUT` directory to check reproducibility. For single runs,
+`run.mjs` accepts `HELLDESK_URL`, `CHROMIUM` and `OUT` (JSON file).
+Node-only regression checks (no browser or generated WASM needed):
+
+```
+npx vitest run --config scripts/helldesk-balance/vitest.config.mjs
+```
+
 It is a mediocre player on purpose: what kills it kills a new player. What
 it found so far: the first boss's summons had no cap, a woken boss chased
 you round the whole floor for ever, managers could chain meeting invites

@@ -4,7 +4,7 @@
 //   npx vite build --outDir /tmp/helldesk && npx vite preview --outDir /tmp/helldesk --port 4179 &
 //   node scripts/helldesk-balance/run.mjs '{"name":"trainee","floors":5,"wallMinutes":15}'
 //
-// Scenario keys: name, floors, wallMinutes, rung, kit (items to start with),
+// Scenario keys: name, seed (uint32 career and bot seed), floors, wallMinutes, rung, kit (items to start with),
 // workplace, policy (bot policy overrides: staff accept|pushback|delegate,
 // mentor accept|quick|decline, talk, fixAcc, block, treats, recruit, buy).
 // Env: HELLDESK_URL (default http://localhost:4179/crawler.html), CHROMIUM
@@ -13,17 +13,21 @@ import { chromium } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
 
 const scenario = JSON.parse(process.argv[2] ?? '{}');
+if (scenario.seed !== undefined && (!Number.isInteger(scenario.seed) || scenario.seed < 0 || scenario.seed > 0xffffffff)) throw new Error('seed must be a uint32');
 const name = scenario.name ?? 'run';
 const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 const G = (fn, arg) => page.evaluate(fn, arg);
+if (scenario.seed !== undefined) await page.addInitScript((seed) => { Date.now = () => seed; }, scenario.seed);
 await page.goto(process.env.HELLDESK_URL ?? 'http://localhost:4179/crawler.html');
 await G(() => { localStorage.clear(); localStorage.setItem('workgrumble-helldesk-settings', JSON.stringify({ quality: 'low', renderScale: 0.3, tips: false, bloom: false })); });
 await page.reload();
+await G(() => { window.__crawler.headless = true; });
 await page.waitForTimeout(800);
 await page.click('text=New career');
+await page.getByLabel('Skip the induction').check();
 await page.waitForTimeout(200);
 if (scenario.workplace) await page.click(`text=${scenario.workplace}`).catch(() => {});
 await page.click('text=Sign the contract');
@@ -37,6 +41,7 @@ await G((sc) => {
   g.input.enabled = true;
   g.input.locked = true;
   Object.assign(window.__bot.policy, sc.policy ?? {});
+  if (sc.seed !== undefined) window.__bot.seed(sc.seed);
   if (sc.rung !== undefined) {
     const s = g.save;
     s.rung = sc.rung;
@@ -49,12 +54,14 @@ await G((sc) => {
     g.refreshDerived();
   }
   if (sc.workplace) g.save.workplace = sc.workplace;
+  // Spawn the starting enemies at the scenario's rung and employer too.
+  g.loadFloor(g.save.floor, false);
 }, scenario);
 const out = { name, scenario, floors: [], errors, snaps: [] };
 const t0 = Date.now();
 const maxFloors = scenario.floors ?? 5;
 while (Date.now() - t0 < (scenario.wallMinutes ?? 12) * 60000) {
-  const r = await G((sec) => window.__bot.run(sec), 60).catch((e) => ({ err: String(e) }));
+  const r = await G((floors) => window.__bot.run(60, floors), maxFloors).catch((e) => ({ err: String(e) }));
   out.snaps.push(r);
   if (r.err) { console.log('ERR', r.err); break; }
   const floors = await G(() => window.__bot.floors.length);

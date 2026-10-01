@@ -2,7 +2,7 @@
 // Helldesk balance bot: plays the real game headlessly, as a reasonable (not
 // perfect) player, and records what happens floor by floor. Injected into a
 // running crawler.html by run.mjs; see docs/HELLDESK.md ("Balance testing").
-// It uses Math.random for its own decisions: it is a tool, not the game.
+// Its decisions use Math.random unless the runner supplies a seed.
 (() => {
   const g = window.__crawler;
   const H = window.__helldesk;
@@ -11,7 +11,7 @@
   const cell = (v) => Math.floor(v / TILE);
   const inp = g.input;
   const K = g.settings.keys;
-  const R = Math.random;
+  let R = Math.random;
 
   const B = (window.__bot = {
     policy: { staff: 'accept', mentor: 'accept', talk: 0.3, fixAcc: 0.75, block: 0.5, sideQuests: true, treats: true, recruit: true, buy: true, maxFloorMinutes: 22 },
@@ -20,6 +20,15 @@
     cur: null,
     events: [],
   });
+  B.seed = (seed) => {
+    let state = seed >>> 0;
+    R = () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  };
 
   // ---------------------------------------------------------------- paths
   let fieldCache = new Map();
@@ -416,6 +425,8 @@
       hostiles0: hostiles().filter((a) => PEOPLE.includes(a.kind)).length, staffedDone0: s.stats.staffedDone, staffedMissed0: s.stats.staffedMissed,
       mentored0: s.stats.mentored, perk0: s.perkPoints, quits: 0, moraleSum: 0, moraleN: 0, treats0: s.stats.treats, drinks0: s.stats.drinks, sideDone0: s.questLog.filter((q) => q.done && !q.staffed && !q.mentor).length,
       p1: 0, levelUps: 0,
+      floorSec: 0, combatSec: 0, aggroEpisodes: 0, aggroActive: false, quietSec: 0,
+      talkdowns0: s.stats.resolvedPeace, resolvesByForce0: s.stats.resolvedField,
     };
     ignored.clear();
     B.talkers = new Set();
@@ -427,6 +438,8 @@
     const minutes = (g.time - c.t0) / 60;
     const rec = {
       floor: c.floor, rung: c.rung, level: c.level, minutes: +minutes.toFixed(1), reason,
+      floorSec: c.floorSec, combatSec: c.combatSec, combatShare: c.floorSec > 0 ? c.combatSec / c.floorSec : 0, aggroEpisodes: c.aggroEpisodes,
+      talkdowns: s.stats.resolvedPeace - c.talkdowns0, resolvesByForce: s.stats.resolvedField - c.resolvesByForce0,
       burnouts: c.burnouts, minSanityPct: Math.round(c.minSanity * 100), overloadPct: Math.round((c.overloadT / Math.max(1, g.time - c.t0)) * 100), maxOver: c.maxOver,
       staffOffers: c.staffOffers, staffDone: s.stats.staffedDone - c.staffedDone0, staffMissed: s.stats.staffedMissed - c.staffedMissed0, pushTries: c.pushTries, pushOk: c.pushOk,
       mentorAsks: c.mentorAsks, mentored: s.stats.mentored - c.mentored0, sideTaken: c.sideTaken,
@@ -438,6 +451,29 @@
     B.floors.push(rec);
     B.cur = null;
     return rec;
+  }
+
+  // Sample at the start of a tick, counting only time the simulation advances.
+  function step() {
+    if (g.screen === 'play' && g.save.location === 'office' && B.cur === null) newFloor();
+    const c = B.cur;
+    const inFloor = c && g.screen === 'play' && g.save.location === 'office' && c.floor === g.save.floor;
+    const p = g.player.pos;
+    const combat = inFloor && g.actors.some((a) => a.hostile && !a.resolved && a.aggro && Math.hypot(a.pos.x - p.x, a.pos.z - p.z) <= 14);
+    const before = g.time;
+    g.step(DT);
+    const dt = g.time - before;
+    if (!inFloor || dt <= 0) return;
+    c.floorSec += dt;
+    if (combat) {
+      c.combatSec += dt;
+      if (!c.aggroActive) c.aggroEpisodes++;
+      c.aggroActive = true;
+      c.quietSec = 0;
+    } else if (c.aggroActive) {
+      c.quietSec += dt;
+      if (c.quietSec >= 3 - 1e-9) c.aggroActive = false;
+    }
   }
 
   function sample() {
@@ -457,14 +493,14 @@
     const s = g.save;
     // Level up at the mökki, spend perks, buy kit, then back to work.
     let guard = 0;
-    while (g.screen === 'dialogue' && guard++ < 40) { handleDialogue(); g.step(DT); }
+    while (g.screen === 'dialogue' && guard++ < 40) { handleDialogue(); step(); }
     if (g.screen === 'ending') return 'ending';
     guard = 0;
     while (s.level < 60 && guard++ < 6) {
       const before = s.level;
       H.rest();
       let n = 0;
-      while (g.screen === 'dialogue' && n++ < 40) { handleDialogue(); g.step(DT); }
+      while (g.screen === 'dialogue' && n++ < 40) { handleDialogue(); step(); }
       if (s.level === before) break;
       B.cur && B.cur.levelUps++;
     }
@@ -516,17 +552,17 @@
       if (lost > 0) { const src = `${kind}:${from ? from.kind : '-'}${from && from.elite ? '*' : ''}`; B.hurtLog.push({ t: g.time, lost, src }); B.totalBy[src] = (B.totalBy[src] ?? 0) + lost; }
     };
   }
-  B.run = (seconds) => {
+  B.run = (seconds, maxFloors = Infinity) => {
     const s = g.save;
     const t0 = performance.now();
     const until = g.time + seconds;
     let steps = 0;
     while (g.time < until && performance.now() - t0 < 20000) {
       steps++;
-      if (B.ended) break;
-      if (g.screen === 'dialogue' || g.screen === 'minigame') { if (!handleDialogue()) { g.lockpick?.cancel?.(); if (g.screen !== 'play') { g.screen = 'play'; } } g.time += DT; g.step(DT); continue; }
-      if (g.screen === 'os') { if (g.currentTerminal) workTerminal(); else g.close(); g.time += DT; g.step(DT); continue; }
-      if (g.screen !== 'play') { handleOverlay(); g.time += DT; g.step(DT); continue; }
+      if (B.ended || B.floors.length >= maxFloors) break;
+      if (g.screen === 'dialogue' || g.screen === 'minigame') { if (!handleDialogue()) { g.lockpick?.cancel?.(); if (g.screen !== 'play') { g.screen = 'play'; } } g.time += DT; step(); continue; }
+      if (g.screen === 'os') { if (g.currentTerminal) workTerminal(); else g.close(); g.time += DT; step(); continue; }
+      if (g.screen !== 'play') { handleOverlay(); g.time += DT; step(); continue; }
       if (s.location === 'mokki') {
         if (B.cur && B.cur.floor === s.floor) endFloor('friday');
         const r = weekend();
@@ -552,7 +588,7 @@
       // Hostile projectiles close to us before the step: the ones gone after it most likely hit.
       const pp = g.player.pos;
       const close = g.projectiles.filter((q) => q.hostile && q.mesh && Math.hypot(q.mesh.position.x - pp.x, q.mesh.position.z - pp.z) < 2.5);
-      g.step(DT);
+      step();
       const hurtNow = B.hurtLog.slice(hurt0).reduce((a, h) => a + h.lost, 0);
       const other = san0 - s.sanity - hurtNow;
       if (other > 0.0001 && s.location === 'office') {
