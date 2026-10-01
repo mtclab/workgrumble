@@ -246,7 +246,7 @@ describe.each(MISSIONS.map((m) => [m.id, m] as const))('mission HUD %s', (_id, c
     const g = hudGame(new Host(card, 77));
     const place = card.id === 'stapler' ? 'HR corridor' : 'Atrium loop';
     expect(drawHud(g).floor.textContent, 'mission floor label names the card place').toBe(`${place} - ${card.title}`);
-    g.mission = { card: { ...card, place: 'Test corridor' } } as MissionPlay;
+    g.mission = { card: { ...card, place: 'Test corridor' }, hud: () => ({ tier: 0, actors: [], routes: [] }) } as unknown as MissionPlay;
     expect(drawHud(g).floor.textContent).toBe(`Test corridor - ${card.title}`);
   });
 

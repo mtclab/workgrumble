@@ -3,6 +3,7 @@ import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 const summarySource = readFileSync('scripts/helldesk-balance/mission-summary.mjs', 'utf8').replaceAll('export ', '');
+const recordSource = readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replaceAll('export ', '');
 const source = readFileSync('scripts/helldesk-balance/mission-matrix.mjs', 'utf8')
   .replace(/^import .*;\n/gm, '')
   .replace('import.meta.url', "'file:///scripts/helldesk-balance/mission-matrix.mjs'");
@@ -10,6 +11,7 @@ interface Record {
   card: string; seed: number; approach: string; finish: string; seconds: number;
   maxTier: number; detectedAt: number | null; noticedAt: number | null;
   repTotal: number; repPerMin: number; combatSec: number; minSanityPct: number;
+  repBase: number; repQuietBonus: number; repResolves: number;
 }
 const summary = runInNewContext(summarySource + '\nmissionSummary') as (records: Record[]) => {
   staplerQuiet: { runs: number; detectionRate: number | null; medianDetectedAt: number | null; quietFinishShare: number | null };
@@ -18,7 +20,8 @@ const summary = runInNewContext(summarySource + '\nmissionSummary') as (records:
 };
 function record(finish = 'quiet', detectedAt: number | null = null, repPerMin = 100): Record {
   return { card: 'stapler', seed: 17, approach: 'quiet', finish, seconds: 120,
-    maxTier: 1, detectedAt, noticedAt: null, repTotal: repPerMin * 2, repPerMin, combatSec: 2, minSanityPct: 90 };
+    maxTier: 1, detectedAt, noticedAt: 0, repTotal: repPerMin * 2, repPerMin, combatSec: 2, minSanityPct: 90,
+    repBase: 120, repQuietBonus: finish === 'quiet' ? 48 : 0, repResolves: 0 };
 }
 
 function matrix(fault?: string, extended = false) {
@@ -26,7 +29,7 @@ function matrix(fault?: string, extended = false) {
   const lines: string[] = [];
   let active = false;
   let last: (typeof runs)[number];
-  return { runs, lines, run: () => runInNewContext(summarySource + source, {
+  return { runs, lines, run: () => runInNewContext(recordSource + summarySource + source, {
     process: { argv: extended ? ['node', 'matrix', '--vendor-quiet'] : ['node', 'matrix'], execPath: 'node', env: { HELLDESK_URL: 'served-build', MISSION_WALL_MINUTES: '3' } },
     URL, fileURLToPath: (url: URL) => url.pathname, join: (...parts: string[]) => parts.join('/'),
     mkdirSync: () => undefined, writeFileSync: () => undefined,
@@ -84,5 +87,18 @@ describe('mission summary', () => {
     expect(summary([record('loud', 7)]).staplerQuiet.medianDetectedAt).toBe(7);
     expect(summary([]).staplerQuiet.detectionRate).toBeNull();
     expect(summary([]).staplerQuietVsLoudRatio).toBeNull();
+  });
+});
+
+
+describe('reward comparisons', () => {
+  it('uses the mean of per-run rates, handles odd medians and includes the 15 percent boundaries', () => {
+    const s = summary([record('loud', 10, 120), record('loud', 40, 40), record('loud', 20, 80)]);
+    expect(s.repPerMin[0]?.mean).toBe(80);
+    expect(s.staplerQuiet.medianDetectedAt).toBe(20);
+    for (const rate of [85, 115]) {
+      expect(summary([record('quiet', null, rate), { ...record('loud', 0, 100), approach: 'loud' }]).withinTarget).toBe(true);
+    }
+    expect(summary([record(), { ...record('loud', 0, 0), approach: 'loud' }]).staplerQuietVsLoudRatio).toBeNull();
   });
 });

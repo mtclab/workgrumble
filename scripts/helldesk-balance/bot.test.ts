@@ -421,3 +421,43 @@ describe('mission approaches', () => {
     expect(c.lock.clicks).toBe(1);
   });
 });
+
+
+describe('quiet policy honesty', () => {
+  it('ignores hidden suspicion and raw patrol state, even if they claim Alert', () => {
+    const c = career(true);
+    c.game.save.sanity = 100;
+    c.bot.policy.approach = 'quiet';
+    c.game.player.pos.x = 1; c.game.player.pos.z = 1;
+    c.game.markers = [{ x: 15, z: 1, icon: '◆', color: '#ffd54a', label: 'Closet' }];
+    c.actor.hostile = false;
+    const hidden = { suspicion: 100, patrol: [{ x: 3, z: 1 }] };
+    Object.defineProperty(c.mission, 'actors', { get: () => { throw new Error('quiet read hidden suspicion'); } });
+    Object.defineProperty(c.actor, 'suspicion', { get: () => { throw new Error('quiet read hidden suspicion'); } });
+    Reflect.set(c.mission, 'hidden', hidden);
+    c.tick();
+    expect(c.bot.quiet).toBe(true);
+    expect(c.game.input.keys.has('w')).toBe(true);
+    expect(c.game.input.keys.has('shift')).toBe(false);
+    c.game.input.keys.clear();
+    hidden.suspicion = 0;
+    c.tick();
+    expect(c.bot.quiet).toBe(true);
+    expect(c.game.input.keys.has('w')).toBe(true);
+  });
+
+  it('does not wait on a raw patrol route before the HUD reveals it or on a hidden patroller', () => {
+    for (const visible of [true, false]) {
+      const c = career(true);
+      c.game.save.sanity = 100;
+      c.game.markers = [{ x: 15, z: 1, icon: '◆', color: '#ffd54a', label: 'Closet' }];
+      c.game.player.pos.x = 0; c.game.player.pos.z = 1;
+      const a = { id: 4, visible, sort: 'patrol', x: 8, z: 1, patrol: visible ? [] : [{ x: 3, z: 1 }] };
+      c.mission.hud.actors = [a];
+      c.tick();
+      c.game.player.pos.x = 1; a.x = 7;
+      c.tick();
+      expect(c.game.input.keys.has('w')).toBe(true);
+    }
+  });
+});

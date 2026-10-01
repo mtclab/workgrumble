@@ -7,7 +7,7 @@ const source = readFileSync('scripts/helldesk-balance/run.mjs', 'utf8')
   .replace(/^import .*;\n/gm, '')
   .replaceAll('import.meta.url', "'file:///scripts/helldesk-balance/run.mjs'");
 
-async function run(seed = 1700000000, mission?: string, approach = 'quiet') {
+async function run(seed = 1700000000, mission?: string, approach = 'quiet', fault?: string) {
   const calls: string[] = [];
   const lines: string[] = [];
   let output = '';
@@ -22,7 +22,7 @@ async function run(seed = 1700000000, mission?: string, approach = 'quiet') {
   const bot = {
     policy: {}, cur: { combatSec: 3, minSanity: 0.9 }, floors: [] as typeof floors, events: [], deaths: [],
     seed: (n: number) => { calls.push(`bot seed ${n}`); },
-    run: (_sec: number, n: number) => { bot.floors = floors.slice(0, n); m.over = true; return { time: 30 }; },
+    run: (_sec: number, n: number) => { if (fault === 'bot') throw new Error('bot broke'); bot.floors = floors.slice(0, n); m.over = true; return { time: 30 }; },
   };
   const date = { now: () => 42 };
   const browserContext = {
@@ -50,17 +50,19 @@ async function run(seed = 1700000000, mission?: string, approach = 'quiet') {
     getByLabel: (label: string) => ({ check: () => { calls.push(label); } }),
     addScriptTag: () => undefined,
   };
+  let wallNow = 0;
   const context = {
+    ...(fault === 'cap' ? { Date: { now: () => ++wallNow } } : {}),
     chromium: { launch: () => ({ newPage: () => page, close: () => { calls.push('closed'); } }) },
-    process: { argv: ['node', 'run.mjs', JSON.stringify({ name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3, ...(mission ? { mission, approach } : {}) })], env: { OUT: 'result.json' } },
+    process: { exitCode: 0, argv: ['node', 'run.mjs', JSON.stringify({ ...(fault === 'cap' ? { wallMinutes: 0.000001 } : {}), name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3, ...(mission ? { mission, approach } : {}) })], env: { OUT: 'result.json' } },
     URL,
-    missionRecord: runInNewContext(readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replace('export ', '') + '\nmissionRecord') as unknown,
+    missionRecord: runInNewContext(readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replaceAll('export ', '') + '\nmissionRecord') as unknown,
     readFileSync: () => '',
     writeFileSync: (_path: string, text: string) => { output = text; },
     console: { log: (...parts: unknown[]) => lines.push(parts.map(String).join(' ')) },
   };
   await (runInNewContext(`(async () => { ${source} })()`, context) as Promise<void>);
-  return { calls, lines, output };
+  return { calls, lines, output, exitCode: context.process.exitCode };
 }
 
 describe('seeded balance career', () => {
@@ -102,5 +104,16 @@ describe('mission runner', () => {
   it('rejects unknown cards and approaches before opening a browser', async () => {
     await expect(run(17, 'unknown')).rejects.toThrow('mission must be stapler or vendor');
     await expect(run(17, 'vendor', 'cheat')).rejects.toThrow('approach must be quiet, loud or auto');
+  });
+});
+
+
+describe('mission failure records', () => {
+  it.each(['cap', 'bot'])('reports %s as a failed measurement and closes the browser', async (fault) => {
+    const r = await run(17, 'stapler', 'quiet', fault);
+    expect(JSON.parse(r.output)).toMatchObject({ mission: null });
+    expect(r.exitCode).toBe(1);
+    expect(r.output).toContain(fault === 'cap' ? 'mission did not finish within wall-time cap' : 'mission runner failed before results');
+    expect(r.calls.at(-1)).toBe('closed');
   });
 });

@@ -5,6 +5,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { missionSummary } from './mission-summary.mjs';
+import { validateMissionRecord } from './mission-record.mjs';
 
 const scenarios = [
   { mission: 'stapler', approach: 'quiet', runs: 30 },
@@ -35,6 +36,7 @@ for (const scenario of scenarios) {
       || !['quiet', 'loud', 'aborted', 'burnout'].includes(m.finish) || ![m.seconds, m.repPerMin, m.combatSec, m.minSanityPct].every(Number.isFinite) || m.seconds <= 0) {
       throw new Error(`${name}: incomplete or errored mission; inspect its JSON`);
     }
+    validateMissionRecord(m);
     records.push(m);
     console.log(`${m.card} ${m.seed} ${m.approach} ${m.finish} ${m.seconds.toFixed(1)} ${m.maxTier} ${m.detectedAt ?? 'null'} ${m.noticedAt ?? 'null'} ${m.repTotal} ${m.repPerMin.toFixed(2)} ${m.combatSec.toFixed(1)} ${m.minSanityPct}`);
   }
