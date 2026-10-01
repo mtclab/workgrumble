@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { sfx } from './audio';
 import { fxBall, fxRing, muzzle, aimPoint, steamBurst, strike } from './combat';
-import { type Actor, say, stun, TALKERS } from './entities';
+import { type Actor, say, shrugsOff, stun, TALKERS } from './entities';
 import type { Game } from './game';
 import { lineOfSight, toCell } from './level';
 import { castChance, type SpellDef, spellById } from './magic';
@@ -95,7 +95,7 @@ export function castSpell(g: Game): void {
   s.stats.spellsCast++;
   g.exercise('runecraft', 1 + sp.cost / 25);
   const pp = g.player.pos;
-  const near = (r: number): Actor[] => g.actors.filter((a) => a.hostile && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < r && lineOfSight(g.level, pp.x, pp.z, a.pos.x, a.pos.z));
+  const near = (r: number): Actor[] => g.actors.filter((a) => a.hostile && !a.resolved && !shrugsOff(g, a) && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < r && lineOfSight(g.level, pp.x, pp.z, a.pos.x, a.pos.z));
   g.player.swing = 1;
   switch (sp.id) {
     case 'steam':
@@ -114,8 +114,9 @@ export function castSpell(g: Game): void {
         const dx = a.pos.x - pp.x;
         const dz = a.pos.z - pp.z;
         if ((dx * fwd.x + dz * fwd.z) / Math.max(0.01, Math.hypot(dx, dz)) < 0.4) continue;
+        const hp = a.hp;
         strike(g, a, 22, new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(4), 'spell');
-        dealt += 22 * d.spellMult;
+        dealt += Math.min(hp, Math.max(0, hp - a.hp));
       }
       fxBall(g, pp.clone().addScaledVector(fwd, 2).setY(1.2), 0x7aa84a, 0.4, 0.5, 3);
       if (dealt > 0) g.healPlayer(dealt / 3, '');
@@ -214,7 +215,7 @@ export function domainAbility(g: Game): void {
     case 'Network':
       sfx.chime();
       for (const a of g.actors) {
-        if (!a.hostile || a.resolved) continue;
+        if (!a.hostile || a.resolved || shrugsOff(g, a)) continue;
         a.revealT = 15 * power;
         if (Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 20) a.slowT = 3 * power;
         g.level.seen[toCell(a.pos.z) * g.level.w + toCell(a.pos.x)] = 1;
@@ -231,7 +232,7 @@ export function domainAbility(g: Game): void {
       sfx.meeting();
       fxRing(g, pp.clone().setY(1), 0x8080ff, 9);
       for (const a of g.actors) {
-        if (a.hostile && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 9) stun(a, 3 * power);
+        if (a.hostile && !a.resolved && !shrugsOff(g, a) && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < 9) stun(a, 3 * power);
       }
       g.hud.toast('LOCKDOWN.', 'epic');
       break;

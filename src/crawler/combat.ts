@@ -200,6 +200,7 @@ export function muzzle(g: Game): THREE.Vector3 {
  * buffs, auras, and the legendary specials.
  */
 export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | null, kind: 'melee' | 'ranged' | 'spell', power = false): void {
+  if (a.resolved || !a.hostile || shrugsOff(g, a)) return;
   const s = g.save;
   const d = g.derivedCache;
   let dmg = base * (kind === 'melee' ? d.meleeMult : kind === 'ranged' ? d.rangedMult : d.spellMult);
@@ -509,11 +510,13 @@ export function updateProjectiles(g: Game, dt: number): void {
         const dz = pos.z - a.pos.z;
         if (dx * dx + dz * dz < (a.radius + 0.25) ** 2 && pos.y < h) {
           p.hitIds.add(a.id);
-          if (p.kind === 'stun') stun(a, 2.2);
+          if (p.kind === 'stun' && !shrugsOff(g, a)) stun(a, 2.2);
           const knock = p.vel.clone().setY(0).normalize().multiplyScalar(p.kind === 'duck' ? 4 : 1.5);
           if (p.kind === 'salmiakki') {
-            if (!shrugsOff(g, a)) a.poisonT = 6;
-            a.poisonDps = p.damage;
+            if (!shrugsOff(g, a)) {
+              a.poisonT = 6;
+              a.poisonDps = p.damage;
+            }
             hurtActor(g, a, p.damage * 0.5, knock);
           } else if (p.owner === null) {
             strike(g, a, p.damage, knock, 'ranged');
