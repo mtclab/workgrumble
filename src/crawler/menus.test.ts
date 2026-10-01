@@ -7,6 +7,7 @@ import { rootPlayer } from './hosts';
 import {
   burnoutMenu,
   controlsGrid,
+  lockLossPauses,
   difficultyWord,
   firstEnabled,
   focusMove,
@@ -178,6 +179,18 @@ describe('the dialogue line Esc picks', () => {
     }
     // The leaves are really marked (said() and the walk-aways in the world), not none at all.
     expect(marked).toBeGreaterThanOrEqual(9);
+  });
+});
+
+describe('losing the mouse', () => {
+  it('pauses play only when the browser took it (Esc, alt-tab)', () => {
+    expect(lockLossPauses('play', false)).toBe(true);
+    expect(lockLossPauses('paused', false)).toBe(false);
+  });
+
+  it('never when the game let go itself: a quickload\'s new floor is in play by the time the event comes', () => {
+    expect(lockLossPauses('play', true)).toBe(false);
+    expect(lockLossPauses('loading', true)).toBe(false);
   });
 });
 

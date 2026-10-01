@@ -96,6 +96,26 @@ describe('attack and block are bindings like any other', () => {
   });
 });
 
+describe('who let go of the mouse', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('a release the game made is told apart from one the browser made, once', () => {
+    const { input } = page();
+    const doc = document as unknown as { pointerLockElement: unknown };
+    doc.pointerLockElement = {};
+    input.releaseLock();
+    expect(input.lostOnPurpose()).toBe(true);
+    // Asked again (the next loss): that one is the browser's.
+    expect(input.lostOnPurpose()).toBe(false);
+  });
+
+  it('a release with nothing locked marks nothing, so the next real loss still pauses', () => {
+    const { input } = page();
+    input.releaseLock();
+    expect(input.lostOnPurpose()).toBe(false);
+  });
+});
+
 describe('the binding table', () => {
   it('has attack and block, on the buttons, named as the buttons', () => {
     expect(ACTIONS).toContain('attack');

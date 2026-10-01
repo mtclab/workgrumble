@@ -182,9 +182,38 @@ describe('the pick, frame by frame, as the game runs it', () => {
     for (let i = 0; i < 50; i++) expect(pickFrame(p, f)).toBe('none');
     kept = seeded;
     expect(until(p, f)).toBe('abandon');
-    // Leaving the title with a pick in progress settles it, unless the settings are no longer the pick's.
-    expect(pickFrame(new QualityPicker('high'), facts({ timing: false }))).toBe('settle');
-    expect(pickFrame(new QualityPicker('high'), facts({ timing: false, stored: () => seeded }))).toBe('abandon');
+  });
+
+  it('left the title before the window closed: nothing is settled, the level stays untimed, and the title times it afresh', () => {
+    let reads = 0;
+    const p = new QualityPicker('high');
+    const f = facts({ ms: 10, stored: () => { reads++; return ours; } });
+    // Two seconds on the title: short of a warm-up and a window.
+    for (let t = 0; t < 2000; t += 10) expect(pickFrame(p, f)).toBe('none');
+    // A career starts: minutes of play decide nothing and write nothing.
+    for (let i = 0; i < 10_000; i++) expect(pickFrame(p, { ...f, ms: 200, timing: false })).toBe('none');
+    expect(p.done).toBe(false);
+    expect(p.level).toBe('high');
+    expect(reads).toBe(0);
+    // Back on the title (retired, or the next launch resuming 'sampling'):
+    // a whole warm-up and window again before the verdict, not the 2 s left over.
+    let elapsed = 0;
+    let a = 'none';
+    while (a === 'none') {
+      a = pickFrame(p, f);
+      elapsed += 10;
+    }
+    expect(a).toBe('settle');
+    expect(elapsed).toBeGreaterThanOrEqual(WARMUP_MS + WINDOW_MS);
+  });
+
+  it('play cut in mid-window does not let the earlier samples carry over into the verdict', () => {
+    const p = new QualityPicker('high');
+    // Most of a window of slow frames, then play, then a fast title.
+    for (let t = 0; t < WARMUP_MS + WINDOW_MS - 100; t += 40) expect(pickFrame(p, facts())).toBe('none');
+    pickFrame(p, facts({ timing: false }));
+    expect(until(p, facts({ ms: 10 }))).toBe('settle');
+    expect(p.level).toBe('high');
   });
 
   it('the player\'s own pick ends it at once', () => {

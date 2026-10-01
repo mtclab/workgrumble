@@ -38,6 +38,9 @@ interface Crawler {
   save: { sanity: number };
   openOs: (mode: string, app: string) => void;
   close: () => void;
+  writeSlotFor: (id: string) => boolean;
+  loadSlot: (id: string) => boolean;
+  loadWorld: (fromSave: boolean) => void;
 }
 
 interface Handles {
@@ -330,4 +333,39 @@ test('attack moved to the right button by clicking it there: block swaps to the 
   await page.evaluate(() => { (window as unknown as W).__crawler.input.locked = true; });
 
   expect(await swingAfter(page, 'right')).toBeGreaterThan(0);
+});
+
+test('a load that throws behind the card lands on the title, saying so, with the menu working', async ({ page }) => {
+  await boot(page);
+  await startCareer(page);
+  await page.evaluate(() => {
+    const g = (window as unknown as W).__crawler;
+    g.writeSlotFor('slot1');
+    // The floor build falls over, once.
+    const build = g.loadWorld.bind(g);
+    g.loadWorld = (): void => {
+      g.loadWorld = build;
+      throw new Error('the lift is stuck');
+    };
+    g.loadSlot('slot1');
+  });
+  await expect(page.getByTestId('load-failed')).toContainText('the lift is stuck', { timeout: 60_000 });
+  await expect(page.getByTestId('loading-card')).toHaveCount(0);
+  expect(await screen(page)).toBe('title');
+  // The menu has the keyboard again: Enter on the focused Continue loads, and this time it works.
+  await expect(page.getByRole('button', { name: /^Continue/ })).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => screen(page), { timeout: 120_000 }).toBe('play');
+});
+
+test('after binding the right button, the next keyboard click is not eaten: Enter on Done closes Settings', async ({ page }) => {
+  await boot(page);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  const panel = page.getByTestId('settings-panel');
+  await keyButton(page, 'Use tool').click();
+  await keyButton(page, 'Use tool').click({ button: 'right' });
+  expect(await page.evaluate(() => (window as unknown as W).__crawler.settings.keys.attack)).toBe('Mouse2');
+  await panel.getByRole('button', { name: 'Done' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(panel).toHaveCount(0);
 });

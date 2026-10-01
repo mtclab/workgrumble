@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { EDGE_SHAPE, edgeShadow, hitPauseFor, shakeScale } from './a11y';
+import { crossingPauseFor, EDGE_SHAPE, edgeShadow, hitPauseFor, shakeScale } from './a11y';
 import { RARITY_INFO, RARITY_MARK, RARITY_SHAPE, type Rarity } from './loot';
 import { DEFAULT_SETTINGS } from './settings';
 
@@ -14,6 +14,11 @@ describe('comfort settings', () => {
     expect(hitPauseFor(true, false)).toBe(0);
     expect(hitPauseFor(false, true)).toBeGreaterThan(0);
     expect(hitPauseFor(true, true)).toBeGreaterThan(hitPauseFor(false, true));
+  });
+
+  it('hit pause off drops the SUO crossing\'s freeze too', () => {
+    expect(crossingPauseFor(false, 0.07)).toBe(0);
+    expect(crossingPauseFor(true, 0.07)).toBe(0.07);
   });
 
   it('everything is on for a new player, as the game has always played', () => {

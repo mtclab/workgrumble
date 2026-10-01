@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { shakeScale } from './a11y';
+import { crossingPauseFor, shakeScale } from './a11y';
 import { sfx } from './audio';
 import { autoPickDue, pickFrame, type PickFrame, QualityPicker } from './autoquality';
 import { castShadows, setBlobShadows } from './characters';
@@ -78,6 +78,7 @@ import {
 } from './questing';
 import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
 import { MenuKeys } from './menukeys';
+import { lockLossPauses } from './menus';
 import { browserStorage, takeWhatsNew } from './releases';
 import { fx, Rng } from './rng';
 import { busyDue, MOVE_ACTIONS, RootedCard, rootedView } from './rooted';
@@ -382,8 +383,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
     window.addEventListener('resize', () => this.resize());
     document.addEventListener('pointerlockchange', () => {
-      if (document.pointerLockElement === null) this.dropMeleeHold();
-      if (document.pointerLockElement === null && this.screen === 'play') screens.showPause(this);
+      if (document.pointerLockElement === null) {
+        this.dropMeleeHold();
+        if (lockLossPauses(this.screen, this.input.lostOnPurpose())) screens.showPause(this);
+      }
       // A lock request that lands after a dialogue or menu opened would trap
       // the cursor behind it: give it straight back.
       if (document.pointerLockElement !== null && this.screen !== 'play') this.input.releaseLock();
@@ -928,7 +931,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
    * frame. It times the title and the New Starter Form, where the real floor
    * is drawn behind the menu; a level too slow goes one lower at once (and
    * is saved, so a tab closed mid-way resumes from there). The Control Panel
-   * overrules it; play starting first settles it on the level reached.
+   * overrules it; play starting first only pauses it (`pickFrame`).
    */
   private tickQualityPick(ms: number): void {
     const p = this.qualityPicker;
@@ -1591,7 +1594,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.hud.mapOpen = false;
     this.player.crouching = false;
     this.vision = new Vision(this);
-    this.hitStop = CROSSING_STOP;
+    this.hitStop = crossingPauseFor(this.settings.hitPause, CROSSING_STOP);
     this.precompile();
   }
 
@@ -1601,7 +1604,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (v === null) return;
     this.vision = null;
     this.lastVisionDiff = v.end(true);
-    this.hitStop = CROSSING_STOP;
+    this.hitStop = crossingPauseFor(this.settings.hitPause, CROSSING_STOP);
     this.precompile();
     this.updateLights(true);
     const s = this.save;

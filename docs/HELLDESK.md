@@ -413,7 +413,8 @@ first/third person, field of view, sensitivity, invert Y, render scale,
 bloom, quality (lights), damage numbers, tips, compass, music and effects
 volume, autosave; under Accessibility, camera shake (off is none at all),
 screen flashes (the hurt, heal and meeting edges, the red flash on a hit and
-SUO's white frames) and hit pause (the freeze on a melee hit). Every key and
+SUO's white frames) and hit pause (the freeze on a melee hit, and SUO's
+beat of stillness at the crossing). Every key and
 both mouse buttons can be rebound, attack and block included: click the
 action, then press a key or click the same button again with the mouse
 button you want; a clash swaps the two. The screen's edge differs by shape
@@ -428,8 +429,10 @@ The pick is saved and the Control Panel says it was made automatically;
 choosing a quality yourself overrules it (and clears the note). It is
 `qualitySource` in the settings: 'sampling' while it times (a tab closed
 mid-way resumes), then 'auto', or 'player'; settings from before it read as
-the player's, so it never runs again once settings exist. Starting play
-before it has decided keeps the level reached. If the kept settings stop
+the player's, so it never runs again once settings exist. Leaving the title
+before a verdict only pauses it: the window starts over when the title is
+back, or on the next launch (the settings still say 'sampling'); play is
+never timed, and an untimed level is never labelled automatic. If the kept settings stop
 being a pick in progress meanwhile (another tab, a test seeding them), the
 pick stops and writes nothing over them. The rules are pure
 (`autoquality.ts`, `pickFrame`); the game only feeds it frame times.
@@ -437,7 +440,10 @@ pick stops and writes nothing over them. The rules are pure
 **Loading.** New career, Continue, Load, F9, clocking back in after a
 burnout and every lift or drive put a short card up ("Badging you in",
 "Unlocking the mökki") and build the floor a frame later, once it has been
-painted (`showLoading` in `screens.ts`).
+painted (`showLoading` in `screens.ts`). A load that throws puts the title
+back up with the reason on it (`loading.ts`); the card has no way out of its
+own. A quickload from play keeps the mouse captured, and a release the game
+made itself never opens the pause menu (`lockLossPauses`).
 
 ## Version and what changed
 

@@ -73,8 +73,28 @@ export class Input {
     }
   }
 
+  /**
+   * The game let go of the mouse itself (a menu, a dialogue, the title).
+   * Only set when there was a lock to let go of, so it always pairs with
+   * the one loss that follows, and `lostOnPurpose` takes it.
+   */
+  private releasing = false;
+
   releaseLock(): void {
-    if (document.pointerLockElement !== null) document.exitPointerLock();
+    if (document.pointerLockElement === null) return;
+    this.releasing = true;
+    document.exitPointerLock();
+  }
+
+  /**
+   * Asked once when the lock has been lost: was it our own `releaseLock`
+   * (true), or the browser taking it away (Esc, alt-tab: false)? Clears the
+   * answer, so the next loss is judged on its own.
+   */
+  lostOnPurpose(): boolean {
+    const ours = this.releasing;
+    this.releasing = false;
+    return ours;
   }
 
   /** True once per physical key press. */

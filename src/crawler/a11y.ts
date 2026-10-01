@@ -19,6 +19,16 @@ export function hitPauseFor(power: boolean, on: boolean): number {
   return power ? 0.09 : 0.035;
 }
 
+/**
+ * The beat of stillness as the steam takes you under and lets you go, in
+ * seconds. It is a hold for effect, like the one on a hit, so Hit pause off
+ * drops it too. The crossing does not need it: its shaders are compiled by
+ * `Game.precompile` off the main path, not during the freeze.
+ */
+export function crossingPauseFor(on: boolean, stop: number): number {
+  return on ? stop : 0;
+}
+
 /** A flash on the screen's edge: hurt, healed, or pulled into a meeting. */
 export type FlashKind = 'hurt' | 'heal' | 'meeting';
 

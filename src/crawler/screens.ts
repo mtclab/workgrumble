@@ -5,6 +5,7 @@ import { showCharGen } from './chargen';
 import { DEATH_LINES } from './content/lines';
 import type { Game } from './game';
 import { burnoutMenu, controlsGrid, MENU_LABEL, type MenuItem, type MenuSpec, pauseMenu, titleMenu } from './menus';
+import { guarded, loadFailureLine } from './loading';
 import { focusables } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
 import { fx } from './rng';
@@ -433,12 +434,34 @@ function afterPaint(fn: () => void): void {
  * and drawing its textures runs in one go and holds the page still, which
  * looked exactly like a hung machine. The card goes up first and `work` runs
  * after it has been painted; whatever `work` shows next replaces it.
+ *
+ * The mouse stays captured if it was (a quickload from play): the card has
+ * nothing to click, and play picks up where it was without asking for the
+ * lock again outside a click. A load that throws puts the title back up,
+ * saying so (`loadFailed`): the card itself has no way out.
  */
 export function showLoading(g: Game, line: string, work: () => void): void {
   g.screen = 'loading';
-  g.input.releaseLock();
   setOverlay(g, `<div class="loading-card" data-testid="loading-card" role="status" aria-live="polite">
     <div class="loading-badge" aria-hidden="true"></div>
     <div class="lift-name">${line}...</div></div>`, []);
-  afterPaint(work);
+  afterPaint(guarded(work, (err) => loadFailed(g, err)));
+}
+
+/**
+ * A load that threw, part way: back to the title, which works whatever state
+ * the floor was left in (every way on from it builds a world afresh), with
+ * the reason on it. Nothing was saved by the attempt.
+ */
+function loadFailed(g: Game, err: unknown): void {
+  console.error('Helldesk: a load failed', err);
+  g.os.hide();
+  g.dialogue.close();
+  showTitle(g);
+  const note = document.createElement('p');
+  note.className = 'title-blurb load-failed';
+  note.setAttribute('role', 'alert');
+  note.setAttribute('data-testid', 'load-failed');
+  note.textContent = loadFailureLine(err);
+  g.overlay.querySelector('.title-version')?.after(note);
 }

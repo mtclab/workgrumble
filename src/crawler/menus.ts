@@ -102,6 +102,17 @@ export interface MenuSpec {
 export const SAFE_ESCAPES: readonly MenuItem[] = ['resume'];
 
 /** The title is a real main menu: everything a player wants before a game exists. */
+/**
+ * The mouse was let go of: does the game pause? Only when the browser took
+ * it away during play (Esc, alt-tab). A release the game made itself is
+ * never a pause, whatever the screen is by the time the event arrives: the
+ * event comes later than the release, and a quickload's new floor could be
+ * in play by then (it used to open the pause menu over it).
+ */
+export function lockLossPauses(screen: string, ours: boolean): boolean {
+  return !ours && screen === 'play';
+}
+
 export function titleMenu(o: { readonly latest: boolean; readonly saves: boolean }): MenuSpec {
   const items: MenuItem[] = [];
   if (o.latest) items.push('continue');

@@ -35,6 +35,7 @@ import {
   WORKPLACES,
 } from './rpg';
 import { fx } from './rng';
+import { swallowNextClick } from './clickguard';
 import { ACTION_LABEL, ACTIONS, DEFAULT_KEYS, keyName, mouseCode, type Settings } from './settings';
 import {
   ACTION_ITEM_KG,
@@ -995,17 +996,7 @@ export class Os {
           stop();
           // The click this press makes lands on the redrawn grid: it must
           // not start a rebind of whatever button is drawn under it now.
-          const swallow = (ev: Event): void => {
-            ev.preventDefault();
-            ev.stopImmediatePropagation();
-            done();
-          };
-          const done = (): void => {
-            window.removeEventListener('click', swallow, true);
-            window.removeEventListener('mousedown', done, true);
-          };
-          window.addEventListener('click', swallow, true);
-          window.addEventListener('mousedown', done, true);
+          swallowNextClick(window);
           commit(mouseCode(e.button));
         };
         const commit = (code: string | null): void => {
@@ -1094,6 +1085,6 @@ export class Os {
 /** The line under Quality: who chose it, when it was not the player. */
 function qualityNote(source: Settings['qualitySource']): string {
   if (source === 'auto') return 'Chosen automatically for this computer on its first launch. Pick another to overrule it.';
-  if (source === 'sampling') return 'Timing this computer to choose one...';
+  if (source === 'sampling') return 'Not chosen yet: the title screen times this computer to choose one.';
   return '';
 }

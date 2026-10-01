@@ -124,6 +124,16 @@ export class QualityPicker {
     else this.done = true;
     return v;
   }
+
+  /**
+   * Timing cut short (the title left mid-window): what was gathered is
+   * dropped, and the next frames timed start over with a warm-up. The level
+   * stays as it is, still undecided.
+   */
+  interrupt(): void {
+    this.n = 0;
+    this.elapsed = 0;
+  }
 }
 
 /** What the game does with a frame of the pick (`pickFrame`). */
@@ -132,7 +142,11 @@ export type PickAction = 'none' | 'step' | 'settle' | 'abandon';
 export interface PickFrame {
   /** This frame's time, ms. */
   readonly ms: number;
-  /** On a screen that is timed (the title, the New Starter Form). */
+  /**
+   * On a screen that is timed (the title, the New Starter Form). Play is
+   * not: its load comes and goes with the floor, the fight and the menus,
+   * and a verdict from it would say more about the moment than the machine.
+   */
   readonly timing: boolean;
   /** The tab is showing. */
   readonly visible: boolean;
@@ -150,6 +164,12 @@ export interface PickFrame {
  * 'step' (apply and save `p.level`, one lower), 'settle' (save `p.level` as
  * the machine's choice), 'abandon' (stop, write nothing) or 'none'.
  *
+ * Only a verdict settles. Leaving the timed screens before one only pauses
+ * the pick: the window starts over when the title comes back, and the kept
+ * settings still say 'sampling', so a later launch resumes it. A level that
+ * was never timed is never saved as the machine's choice (it used to be:
+ * starting a career inside the first 3.5 s settled on High, for good).
+ *
  * It abandons when the player has picked in this page, and when the kept
  * settings are no longer a pick in progress: written meanwhile by something
  * else (another tab, a test seeding them), they are somebody's decision, and
@@ -159,7 +179,10 @@ export interface PickFrame {
  */
 export function pickFrame(p: QualityPicker, f: PickFrame): PickAction {
   if (f.source !== 'sampling') return 'abandon';
-  if (!f.timing) return autoPickDue(f.stored()) ? 'settle' : 'abandon';
+  if (!f.timing) {
+    p.interrupt();
+    return 'none';
+  }
   if (!f.visible) return 'none';
   const v = p.frame(f.ms);
   if (v === null) return 'none';
