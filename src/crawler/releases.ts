@@ -118,7 +118,7 @@ export const HELLDESK_RELEASES: readonly ReleaseNote[] = Object.freeze([
       'Skills rise by use, a level is earned by resting, and the career ladder '
         + 'is the difficulty: every promotion makes the building fight harder '
         + 'and pay better. Perk trees, loot with rarity, quests with choices '
-        + 'that come due later, and eight endings.',
+        + 'that come due later, and seven endings.',
       'Two tightropes, drink and caffeine, each with a narrow window that '
         + 'helps and a long way down either side of it. Mökki magic runs on '
         + 'Löyly. Saves live in this browser.',

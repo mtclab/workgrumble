@@ -19,7 +19,7 @@ the quests people hand you), resolve the boss in the corner office, take the
 lift, and it is Friday: you drive to the **mökki** (salary, HR, the
 performance review, sauna, lake, grill, fishing, sleep and level-up, the
 upgrade board, the Saunatonttu). On Monday you drive back to the next floor.
-Floor 4 ends the story (one of eight endings); after it comes Overtime:
+Floor 4 ends the story (one of seven endings); after it comes Overtime:
 endless floors, stronger every loop.
 
 ## Difficulty: three dials

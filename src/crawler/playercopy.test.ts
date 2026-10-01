@@ -1,6 +1,10 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Os, type OsHost } from './os';
 import { treePerk } from './perks';
+import { HELLDESK_RELEASES } from './releases';
+import { endingFor } from './rpg';
+import { ACHIEVEMENTS, TIPS } from './upgrades';
 import { DEFAULT_SETTINGS } from './settings';
 import { derive, newSave } from './state';
 
@@ -29,4 +33,26 @@ afterEach(() => vi.unstubAllGlobals());
 it('the character sheet and Parkour say dodge is a chance to avoid projectiles', () => {
   expect(rendered('renderCharacter')).toContain('Projectile dodge chance');
   expect(treePerk('parkour')!.ranks[0]!.desc).toContain('chance to dodge projectiles');
+});
+
+
+it('release notes and the code map promise the seven playable endings', () => {
+  const save = newSave(7);
+  const base = { rung: 0, dependency: 0, warnings: 0, flags: {}, standing: save.standing };
+  const endings = [
+    base, { ...base, flags: { ceoDeal: true } }, { ...base, flags: { goldenParachute: true } },
+    { ...base, dependency: 70 }, { ...base, flags: { whistleblower: true } },
+    { ...base, rung: 10 }, { ...base, standing: { ...save.standing, kitchen: 50 } },
+  ].map((e) => endingFor(e).title);
+  expect(new Set(endings).size).toBe(7);
+  expect(HELLDESK_RELEASES.flatMap((r) => r.lines).join(' ')).toContain('seven endings');
+  expect(readFileSync('docs/HELLDESK.md', 'utf8')).toContain('one of seven endings');
+});
+
+it('the quest tip directs you to the offer marker', () => {
+  expect(TIPS.quest).toContain('"!" over their head');
+});
+
+it('Hands Full describes being staffed at full capacity', () => {
+  expect(ACHIEVEMENTS.find((a) => a.id === 'handsfull')!.desc).toContain('at full capacity');
 });
