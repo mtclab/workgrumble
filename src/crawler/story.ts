@@ -299,7 +299,7 @@ export function talkHelper(h: StoryHost, a: Actor): DialogueNode {
   if (a.recruited) {
     // "Carry on" first: a quick 1 should never give away somebody's White Monster.
     return { speaker: a.name, subtitle: note, text: a.morale < 35 ? 'Yeah? ...Sorry. Long day.' : 'Yeah?', options: [
-      { label: 'Carry on.', pick: () => null },
+      { label: 'Carry on.', leave: true, pick: () => null },
       ...treats,
       // They stay on the floor: colleagues, not summons.
       { label: 'Wait here. I have got this.', pick: () => { a.recruited = false; return said(a.name, 'Suit yourself. I will be here.', 'neutral'); } },
@@ -321,7 +321,7 @@ export function talkHelper(h: StoryHost, a: Actor): DialogueNode {
       return said(a.name, a.role === 'intern' ? 'Yes! I will follow you everywhere!' : a.role === 'security' ? 'Right behind you. Badges out.' : 'Fine. But I am not doing printers.', 'good');
     } },
     ...treats,
-    { label: 'Not now.', pick: () => null },
+    { label: 'Not now.', leave: true, pick: () => null },
   ] };
 }
 
@@ -352,7 +352,7 @@ export function talkTonttu(h: StoryHost, a: Actor): DialogueNode {
     h.trainSkill('runecraft');
     return talkTonttu(h, a);
   } });
-  opts.push({ label: 'Heippa. (Leave)', pick: () => null });
+  opts.push({ label: 'Heippa. (Leave)', leave: true, pick: () => null });
   return {
     speaker: 'Saunatonttu',
     subtitle: 'The sauna elf',

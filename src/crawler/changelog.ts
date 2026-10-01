@@ -48,8 +48,12 @@ export function releaseEntry(note: Readonly<ReleaseNote>): HTMLElement {
  * Enter would otherwise also pick whatever button it had selected), and it
  * takes itself off the moment the panel is gone - closed, or swept away with
  * the rest of the title when another screen replaces it.
+ *
+ * The title menu's "What's new" opens the same panel with every release:
+ * `lede` then says so, `onClose` gives the focus back to the button, and the
+ * panel takes the focus while it is up.
  */
-export function showWhatsNew(host: HTMLElement, notes: readonly ReleaseNote[]): void {
+export function showWhatsNew(host: HTMLElement, notes: readonly ReleaseNote[], opts: { readonly lede?: string; readonly onClose?: () => void } = {}): void {
   if (notes.length === 0) return;
 
   const panel = document.createElement('section');
@@ -62,7 +66,7 @@ export function showWhatsNew(host: HTMLElement, notes: readonly ReleaseNote[]): 
   heading.textContent = 'What\'s new';
   const lede = document.createElement('p');
   lede.className = 'whats-new-lede';
-  lede.textContent = 'Installed since you were last in. Update History, on '
+  lede.textContent = opts.lede ?? 'Installed since you were last in. Update History, on '
     + 'any desk and in the backpack, keeps the lot.';
 
   const list = document.createElement('div');
@@ -76,6 +80,7 @@ export function showWhatsNew(host: HTMLElement, notes: readonly ReleaseNote[]): 
   const close = (): void => {
     window.removeEventListener('keydown', onKey, true);
     panel.remove();
+    opts.onClose?.();
   };
   const onKey = (e: KeyboardEvent): void => {
     if (!panel.isConnected) {
@@ -95,4 +100,5 @@ export function showWhatsNew(host: HTMLElement, notes: readonly ReleaseNote[]): 
   panel.append(heading, lede, list, ok);
   host.append(panel);
   window.addEventListener('keydown', onKey, true);
+  if (opts.onClose !== undefined) ok.focus({ preventScroll: true });
 }

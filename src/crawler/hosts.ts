@@ -56,6 +56,8 @@ export function rootPlayer(g: Game, seconds: number, reason: string, resistible 
   if (resistible && g.time < g.rootImmuneUntil) return;
   if (resistible && g.save.perks.ironwill !== undefined) seconds *= 0.5;
   if (resistible) g.rootImmuneUntil = g.time + seconds + 2.5;
+  // A longer hold restarts the card's countdown; a shorter one inside it changes nothing but the reason.
+  if (seconds > g.rootT) g.rootMax = seconds;
   g.rootT = Math.max(g.rootT, seconds);
   g.rootReason = reason;
   sfx.meeting();

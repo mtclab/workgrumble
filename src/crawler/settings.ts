@@ -48,6 +48,12 @@ export interface Settings {
    * Starter Form then ticks "Skip the induction" for them by default.
    */
   inductionDone: boolean;
+  /**
+   * The New Starter Form's "More options" (star sign, employer, Ironman) was
+   * left open: it opens that way next time. Closed for a first career, where
+   * those are the choices nobody needs yet.
+   */
+  starterMore: boolean;
   keys: Record<Action, string>;
 }
 
@@ -67,6 +73,7 @@ export const DEFAULT_SETTINGS: Settings = {
   sfx: 0.7,
   autosave: true,
   inductionDone: false,
+  starterMore: false,
   keys: { ...DEFAULT_KEYS },
 };
 

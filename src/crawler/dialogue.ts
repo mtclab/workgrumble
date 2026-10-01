@@ -1,3 +1,4 @@
+import { firstEnabled, focusMove, stepEnabled } from './menus';
 import { fx } from './rng';
 
 /**
@@ -11,6 +12,12 @@ export interface DialogueOption {
   /** e.g. "Soft Skills 64%". Shown in brackets before the line. */
   readonly tag?: string;
   readonly disabled?: boolean;
+  /**
+   * Walks away and changes nothing: what Esc picks. Only on a line that
+   * costs nothing and offends nobody - "Fine. We do this the hard way." ends
+   * the talk too, but it is a fight, so it is never one of these.
+   */
+  readonly leave?: boolean;
   /** Return the next node, or null to end the conversation. */
   readonly pick: () => DialogueNode | null;
 }
@@ -23,9 +30,22 @@ export interface DialogueNode {
   readonly mood?: 'neutral' | 'good' | 'bad' | 'mystic';
 }
 
+/**
+ * The line Esc picks: the first that walks away and changes nothing, or -1
+ * when there is none (Esc then does nothing: every way out of this
+ * conversation is a choice the player has to make).
+ */
+export function safeOption(options: readonly DialogueOption[]): number {
+  return options.findIndex((o) => o.leave === true && o.disabled !== true);
+}
+
 export class DialogueUI {
   private readonly root: HTMLDivElement;
   private onClose: (() => void) | null = null;
+  private node: DialogueNode | null = null;
+  private buttons: HTMLButtonElement[] = [];
+  /** The highlighted line: what Enter picks. */
+  private sel = -1;
   open = false;
 
   constructor(parent: HTMLElement) {
@@ -34,16 +54,41 @@ export class DialogueUI {
     this.root.style.display = 'none';
     parent.append(this.root);
     window.addEventListener('keydown', (e) => {
-      if (!this.open || e.repeat) return;
+      // A key some other screen already answered (the Enter that signed the
+      // contract and opened this) is not an answer here.
+      if (!this.open || e.repeat || e.defaultPrevented) return;
       const n = Number(e.key);
-      if (n >= 1 && n <= 9) {
-        const btn = this.root.querySelectorAll<HTMLButtonElement>('.dlg-opt')[n - 1];
-        if (btn !== undefined && !btn.disabled) {
-          e.preventDefault();
-          btn.click();
-        }
+      if (e.key.length === 1 && n >= 1 && n <= 9) {
+        this.choose(n - 1, e);
+        return;
+      }
+      if (e.code === 'Enter' || e.code === 'NumpadEnter') {
+        this.choose(this.sel, e);
+        return;
+      }
+      if (e.code === 'Escape') {
+        if (this.node !== null) this.choose(safeOption(this.node.options), e);
+        return;
+      }
+      const move = e.code === 'Tab' ? (e.shiftKey ? 'prev' : 'next') : focusMove(e.code);
+      if (move !== null) {
+        e.preventDefault();
+        this.highlight(stepEnabled(this.buttons.map((b) => b.disabled), this.sel, move));
       }
     });
+  }
+
+  private choose(i: number, e: KeyboardEvent): void {
+    const btn = this.buttons[i];
+    if (btn === undefined || btn.disabled) return;
+    e.preventDefault();
+    btn.click();
+  }
+
+  private highlight(i: number): void {
+    this.sel = i;
+    this.buttons.forEach((b, j) => b.classList.toggle('is-sel', j === i));
+    this.buttons[i]?.focus({ preventScroll: true });
   }
 
   show(node: DialogueNode, onClose: () => void): void {
@@ -81,10 +126,15 @@ export class DialogueUI {
         if (next === null) this.close();
         else this.render(next);
       });
+      // The mouse highlights too, so Enter and the pointer never disagree.
+      b.addEventListener('mouseenter', () => { if (!b.disabled) this.highlight(i); });
       opts.append(b);
     });
     box.append(head, text, opts);
     this.root.append(box);
+    this.node = node;
+    this.buttons = [...opts.querySelectorAll<HTMLButtonElement>('.dlg-opt')];
+    this.highlight(firstEnabled(this.buttons.map((x) => x.disabled)));
   }
 
   close(): void {
@@ -92,6 +142,9 @@ export class DialogueUI {
     this.open = false;
     this.root.style.display = 'none';
     this.root.replaceChildren();
+    this.node = null;
+    this.buttons = [];
+    this.sel = -1;
     const cb = this.onClose;
     this.onClose = null;
     cb?.();
@@ -100,7 +153,7 @@ export class DialogueUI {
 
 /** A simple end-of-conversation node. */
 export function said(speaker: string, text: string, mood: DialogueNode['mood'] = 'neutral', leave = 'Leave'): DialogueNode {
-  return { speaker, text, mood, options: [{ label: leave, pick: () => null }] };
+  return { speaker, text, mood, options: [{ label: leave, leave: true, pick: () => null }] };
 }
 
 // ---------------------------------------------------------------- lockpicking

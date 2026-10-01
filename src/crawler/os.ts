@@ -51,6 +51,8 @@ import {
 } from './state';
 import { ACHIEVEMENTS } from './upgrades';
 import { releaseEntry } from './changelog';
+import { focusMove, PACK_APPS, packAppKey, stepFocus } from './menus';
+import { isField } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
 
 /**
@@ -149,6 +151,10 @@ export class Os {
   private readonly root: HTMLElement;
   private readonly desktop: HTMLElement;
   private readonly icons: HTMLElement;
+  /** The backpack's app bar: the desktop's icons, for a backpack that has no desktop. */
+  private readonly bar: HTMLElement;
+  /** Settings shown outside the OS (over the title), while it is up. */
+  private loose: HTMLElement | null = null;
   private readonly clock: HTMLElement;
   private readonly status: HTMLElement;
   private wins: Win[] = [];
@@ -167,7 +173,8 @@ export class Os {
     this.clock = el('span', { class: 'os-clock' });
     this.status = el('span', { class: 'os-status' });
     this.icons = el('div', { class: 'os-icons' });
-    this.desktop.append(this.icons);
+    this.bar = el('nav', { class: 'os-packbar', 'aria-label': 'Backpack', 'data-testid': 'pack-bar' });
+    this.desktop.append(this.icons, this.bar);
     const taskbar = el('div', { class: 'os-taskbar' },
       el('button', { class: 'os-start', onclick: () => this.host.close() }, '⏻ Log off'),
       this.status,
@@ -183,6 +190,23 @@ export class Os {
       if (e.code === 'Escape' || (this.mode === 'pack' && (e.code === 'Tab' || e.code === 'KeyI'))) {
         e.preventDefault();
         this.host.close();
+        return;
+      }
+      if (this.mode !== 'pack' || isField(t) || e.repeat) return;
+      // The app bar: 1-8 open its apps, the arrows walk it.
+      const n = packAppKey(e.code);
+      const app = PACK_APPS[n];
+      if (app !== undefined) {
+        e.preventDefault();
+        this.showPackApp(app);
+        return;
+      }
+      const move = focusMove(e.code);
+      const buttons = [...this.bar.querySelectorAll<HTMLButtonElement>('button')];
+      const at = buttons.indexOf(document.activeElement as HTMLButtonElement);
+      if (move !== null && at >= 0) {
+        e.preventDefault();
+        buttons[stepFocus(buttons.length, at, move)]?.focus();
       }
     });
   }
@@ -195,6 +219,7 @@ export class Os {
     this.mode = mode;
     this.root.style.display = 'flex';
     this.root.classList.toggle('os-pack', mode !== 'desk');
+    this.root.classList.toggle('os-backpack', mode === 'pack');
     for (const w of this.wins) w.el.remove();
     this.wins = [];
     this.feedback = '';
@@ -204,16 +229,68 @@ export class Os {
       this.icons.append(el('button', { class: 'os-icon', onclick: () => this.openApp(app.id) },
         el('span', { class: 'os-icon-glyph' }, app.icon), el('span', { class: 'os-icon-label' }, app.label)));
     }
-    if (first !== undefined) this.openApp(first);
+    this.bar.replaceChildren();
+    if (mode === 'pack') {
+      PACK_APPS.forEach((id, i) => {
+        const app = APPS.find((a) => a.id === id);
+        this.bar.append(el('button', { class: 'os-packbar-btn', 'data-app': id, onclick: () => this.showPackApp(id) },
+          el('span', { class: 'os-packbar-key' }, String(i + 1)), ` ${app?.label ?? id}`));
+      });
+      this.showPackApp(first ?? 'inventory');
+    } else if (first !== undefined) this.openApp(first);
     else if (mode === 'desk') {
       this.openApp('tickets');
       if (this.host.save.quests.some((q) => q.done)) this.openApp('mail');
-    } else if (mode === 'itdesk') {
-      this.openApp('store');
     } else {
-      this.openApp('inventory');
+      this.openApp('store');
     }
     this.refresh();
+  }
+
+  /**
+   * In the backpack, one app at a time: the bar swaps the window rather than
+   * piling another on top of it in the same place. The bar keeps the focus,
+   * on the app now showing, so the keyboard is never left behind a window.
+   */
+  private showPackApp(app: AppId): void {
+    for (const w of this.wins) if (w.app !== app) w.el.remove();
+    this.wins = this.wins.filter((w) => w.app === app);
+    this.openApp(app);
+    for (const b of this.bar.querySelectorAll<HTMLButtonElement>('button')) {
+      const on = b.dataset.app === app;
+      b.classList.toggle('is-selected', on);
+      if (on) {
+        b.setAttribute('aria-current', 'page');
+        b.focus({ preventScroll: true });
+      } else {
+        b.removeAttribute('aria-current');
+      }
+    }
+  }
+
+  /**
+   * The Control Panel's settings outside the OS, for the title screen's
+   * Settings: the same controls and the same rules, minus resigning (there is
+   * no career yet). Release it when its panel closes.
+   */
+  settingsPanel(): HTMLElement {
+    this.cancelRebind?.();
+    const body = el('div', { class: 'os-panel' });
+    this.loose = body;
+    this.renderSettings(body);
+    return body;
+  }
+
+  releasePanel(): void {
+    this.cancelRebind?.();
+    this.loose = null;
+  }
+
+  /** Help without its controls list (the title's Controls & help draws its own, with the player's keys). */
+  helpPanel(): HTMLElement {
+    const body = el('div', { class: 'os-panel' });
+    this.renderHelp(body, false);
+    return body;
   }
 
   hide(): void {
@@ -830,12 +907,13 @@ export class Os {
         toggle('Tutorial tips', st.tips, (v) => { st.tips = v; }),
         toggle('Compass', st.compass, (v) => { st.compass = v; }),
         toggle('Autosave', st.autosave, (v) => { st.autosave = v; })),
-      el('button', {
+      // Over the title there is no career to resign from.
+      ...(body === this.loose ? [] : [el('button', {
         class: 'os-btn os-danger',
         onclick: () => {
           if (confirm('Resign and start a new career? (Your saves stay in their slots.)')) this.host.restart();
         },
-      }, 'Resign (new career)'),
+      }, 'Resign (new career)')]),
     );
   }
 
@@ -862,7 +940,7 @@ export class Os {
           // screen (window closed, backpack shut, settings redrawn), the key
           // belongs to the game again. A listener that stayed behind used to
           // bind the next key pressed anywhere - W walking right, for good.
-          if (!b.isConnected || this.mode === null) {
+          if (!b.isConnected || (this.mode === null && body !== this.loose)) {
             stop();
             return;
           }
@@ -888,17 +966,26 @@ export class Os {
     return grid;
   }
 
-  private renderHelp(body: HTMLElement): void {
+  private renderHelp(body: HTMLElement, controls = true): void {
     const sec = (title: string, lines: string[]): void => {
       body.append(el('h4', {}, title), el('ul', { class: 'os-help' }, ...lines.map((l) => el('li', {}, l))));
     };
-    sec('Controls', [
-      'WASD move · Shift sprint · Space jump · Mouse look · V first/third person',
-      'LMB use tool (hold with a melee tool for a power attack) · RMB hold to block, tap to shove',
-      'E interact / talk · Q quick-use food or coffee · 1-9 or wheel switch tools',
-      'F cast rune · X next rune · G domain ability · C sneak · T rest (and level up)',
-      'Tab backpack · M map · F5 quicksave · F9 quickload · Esc pause',
-    ]);
+    if (controls) {
+      sec('Controls', [
+        'WASD move · Shift sprint · Space jump · Mouse look · V first/third person',
+        'LMB use tool (hold with a melee tool for a power attack) · RMB hold to block, tap to shove',
+        'E interact / talk · Q quick-use food or coffee · 1-9 or wheel switch tools',
+        'F cast rune · X next rune · G domain ability · C sneak · T rest (and level up)',
+        'Tab backpack · M map · F5 quicksave · F9 quickload · Esc pause',
+      ]);
+    } else {
+      sec('More keys', [
+        'F cast rune · X next rune · G domain ability · C sneak · V first/third person',
+        '1-9 or the wheel switch tools · J journal · F5 quicksave · F9 quickload',
+        'In the backpack: 1-8 or the arrow keys and Enter pick an app; Tab or Esc closes it',
+        'In a conversation: 1-9, or the arrows and Enter; Esc walks away where that costs nothing',
+      ]);
+    }
     sec('The job', [
       'People throw real tickets at you. Solve them at any computer before the SLA runs out, or resolve the person in person.',
       'Most angry people can be talked down (E): every option shows its odds. Failure makes them angrier.',

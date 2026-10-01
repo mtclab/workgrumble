@@ -335,7 +335,7 @@ function useThing(g: Game, it: Interactable): void {
         options: [
           ...(village === null ? [] : [village]),
           { label: 'Drive back to work.', ...(tag === null ? {} : { tag }), pick: () => { g.afterDialogue = () => g.goToWork(); return null; } },
-          { label: village === null ? 'Five more minutes.' : 'Not yet.', pick: () => null },
+          { label: village === null ? 'Five more minutes.' : 'Not yet.', leave: true, pick: () => null },
         ],
       });
       break;
@@ -506,7 +506,7 @@ function fridgeNode(g: Game, it: Interactable): DialogueNode {
           return said('The office fridge', 'The door closes with a guilty little thud. Nobody saw.', 'neutral');
         },
       },
-      { label: 'Leave it.', pick: () => null },
+      { label: 'Leave it.', leave: true, pick: () => null },
     ],
   };
 }
@@ -610,7 +610,7 @@ function stashNode(g: Game): DialogueNode {
       { label: 'Take my drinks back out.', pick: () => { const n = move(s.stash, s.consumables, isDrink); return said('Your stash chest', `${n} drinks taken.`); } },
       { label: 'Store my supplies.', pick: () => { const n = move(s.consumables, s.stash, isSupply); return said('Your stash chest', `${n} supplies stored.`); } },
       { label: 'Take my supplies back.', pick: () => { const n = move(s.stash, s.consumables, isSupply); return said('Your stash chest', `${n} supplies taken.`); } },
-      { label: 'Close the lid.', pick: () => null },
+      { label: 'Close the lid.', leave: true, pick: () => null },
     ],
   };
 }
@@ -645,6 +645,6 @@ function boardNode(g: Game): DialogueNode {
       },
     };
   });
-  opts.push({ label: 'Not this weekend.', pick: () => null });
+  opts.push({ label: 'Not this weekend.', leave: true, pick: () => null });
   return { speaker: 'The upgrade board', subtitle: `₡${s.rep} to spend`, text: 'A corkboard on the porch, covered in sketches and a price list from the neighbour, who "knows a guy".', options: opts, mood: 'good' };
 }

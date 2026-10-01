@@ -444,7 +444,7 @@ function offer(h: QuestHost, id: string, speaker: string, pitch: string): Dialog
     speaker, subtitle: questById(id)?.title ?? '', text: pitch,
     options: [
       { label: 'Leave it with me.', pick: () => { h.acceptQuest(id); return said(speaker, 'Thank you. Honestly. Nobody else would.', 'good'); } },
-      { label: 'Not right now.', pick: () => null },
+      { label: 'Not right now.', leave: true, pick: () => null },
     ],
   };
 }

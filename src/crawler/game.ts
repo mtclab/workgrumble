@@ -73,8 +73,10 @@ import {
   tickQuests,
 } from './questing';
 import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
+import { MenuKeys } from './menukeys';
 import { browserStorage, takeWhatsNew } from './releases';
 import { fx, Rng } from './rng';
+import { busyDue, MOVE_ACTIONS, RootedCard, rootedView } from './rooted';
 import {
   type ArchPath,
   type Attribute,
@@ -175,6 +177,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly compass: Compass;
   readonly player: Player;
   readonly overlay: HTMLDivElement;
+  /** The overlay's keyboard: focus, Enter, the arrows and Esc on every full-screen menu. */
+  readonly menuKeys: MenuKeys;
+  /** "You cannot move, and this is why": up while rooted, in play. */
+  readonly rootedCard: RootedCard;
   readonly mount: HTMLElement;
   readonly lights: THREE.PointLight[] = [];
   /** The light the camera carries (in a vision, the one low amber light left). */
@@ -215,6 +221,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   /** Seconds of a chatbot's slow. */
   slowT = 0;
   rootT = 0;
+  /** How long the current hold was when it began: the rooted card's countdown runs from it. */
+  rootMax = 0;
+  /** Game time of the last "busy" tone, or null. */
+  private busyAt: number | null = null;
   /** Meeting invites bounce off until this time: no chains of back-to-back meetings. */
   rootImmuneUntil = 0;
   rootReason = '';
@@ -345,6 +355,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.overlay = document.createElement('div');
     this.overlay.className = 'screen';
     mount.append(this.overlay);
+    this.menuKeys = new MenuKeys(this.overlay);
+    this.rootedCard = new RootedCard(mount);
 
     this.save = this.loadLatest() ?? newSave(Date.now() >>> 0);
     this.derivedCache = derive(this.save);
@@ -839,6 +851,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.caughtPending = false;
     this.hurtFlash = 0;
     this.visionDue = false;
+    this.busyAt = null;
   }
 
   applySettings(): void {
@@ -1109,6 +1122,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       if (this.settings.compass) this.compass.update(this.player.pos.x, this.player.pos.z, this.player.yaw, this.markers);
     }
     this.hud.root.style.display = visible ? 'block' : 'none';
+    this.rootedCard.update(rootedView(this.screen === 'play' && this.vision === null, this.rootT, this.rootMax, this.rootReason));
     this.compass.visible = visible && this.settings.compass;
     this.hud.crosshair.style.display = this.screen === 'play' ? 'block' : 'none';
   };
@@ -1286,7 +1300,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
         this.hud.toast('*hic* The floor moved.', 'info');
       }
     }
-    if (this.rootT > 0) speed = 0;
+    if (this.rootT > 0) {
+      speed = 0;
+      // Trying to walk out of a meeting: the card says the key was heard.
+      if (MOVE_ACTIONS.some((a) => this.hit(a))) this.busy();
+    }
     const jump = this.hit('jump') && this.rootT <= 0 && !this.player.crouching;
     this.player.move(this.level, wx, wz, speed, jump, dt, d.jump);
     if (moving && speed > 0 && this.player.onGround) {
@@ -1431,6 +1449,14 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     screens.showPause(this);
   }
 
+  /** A movement key while rooted: the card pulses, and an engaged tone (not one per key-repeat). */
+  private busy(): void {
+    this.rootedCard.pulse();
+    if (!busyDue(this.time, this.busyAt)) return;
+    this.busyAt = this.time;
+    sfx.busy();
+  }
+
   // ================================================================== SUO
 
   /**
@@ -1530,7 +1556,6 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const s = this.save;
     const d = this.derivedCache;
     const out: string[] = [];
-    if (this.rootT > 0) out.push(`📅 ${this.rootReason} (${this.rootT.toFixed(1)}s)`);
     if (this.auraSlow > 0) out.push(`🐢 Manager nearby: -${Math.round(this.auraSlow * 100)}% speed`);
     if (this.hazardSlow > 0) out.push('🫗 Standing in something');
     if (d.overEncumbered) out.push('🎒 OVER-ENCUMBERED');

@@ -218,6 +218,8 @@ export class Sfx {
   error(): void { this.tone(160, 0.25, 'square', 0.15); this.tone(120, 0.3, 'square', 0.15, 0, 0.12); }
   click(): void { this.tone(1800, 0.02, 'square', 0.05); }
   boot(): void { [392, 523, 659, 784].forEach((f, i) => this.tone(f, 0.3, 'triangle', 0.12, 0, i * 0.15)); }
+  /** An engaged tone: you pressed a key, and you are in a meeting. */
+  busy(): void { this.tone(425, 0.07, 'square', 0.08); this.tone(425, 0.07, 'square', 0.08, 0, 0.12); }
   meeting(): void { this.tone(880, 0.1, 'sine', 0.2); this.tone(660, 0.3, 'sine', 0.2, 0, 0.12); }
   ding(): void { this.tone(1046, 0.4, 'sine', 0.2); this.tone(784, 0.6, 'sine', 0.2, 0, 0.25); }
   step(): void { this.noise(0.04, 0.03, 500); }
