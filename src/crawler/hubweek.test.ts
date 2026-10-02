@@ -5,10 +5,10 @@ import { dropGear, resolveActor } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
 import { ARRIVAL_LIFT_ID, type Game } from './game';
-import { type Headless, headless } from './headlessgame';
+import { answering, DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
 import { HUB_EXTRA_BASE } from './hub';
 import { interact, standAt } from './interact';
-import { generateLevel, type Interactable, type LevelRecipe } from './level';
+import { generateLevel, type LevelRecipe } from './level';
 import { plainInstance } from './loot';
 import { generateMokki } from './mokki';
 import { Rng } from './rng';
@@ -43,31 +43,6 @@ function slots(): Map<string, string> {
   const m = new Map<string, string>();
   vi.stubGlobal('localStorage', { getItem: (k: string) => m.get(k) ?? null, setItem: (k: string, v: string) => m.set(k, v), removeItem: (k: string) => m.delete(k) });
   return m;
-}
-
-const lift = (g: Game, id?: number): Interactable => {
-  const it = g.level.interactables.find((x) => x.kind === 'elevator' && (id === undefined || x.id === id));
-  if (it === undefined) throw new Error('no lift');
-  return it;
-};
-
-/** E on a lift: its buttons. */
-function press(h: Headless, it: Interactable): string[] {
-  h.g.promptTarget = { kind: 'interact', it };
-  interact(h.g);
-  const node = h.dialogues.at(-1);
-  expect(node?.speaker).toBe('The lift');
-  return node?.options.map((o) => o.label) ?? [];
-}
-
-function newCareer(): Headless {
-  const h = headless(newSave(1));
-  // A new career seeds itself from the clock: pin it, so every run builds the same hub (one with a coffee machine).
-  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
-  h.g.beginCareer({ name: 'Pat Hub', background: 'grad', sign: 'patch', rung: 0, domain: null, track: null }, true);
-  now.mockRestore();
-  h.pick(/./);
-  return h;
 }
 
 describe('gate 5: the week goes through the hub', () => {
@@ -287,6 +262,48 @@ describe('gate 6: saves, v4 and from v3', () => {
     const h = newCareer();
     breach(h.g, { t: 1, sla: 0, from: 'Kim from Upstairs', struck: [], gold: false });
     expect(h.g.save.hub.hostile).toEqual([{ spawnIndex: HUB_EXTRA_BASE, reason: 'breach', name: 'Kim from Upstairs' }]);
+  });
+});
+
+describe('S1a: hub tickets and breaches', () => {
+  it('a ticket raised on the hub that breaches on the P1 floor is the hub\'s: nobody sent upstairs, the reporter after you on the hub when you are back, announced then', () => {
+    const h = newCareer();
+    const g = h.g;
+    const hub = g.hub!;
+    hub.walkUpNow();
+    h.run(DT, answering(h));
+    const w = hub.walkingUp();
+    if (w === null) throw new Error('nobody walked up');
+    g.promptTarget = { kind: 'actor', a: w };
+    interact(g);
+    h.pick(/^Could you raise a ticket for that\? \(SLA about \d+ min\)$/);
+    h.pick(/./);
+    const q = g.save.queue.find((x) => x.from === w.name);
+    expect(q?.hub, 'raised on the hub').toBe(true);
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    expect(g.save.location).toBe('office');
+    const sent = (): number => g.actors.filter((a) => a.kind === 'manager' && a.spawnIndex < 0 && !a.resolved).length;
+    const managers = sent();
+    // Its SLA runs out up here, in the real frame.
+    q!.sla = DT / 2;
+    h.run(DT * 2);
+    expect(g.save.queue.includes(q!), 'breached').toBe(false);
+    expect(sent(), 'no manager sent upstairs for a hub ticket').toBe(managers);
+    expect(h.toasts.some((t) => t.includes(`${w.name} will be waiting for you on the hub`))).toBe(true);
+    expect(g.save.hub.breaches).toEqual([{ t: q!.t, from: w.name }]);
+    expect(g.save.hub.hostile, 'nothing turned yet: the hub is downstairs').toEqual([]);
+    // Back down: they are after you, announced as you arrive.
+    h.toasts.length = 0;
+    press(h, lift(g, ARRIVAL_LIFT_ID));
+    h.pick('Back to the hub');
+    const r = g.actors.find((a) => a.colleague && a.name === w.name)!;
+    expect(r.hostile, 'the reporter is after you').toBe(true);
+    expect(r.marker).not.toBeNull();
+    expect(r.bubble).not.toBeNull();
+    expect(h.toasts.some((t) => t.includes(`${w.name} is on the way up`)), 'announced on arrival').toBe(true);
+    expect(g.save.hub.hostile).toEqual([{ spawnIndex: r.spawnIndex, reason: 'breach' }]);
+    expect(g.save.hub.breaches).toEqual([]);
   });
 });
 

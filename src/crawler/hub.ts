@@ -1,4 +1,5 @@
 import { TICKETS } from './content/tickets';
+import { ticketSla } from './desk';
 import { type DialogueNode, said } from './dialogue';
 import { type Actor, type ActorKind, type HubCtx, say, setMarker } from './entities';
 import { FINAL_FLOOR, type Game } from './game';
@@ -205,6 +206,10 @@ export class Hub implements HubCtx {
       still++;
     }
     if (still > 0) g.hud.toast(`${still === 1 ? 'Somebody on this floor is' : `${still} people on this floor are`} still after you (the red "!").`, 'bad');
+    // Hub tickets that breached while you were upstairs: their reporters come for you now, announced.
+    const due = s.hub.breaches;
+    s.hub.breaches = [];
+    for (const q of due) this.breach(q);
   }
 
   /** Monday, and Staff standing is low: somebody has been waiting all weekend for a word. */
@@ -254,7 +259,7 @@ export class Hub implements HubCtx {
    * An SLA breach: the ticket's reporter (by name) comes to find you. If
    * nobody of that name is on the hub, they come up in the lift.
    */
-  breach(q: QueuedTicket): void {
+  breach(q: Pick<QueuedTicket, 't' | 'from'>): void {
     const g = this.g;
     const title = TICKETS[q.t]?.title ?? 'it';
     const toast = `${q.from} is on the way up, and is not happy.`;
@@ -323,7 +328,7 @@ export class Hub implements HubCtx {
           },
         },
         {
-          label: 'Could you raise a ticket for that?', tag: 'Into your queue', pick: () => {
+          label: `Could you raise a ticket for that? (SLA about ${Math.max(1, Math.round(ticketSla(g, false) / 60))} min)`, tag: 'Into your queue', pick: () => {
             this.settle(a, true);
             g.enqueueTicket(a, false);
             return said(a.name, 'A ticket. Right. I will do that now. You will look at it, though?', 'neutral');

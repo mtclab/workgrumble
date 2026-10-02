@@ -19,6 +19,11 @@ export interface FixEntry {
   readonly hint: string | null;
 }
 
+/** Seconds a newly raised ticket has before its SLA breaches. */
+export function ticketSla(g: Game, gold: boolean): number {
+  return ((gold ? 80 : 130) - Math.min(40, g.save.floor * 8)) * g.derivedCache.slaMult;
+}
+
 export function enqueueTicket(g: Game, from: Actor, gold: boolean): void {
   const s = g.save;
   if (s.location === 'mokki') return;
@@ -28,8 +33,7 @@ export function enqueueTicket(g: Game, from: Actor, gold: boolean): void {
     g.hud.toast('Queue overflow! The tickets are coming from inside the queue.', 'bad');
     return;
   }
-  const sla = ((gold ? 80 : 130) - Math.min(40, s.floor * 8)) * g.derivedCache.slaMult;
-  s.queue.push({ t: from.ticket, sla, from: from.name, struck: [], gold });
+  s.queue.push({ t: from.ticket, sla: ticketSla(g, gold), from: from.name, struck: [], gold, ...(s.location === 'hub' ? { hub: true as const } : {}) });
   sfx.phone();
   g.hud.toast(`${gold ? '⭐ GOLD ' : ''}Ticket from ${from.name}: "${TICKETS[from.ticket]?.title ?? ''}" - solve it at a computer or resolve them in person.`, gold ? 'bad' : 'info');
   g.tip('ticket');
@@ -49,6 +53,12 @@ export function breach(g: Game, q: QueuedTicket): void {
   if (g.hub !== null) {
     g.hud.toast(`SLA BREACHED: "${title}". (Management -3, Staff -2)`, 'bad');
     g.hub.breach(q);
+    return;
+  }
+  // Raised on the hub and breached up here: it is the hub's. Nobody is sent upstairs; the reporter is waiting downstairs.
+  if (q.hub === true) {
+    g.hud.toast(`SLA BREACHED: "${title}". ${q.from} will be waiting for you on the hub. (Management -3, Staff -2)`, 'bad');
+    s.hub.breaches.push({ t: q.t, from: q.from });
     return;
   }
   g.hud.toast(`SLA BREACHED: "${title}". Escalated to a manager. (Management -3, Staff -2)`, 'bad');

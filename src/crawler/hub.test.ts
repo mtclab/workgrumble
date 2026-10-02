@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { attack, fire, resolveActor, shove, splash, standBeforeActor, strike } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
-import { DT, type Headless, headless } from './headlessgame';
+import { answering, DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
 import { FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
@@ -55,18 +55,6 @@ function graceThenFight(h: Headless, a: Actor): number {
   const first = (hits[0]?.t ?? Infinity) - t0;
   expect(first, `${a.name} does not hit within ${HUB_GRACE} s of turning`).toBeGreaterThan(HUB_GRACE);
   return first;
-}
-
-/**
- * The phone and the team do not wait for a test: a staffing call or a
- * mentoring ask that rings while the hub runs is answered (its first
- * option), as a player would, so the clock keeps going. Then `each`.
- */
-function answering(h: Headless, each?: () => void): () => void {
-  return () => {
-    while (h.g.screen === 'dialogue') h.pick(/./);
-    each?.();
-  };
 }
 
 /** Somebody whose next swing is due now: without the grace they would hit within half a second of turning. */
@@ -467,7 +455,10 @@ describe('gate 4: walk-ups', () => {
     reach();
     g.promptTarget = { kind: 'actor', a: third };
     interact(g);
-    h.pick('Could you raise a ticket for that?');
+    // The option says how long you will have.
+    expect(h.dialogues.at(-1)?.options.map((o) => o.label)).toContain('Could you raise a ticket for that? (SLA about 2 min)');
+    h.pick('Could you raise a ticket for that? (SLA about 2 min)');
+    expect(g.save.queue.find((q) => q.from === third.name)?.sla, 'and that is what it is').toBeCloseTo(130 * g.derived().slaMult, 0);
     watch();
     expect(hub.walkingUp()).toBeNull();
     expect(g.save.queue.map((q) => q.from)).toContain(third.name);

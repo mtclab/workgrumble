@@ -701,7 +701,7 @@ describe('the hub', () => {
         else if (t?.kind === 'actor' && t.a === walker) {
           c.openDialogue({ speaker: walker.name, subtitle: 'A walk-up', text: '', options: [
             { label: 'Walk them through it: "Reboot"', tag: '+₡8', pick: () => { did.push('walk-up'); hub.walker = null; c.game.promptTarget = { kind: 'interact', it: lift }; return null; } },
-            { label: 'Could you raise a ticket for that?', pick: () => { did.push('ticket'); hub.walker = null; return null; } },
+            { label: 'Could you raise a ticket for that? (SLA about 2 min)', pick: () => { did.push('ticket'); hub.walker = null; return null; } },
           ] });
         }
       }

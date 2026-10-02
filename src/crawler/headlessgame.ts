@@ -2,10 +2,12 @@ import * as THREE from 'three';
 import type { DialogueNode } from './dialogue';
 import { Game } from './game';
 import { Input } from './input';
+import { interact } from './interact';
 import { Player } from './player';
 import { Rng } from './rng';
 import { DEFAULT_KEYS, DEFAULT_SETTINGS } from './settings';
-import { derive, type SaveState } from './state';
+import type { Interactable } from './level';
+import { derive, newSave, type SaveState } from './state';
 
 /**
  * Test support: a Game with no screen (no WebGL in a unit test). The real
@@ -128,4 +130,46 @@ export function headless(save: SaveState): Headless {
     return null;
   };
   return { g, toasts, dialogues, hurts, run, pick };
+}
+
+/**
+ * The phone and the team do not wait for a test: a staffing call or a
+ * mentoring ask that rings while the world runs is answered (its first
+ * option), as a player would, so the clock keeps going. Then `each`.
+ */
+export function answering(h: Headless, each?: () => void): () => void {
+  return () => {
+    while (h.g.screen === 'dialogue') h.pick(/./);
+    each?.();
+  };
+}
+
+/** A lift on the floor you are on: the first (the hub's, or the corner office's on a P1 floor), or the one with `id`. */
+export function lift(g: Game, id?: number): Interactable {
+  const it = g.level.interactables.find((x) => x.kind === 'elevator' && (id === undefined || x.id === id));
+  if (it === undefined) throw new Error('no lift');
+  return it;
+}
+
+/** E on a lift: its buttons, as labels (the dialogue is up; `pick` one). */
+export function press(h: Headless, it: Interactable): string[] {
+  h.g.promptTarget = { kind: 'interact', it };
+  interact(h.g);
+  const node = h.dialogues.at(-1);
+  if (node?.speaker !== 'The lift') throw new Error(`not the lift: ${node?.speaker ?? 'nothing'}`);
+  return node.options.map((o) => o.label);
+}
+
+/** A new career with the induction skipped, on the hub on Monday. The clock it seeds from is pinned: every run builds the same hub. */
+export function newCareer(): Headless {
+  const h = headless(newSave(1));
+  const now = Date.now;
+  Date.now = (): number => 1_700_000_000_000;
+  try {
+    h.g.beginCareer({ name: 'Pat Hub', background: 'grad', sign: 'patch', rung: 0, domain: null, track: null }, true);
+  } finally {
+    Date.now = now;
+  }
+  h.pick(/./);
+  return h;
 }

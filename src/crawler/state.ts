@@ -58,6 +58,8 @@ export interface QueuedTicket {
   struck: string[];
   /** A VIP/customer ticket pays more and breaches harder. */
   readonly gold: boolean;
+  /** Raised on the hub: its breach is the hub's (the reporter comes for you there), wherever you are when it falls due. */
+  readonly hub?: true;
 }
 
 export type QuestKind = 'resolve' | 'printer' | 'deliver' | 'boss' | 'users' | 'story' | 'peace';
@@ -152,6 +154,8 @@ export interface HubState {
   lastWalkUp: number;
   /** Uncollected gear on the hub, where it lies. It is your floor: it waits. */
   gearDrops: { gear: GearInstance; x: number; z: number }[];
+  /** Hub tickets that breached while you were upstairs: their reporters come for you when you are back (announced then). */
+  breaches: { t: number; from: string }[];
 }
 
 export interface WeekendState {
@@ -267,7 +271,7 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [] };
+  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [] };
 }
 
 /** Monday on the hub: the week's people and props start again; the gear on the floor is still there. */
@@ -297,6 +301,10 @@ export function normalizeHub(raw: unknown, week: number): HubState {
     clock: num(o.clock, 0),
     lastWalkUp: num(o.lastWalkUp, 0),
     gearDrops: Array.isArray(o.gearDrops) ? o.gearDrops as HubState['gearDrops'] : [],
+    breaches: Array.isArray(o.breaches) ? (o.breaches as unknown[]).filter((x): x is { t: number; from: string } => {
+      const b = x as { t?: unknown; from?: unknown } | null;
+      return typeof b === 'object' && b !== null && typeof b.t === 'number' && typeof b.from === 'string';
+    }).map((b) => ({ t: b.t, from: b.from })) : [],
   };
   if (typeof o.ignores === 'object' && o.ignores !== null) {
     for (const [k, v] of Object.entries(o.ignores)) {
