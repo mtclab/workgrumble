@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Game } from './game';
 import { DT, type Headless, lift, newCareer, press } from './headlessgame';
 import { cardIndex, liftTo, reload, withDeck } from './deckplay';
-import { interact } from './interact';
+import type { Actor } from './entities';
+import { findPrompt, interact } from './interact';
 import { generateLevel, type LevelRecipe } from './level';
 
 vi.mock('./textures', async (orig) => ({ ...await orig<typeof import('./textures')>(), textSprite: () => new THREE.Sprite(), disposeSprite: () => undefined }));
@@ -100,5 +101,95 @@ describe('a resolve counts the moment it happens', () => {
     h.pick('Finish: close the card');
     expect(h.results?.rows.get('Rep')).toContain(`resolves ${paid})`);
     expect(m.debug().result?.perResolve, 'the bot records what was paid').toBe(paid);
+  });
+});
+
+/** Stand `dist` m in front of somebody, facing them (the way E finds who you are talking to). */
+function faceUp(g: Game, a: Actor, dist: number): void {
+  const x = a.pos.x + Math.sin(a.yaw) * dist;
+  const z = a.pos.z + Math.cos(a.yaw) * dist;
+  g.player.pos.set(x, 0, z);
+  g.player.yaw = Math.atan2(x - a.pos.x, z - a.pos.z);
+  g.player.pitch = 0;
+}
+
+/** Who E would talk to, standing in front of `a`. */
+function talksTo(g: Game, a: Actor): boolean {
+  faceUp(g, a, 1.5);
+  findPrompt(g);
+  return g.promptTarget?.kind === 'actor' && g.promptTarget.a === a;
+}
+
+describe('what happened with each person survives a reload', () => {
+  it('billed by a vendor, saved and reloaded: resolving that vendor still refunds the bill', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    g.save.rep = 600;
+    withDeck(h, [{ id: 'vendor' }]);
+    g.acceptCard(cardIndex(h, 'vendor'));
+    liftTo(h, 'vendor');
+    const m = g.mission!;
+    const vendor = m.crowd.find((a) => a.kind === 'vendor')!;
+    const i = m.crowd.indexOf(vendor);
+    // Stand by the vendor until they bill you (their grab: the real one).
+    for (let t = 0; t < 30 && vendor.stolen === 0; t += DT) h.run(DT, () => { keepUp(h)(); g.player.pos.set(vendor.pos.x + 1, 0, vendor.pos.z); });
+    const owed = vendor.stolen;
+    expect(owed, 'billed').toBeGreaterThan(0);
+    const back = reload(h);
+    const again = back.g.mission!.crowd[i]!;
+    expect(again.stolen, 'still owed after the reload').toBe(owed);
+    const rep = back.g.save.rep;
+    again.hp = 0;
+    back.run(DT, keepUp(back));
+    expect(again.resolved).toBe(true);
+    expect(back.toasts).toContain(`The vendor's "workshop fee" is refunded: +₡${owed}.`);
+    expect(back.g.save.rep - rep, 'the refund, and the resolve').toBeGreaterThanOrEqual(owed);
+  });
+
+  it('a promotion pitch made, saved and reloaded: that manager will not hear another', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'stapler' }]);
+    g.acceptCard(cardIndex(h, 'stapler'));
+    liftTo(h, 'stapler');
+    const m = g.mission!;
+    const boss = m.crowd.find((a, k) => a.kind === 'manager' && m.specs[k]?.tag === undefined)!;
+    const i = m.crowd.indexOf(boss);
+    vi.spyOn(g, 'check').mockReturnValue(true);
+    expect(talksTo(g, boss), 'E talks to them').toBe(true);
+    interact(g);
+    const mgmt = g.save.standing.management;
+    h.pick(/about my promotion/);
+    expect(g.save.standing.management, 'the pitch landed').toBe(mgmt + 5);
+    while (g.screen === 'dialogue') h.pick(/./);
+    expect(talksTo(g, boss), 'one pitch per manager').toBe(false);
+    const back = reload(h);
+    back.g.screen = 'play';
+    expect(talksTo(back.g, back.g.mission!.crowd[i]!), 'and still none after a reload').toBe(false);
+  });
+
+  it('a Phishing talk-down that failed stays failed after a reload: no second try', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'phishing', alarm: 'search' }]);
+    g.acceptCard(cardIndex(h, 'phishing'));
+    liftTo(h, 'phishing');
+    const m = g.mission!;
+    const dean = m.crowd.find((a) => a.name === 'Dean from Sales')!;
+    const i = m.crowd.indexOf(dean);
+    vi.spyOn(g, 'check').mockReturnValue(false);
+    expect(talksTo(g, dean)).toBe(true);
+    interact(g);
+    h.pick(/^Walk them through it/);
+    while (g.screen === 'dialogue') h.pick(/./);
+    expect(dean.aggro, 'it went wrong').toBe(true);
+    const back = reload(h);
+    back.g.screen = 'play';
+    const again = back.g.mission!.crowd[i]!;
+    expect(again.talked).toBe(true);
+    expect(talksTo(back.g, again), 'no talking Dean round now').toBe(false);
   });
 });

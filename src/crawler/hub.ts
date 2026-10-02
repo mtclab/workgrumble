@@ -2,7 +2,7 @@ import { TICKETS } from './content/tickets';
 import { ticketSla } from './desk';
 import { type DialogueNode, said } from './dialogue';
 import { coworkerCard, deckCard, FLOOR_P1 } from './deck';
-import { type Actor, type ActorKind, type HubCtx, rollActor, say, setMarker } from './entities';
+import { type Actor, type ActorKind, type HubCtx, lastingMemo, rollActor, say, setMarker } from './entities';
 import { FINAL_FLOOR, type Game } from './game';
 import { cellCenter, freeSpotIn, generateLevel, type Interactable, type Level, lineOfSight, toCell } from './level';
 import { ALARM_WORDS } from './mission';
@@ -97,8 +97,6 @@ function onlooker(a: Actor): boolean {
   return !a.hostile && !a.colleague && !a.resolved && !a.recruited && ONLOOKERS.includes(a.kind);
 }
 
-/** Memo flags that are the moment's, not the week's: a flinch, the red pen's mark, a mentoring ask on its way. */
-const TRANSIENT_MEMO: ReadonlySet<string> = new Set(['flinched', 'marked', 'seeking']);
 
 /** Who walks up with a problem. */
 const WALKERS: readonly ActorKind[] = ['user', 'caller'];
@@ -428,7 +426,7 @@ export class Hub implements HubCtx {
     if (g.save !== this.save || g.save.hub.week !== this.week) return;
     const people = g.save.hub.people;
     for (const a of g.actors) {
-      const memo = Object.keys(a.memo).filter((m) => a.memo[m] === true && !TRANSIENT_MEMO.has(m));
+      const memo = lastingMemo(a);
       if (memo.length === 0 && !a.giftGiven && !a.talked) continue;
       people[personKey(a)] = { memo, ...(a.giftGiven ? { gift: true as const } : {}), ...(a.talked ? { talked: true as const } : {}) };
     }

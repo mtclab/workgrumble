@@ -4,7 +4,7 @@ import { placeQuestPickup } from './combat';
 import type { CompassMarker } from './compass';
 import { type DialogueNode, type DialogueOption, said } from './dialogue';
 import { disposeTree } from './dispose';
-import { type Actor, disposeActor, setMarker, walkClear } from './entities';
+import { type Actor, disposeActor, lastingMemo, setMarker, walkClear } from './entities';
 import type { Game } from './game';
 import { cellCenter, flowField, freeSpotIn, type Interactable, lineOfSight, type Room, toCell } from './level';
 import {
@@ -790,6 +790,7 @@ export class MissionPlay {
       return {
         i, x: a.pos.x, z: a.pos.z, yaw: a.yaw, hp: a.hp, resolved: a.resolved, aggro: a.aggro,
         suspicion: w?.suspicion ?? 0, peak: w?.peak ?? 0, mood: w?.mood ?? 'calm', countdown: w?.countdown ?? 0, spot: w?.spot ?? null,
+        stolen: a.stolen, talked: a.talked, enragedT: a.enragedT, memo: lastingMemo(a), gift: a.giftGiven, fleeT: a.fleeT,
       };
     });
     return {
@@ -834,6 +835,13 @@ export class MissionPlay {
       a.pos.set(p.x, 0, p.z);
       a.yaw = p.yaw;
       a.hp = Math.min(a.maxHp, p.hp);
+      // What happened between you and them: a bill still owed, a talk had (a failed one stays failed), a rage, a beat, a gift.
+      a.stolen = p.stolen ?? 0;
+      a.talked = p.talked === true;
+      a.enragedT = p.enragedT ?? 0;
+      for (const k of p.memo ?? []) a.memo[k] = true;
+      a.giftGiven = p.gift === true;
+      a.fleeT = p.fleeT ?? 0;
       const w = this.watch.watchers.get(a.id);
       if (w !== undefined) this.watch.restore(w, p);
       if (p.aggro && p.mood !== 'searching') {

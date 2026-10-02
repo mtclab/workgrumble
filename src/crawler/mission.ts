@@ -219,6 +219,18 @@ export interface PersonSave {
   readonly mood: Mood;
   readonly countdown: number;
   readonly spot: Point | null;
+  /** Rep a vendor billed you and still owes back: resolve them and it is refunded. */
+  readonly stolen?: number;
+  /** Talked to already: one talk-down (a failed one stays failed), one promotion pitch. */
+  readonly talked?: boolean;
+  /** Seconds left of a rage (a failed talk-down, an escalating elite at half health). */
+  readonly enragedT?: number;
+  /** The one-off conversation beats had with them (not the moment's: entities.ts `lastingMemo`). */
+  readonly memo?: readonly string[];
+  /** Something already given you. */
+  readonly gift?: boolean;
+  /** A vendor making off after a grab: seconds of it left. */
+  readonly fleeT?: number;
 }
 
 /** Everything a mission keeps across a save (S1b "Saves"): the run, the alarm, the people, what was picked up. */

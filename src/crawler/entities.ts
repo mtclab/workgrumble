@@ -873,6 +873,14 @@ export function createActor(
   return a;
 }
 
+/** Memo flags that are the moment's, not the week's: a flinch, the red pen's mark, a mentoring ask on its way. */
+export const TRANSIENT_MEMO: ReadonlySet<string> = new Set(['flinched', 'marked', 'seeking']);
+
+/** The one-off conversation beats had with somebody that a save keeps (not the moment's). */
+export function lastingMemo(a: Actor): string[] {
+  return Object.keys(a.memo).filter((m) => a.memo[m] === true && !TRANSIENT_MEMO.has(m));
+}
+
 export function markerHeight(a: Actor): number {
   if (a.kind === 'tonttu') return 1.9;
   if (a.kind === 'boss') return 4.8;
