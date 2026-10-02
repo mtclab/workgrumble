@@ -337,6 +337,16 @@ test('gate 9: a walk-up ignored three times turns, with the bark first; the next
   expect((await hub(page)).hostile, 'resolved: nobody after you').toEqual([]);
 
   // The next one, talked to (E, and the line): resolved, a little Rep, and they go back to their desk.
+  // Three walks away may have left you out of everyone's walking range (the hub then looks again
+  // every ten seconds), so first stand among people again, as a player heading back would.
+  await page.evaluate((gone) => {
+    const w = window as unknown as W;
+    const p = w.__crawler.player.pos;
+    const near = w.__crawler.actors
+      .filter((a) => a.colleague === true && !a.hostile && !a.resolved && a.id !== gone && (a.kind === 'user' || a.kind === 'caller'))
+      .sort((a, b) => Math.hypot(a.pos.x - p.x, a.pos.z - p.z) - Math.hypot(b.pos.x - p.x, b.pos.z - p.z))[0];
+    if (near !== undefined) w.__helldesk.toPerson(near.id, 8);
+  }, walker);
   await page.evaluate(() => (window as unknown as W).__helldesk.hubWalkUpNow());
   await expect.poll(async () => {
     const w = (await hub(page)).walker;

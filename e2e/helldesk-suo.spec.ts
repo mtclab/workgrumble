@@ -169,8 +169,12 @@ test('standing still, the steam runs out: back in the office, no blessing, nothi
   expect(out.sanity).toBeGreaterThanOrEqual(sanityIn);
   await expect(page.locator('.hud-effects')).not.toContainText('Steam-blessed');
 
-  // Once a floor visit: another sauna-sized overflow here does nothing.
-  expect(await page.evaluate(() => (window as unknown as W).__crawler.save.floorState.suo)).toBe(true);
+  // Once a visit, wherever you are (the hub keeps its own record, the P1 floor its own):
+  // another sauna-sized overflow here does nothing.
+  expect(await page.evaluate(() => {
+    const s = (window as unknown as { __crawler: { save: { location: string; floorState: { suo: boolean }; hub: { once: { suo: boolean } } } } }).__crawler.save;
+    return s.location === 'hub' ? s.hub.once.suo : s.floorState.suo;
+  })).toBe(true);
 });
 
 test('nothing is saved under the steam, and a reload lands in the normal world', async ({ page }) => {
