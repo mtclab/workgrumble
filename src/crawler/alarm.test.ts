@@ -6,8 +6,8 @@ import type { Game } from './game';
 import { hide, holdAll } from './deckplay';
 import { DT, type Headless, headless } from './headlessgame';
 import { generateLevel, type LevelRecipe } from './level';
-import type { AlarmRule } from './mission';
-import { STAPLER } from './missions';
+import type { AlarmRule, MissionCard } from './mission';
+import { POSTITS, STAPLER } from './missions';
 import { newSave } from './state';
 import { COOLDOWN, INVESTIGATE, SEARCH_AFTER, SEARCH_COUNTDOWN, type Watcher } from './stealth';
 
@@ -34,9 +34,9 @@ afterEach(() => vi.restoreAllMocks());
 
 const SEED = 4242;
 
-function play(alarm: AlarmRule): Headless {
+function play(alarm: AlarmRule, card: MissionCard = STAPLER): Headless {
   const h = headless(newSave(1));
-  h.g.loadMission(STAPLER, SEED, true, alarm);
+  h.g.loadMission(card, SEED, true, alarm);
   h.g.screen = 'play';
   return h;
 }
@@ -266,5 +266,47 @@ describe('somebody who comes onto a card in play is one of its people', () => {
     h.run(SEARCH_COUNTDOWN + 0.5, holdAll(h));
     expect(w.mood, 'gave up').toBe('wary');
     expect(m.watch.tier).toBe(1);
+  });
+});
+
+describe('search: the only one after you resolved', () => {
+  it('the tier holds; 8 s after anyone last saw you the floor searches (shown, with its countdown), and 20 s later it drops one step, announced', () => {
+    // The post-its: nobody is called in when it goes loud (the stapler's Head of People would be after you too).
+    const h = play('search', POSTITS);
+    const m = h.g.mission!;
+    const w = deskWatcher(h);
+    alert(h, w);
+    expect(m.watch.tier).toBe(2);
+    w.actor.hp = 0;
+    h.run(DT * 2, holdAll(h));
+    expect(w.actor.resolved).toBe(true);
+    expect(m.watch.tier, 'not at once').toBe(2);
+    hide(h);
+    h.toasts.length = 0;
+    h.run(SEARCH_AFTER - 0.5, holdAll(h));
+    expect(m.watch.tier).toBe(2);
+    expect(h.missionHud?.rule, 'nothing shown yet').toBe('Lose them and they search, then give up.');
+    h.run(1, holdAll(h));
+    expect(h.missionHud?.rule, 'the floor is searching').toBe(`Lose them and they search, then give up. The floor is searching (${SEARCH_COUNTDOWN} s).`);
+    h.run(SEARCH_COUNTDOWN - 1, holdAll(h));
+    expect(m.watch.tier, 'still held before the countdown is out').toBe(2);
+    expect(h.missionHud?.rule).toBe('Lose them and they search, then give up. The floor is searching (1 s).');
+    h.run(1, holdAll(h));
+    expect(m.watch.tier, 'one step down').toBe(1);
+    expect(h.toasts).toContain('STOOD DOWN to NOTICED: the floor stopped searching.');
+    expect(h.missionHud?.rule).toBe('Lose them and they search, then give up.');
+  });
+
+  it('one-way: the only one after you resolved, and the tier never drops', () => {
+    const h = play('one-way', POSTITS);
+    const m = h.g.mission!;
+    const w = deskWatcher(h);
+    alert(h, w);
+    w.actor.hp = 0;
+    h.run(DT * 2, holdAll(h));
+    hide(h);
+    h.run(SEARCH_AFTER + SEARCH_COUNTDOWN + 10, holdAll(h));
+    expect(m.watch.tier).toBe(2);
+    expect(h.toasts.some((t) => t.startsWith('STOOD DOWN'))).toBe(false);
   });
 });

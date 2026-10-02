@@ -699,7 +699,8 @@ export class MissionPlay {
     const nerve = ob.kind === 'escort' ? ` (${this.escortee?.name ?? 'Their'} nerve ${Math.round(this.nerve)})` : '';
     const clock = this.card.sla !== undefined ? ` (SLA ${Math.max(0, Math.ceil(this.card.sla - this.run.seconds))} s)` : '';
     const goal = this.run.objectiveDone ? 'Back to the lift.' : `${ob.text}${count}${nerve}${clock}`;
-    const rule = `${ALARM_WORDS[this.alarm]}${this.afterHours ? ' After hours.' : ''}`;
+    const floor = this.watch.floorSearch();
+    const rule = `${ALARM_WORDS[this.alarm]}${this.afterHours ? ' After hours.' : ''}${floor === null ? '' : ` The floor is searching (${Math.ceil(floor)} s).`}`;
     const key = `${t}|${goal}|${rule}`;
     if (key === this.hudShown) return;
     this.hudShown = key;
@@ -821,7 +822,7 @@ export class MissionPlay {
       };
     });
     return {
-      run: this.run.save(), tier: this.watch.tier, quietT: this.watch.quietT, people,
+      run: this.run.save(), tier: this.watch.tier, quietT: this.watch.quietT, unseenT: this.watch.unseenT, people,
       alerted: this.crowd.flatMap((a, i) => (this.watch.alerted.has(a.id) ? [i] : [])),
       collected: this.scatter.flatMap((c, k) => (c.picked ? [k] : [])), loudDone: this.loudDone, nerve: this.nerve,
       repAtStart: this.repAtStart, managementAtStart: this.standingAtStart.management, staffAtStart: this.standingAtStart.staff,
@@ -841,6 +842,7 @@ export class MissionPlay {
     if (from.loudDone) this.goLoud(true);
     this.rejoin(from);
     this.watch.quietT = from.quietT;
+    this.watch.unseenT = from.unseenT ?? 0;
     this.nerve = from.nerve;
     this.repAtStart = from.repAtStart;
     this.standingAtStart = { management: from.managementAtStart, staff: from.staffAtStart };

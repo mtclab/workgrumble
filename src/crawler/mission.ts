@@ -264,6 +264,8 @@ export interface PlaySave {
   readonly run: RunSave;
   readonly tier: Tier;
   readonly quietT: number;
+  /** The search rule's floor clock: seconds since anyone saw you. */
+  readonly unseenT?: number;
   readonly people: readonly PersonSave[];
   /** Everyone who has been Alert on the card (resolved since or not), by place in the crowd: the second alarm counts them. */
   readonly alerted?: readonly number[];

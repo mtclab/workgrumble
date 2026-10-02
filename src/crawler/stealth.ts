@@ -190,6 +190,15 @@ export class Watch implements WatchCtx {
   readonly alerted = new Set<number>();
   /** Seconds with nobody seeing you and no fighting (the cooldown rule's clock). */
   quietT = 0;
+  /**
+   * The 'search' rule: seconds since anyone on the card last saw you. With
+   * nobody left to justify the tier (whoever was after you is resolved) the
+   * floor holds it and searches on this clock: SEARCH_AFTER, then the
+   * SEARCH_COUNTDOWN, then one step down.
+   */
+  unseenT = 0;
+  /** This frame the tier is the floor's to hold (nobody left after you): see `floorSearch`. */
+  private held = false;
   /** Flow fields toward a cell, for walking somewhere that is not the player. */
   private readonly fields = new Map<number, Int16Array>();
 
@@ -332,6 +341,7 @@ export class Watch implements WatchCtx {
     if (this.rule === 'one-way') return;
     const v = this.host.view();
     let seen = false;
+    let gaveUp = false;
     for (const w of this.watchers.values()) {
       const a = w.actor;
       if (a.resolved) continue;
@@ -349,12 +359,15 @@ export class Watch implements WatchCtx {
         if (this.rule === 'search' && this.tier < 3 && !chasing && w.lost >= SEARCH_AFTER) this.search(w, v.time);
       } else if (w.mood === 'searching') {
         w.countdown = Math.max(0, w.countdown - dt);
-        if (w.countdown <= 0) this.giveUp(w);
-        else if (countdownText(w.countdown) !== w.shown) this.mark(w, countdownText(w.countdown), '#ffb020');
+        if (w.countdown <= 0) {
+          this.giveUp(w);
+          gaveUp = true;
+        } else if (countdownText(w.countdown) !== w.shown) this.mark(w, countdownText(w.countdown), '#ffb020');
       }
     }
     if (this.rule === 'search') {
-      if (this.tier < 3) this.follow();
+      this.unseenT = seen ? 0 : this.unseenT + dt;
+      if (this.tier < 3) this.follow(gaveUp);
       return;
     }
     // Cooldown: nobody seeing you, and no fight, for long enough.
@@ -400,19 +413,41 @@ export class Watch implements WatchCtx {
     this.mark(w, null);
   }
 
-  /** The 'search' rule's tier: the highest person's (Escalated is not touched here: it stays). */
-  private follow(): void {
+  /**
+   * The 'search' rule's tier: the highest person's (Escalated is not touched
+   * here: it stays). It comes down when a search gives up. When nobody is
+   * left to justify it (whoever was after you is resolved), it does not drop
+   * at once: the floor holds it and searches, SEARCH_AFTER and then the
+   * SEARCH_COUNTDOWN from the last time anyone saw you, and then it comes
+   * down one step, announced.
+   */
+  private follow(gaveUp: boolean): void {
     let top: Tier = 0;
     for (const w of this.watchers.values()) {
       if (w.actor.resolved) continue;
       const t: Tier = w.mood === 'alert' || w.mood === 'searching' ? 2 : tierOf(w.suspicion);
       if (t > top) top = t;
     }
-    if (top < this.tier) {
-      const from = this.tier;
+    this.held = false;
+    if (top >= this.tier) return;
+    const from = this.tier;
+    if (gaveUp) {
       this.tier = top;
       this.host.tierChanged(top, from, null, top === 1 ? 'they gave up looking' : 'nobody is looking any more');
+      return;
     }
+    if (this.unseenT < SEARCH_AFTER + SEARCH_COUNTDOWN) {
+      this.held = true;
+      return;
+    }
+    this.unseenT = 0;
+    this.tier = (from - 1) as Tier;
+    this.host.tierChanged(this.tier, from, null, 'the floor stopped searching');
+  }
+
+  /** The floor searching for you on its own (the 'search' rule, nobody left after you): seconds left on its countdown, or null. */
+  floorSearch(): number | null {
+    return this.held && this.unseenT >= SEARCH_AFTER ? Math.max(0, SEARCH_AFTER + SEARCH_COUNTDOWN - this.unseenT) : null;
   }
 
   /** The 'cooldown' rule: everyone above the new tier comes down to it, and it is announced. */
