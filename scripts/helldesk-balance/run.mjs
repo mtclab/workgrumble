@@ -15,11 +15,11 @@
 // (a Chromium executable), OUT (where to write the JSON, default ./bal-<name>.json).
 import { chromium } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { missionRecord } from './mission-record.mjs';
+import { MISSION_CARDS, missionRecord } from './mission-record.mjs';
 
 const scenario = JSON.parse(process.argv[2] ?? '{}');
 if (scenario.seed !== undefined && (!Number.isInteger(scenario.seed) || scenario.seed < 0 || scenario.seed > 0xffffffff)) throw new Error('seed must be a uint32');
-if (scenario.mission !== undefined && !['stapler', 'vendor'].includes(scenario.mission)) throw new Error('mission must be stapler or vendor');
+if (scenario.mission !== undefined && !MISSION_CARDS.some((c) => c.id === scenario.mission)) throw new Error(`mission must be one of ${MISSION_CARDS.map((c) => c.id).join(', ')}`);
 if (scenario.approach !== undefined && !(scenario.mission ? ['quiet', 'loud', 'auto'] : ['hub-only']).includes(scenario.approach)) {
   throw new Error(scenario.mission ? 'approach must be quiet, loud or auto' : 'a career\'s approach can only be hub-only');
 }

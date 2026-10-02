@@ -1,3 +1,16 @@
+// The S1b pool as the bot plays it (src/crawler/missions.ts POOL, checked by
+// mission-cards.test.ts): each card, and whether a quiet run means anything
+// (a loud card starts Escalated, so quiet would only ever be loud).
+export const MISSION_CARDS = [
+  { id: 'stapler', quiet: true },
+  { id: 'vendor', quiet: false },
+  { id: 'postits', quiet: true },
+  { id: 'phishing', quiet: true },
+  { id: 'josh', quiet: true },
+  { id: 'marcus', quiet: true },
+  { id: 'printer', quiet: false },
+];
+
 // Measurements use the same payout and Rep delta as the player's results card.
 export function missionRecord(m, approach, combatSec, minSanityPct) {
   if (!m.over || !m.result) throw new Error('mission has no results card');
@@ -17,8 +30,8 @@ export function missionRecord(m, approach, combatSec, minSanityPct) {
 // Reject missing or inconsistent measurements before they can enter an average.
 export function validateMissionRecord(r) {
   const time = (t) => t === null || (Number.isFinite(t) && t >= 0 && t <= r.seconds);
-  if (!r || !['stapler', 'vendor'].includes(r.card) || !['quiet', 'loud', 'auto'].includes(r.approach)
-    || !['quiet', 'loud', 'aborted', 'burnout'].includes(r.finish)
+  if (!r || !MISSION_CARDS.some((c) => c.id === r.card) || !['quiet', 'loud', 'auto'].includes(r.approach)
+    || !['quiet', 'loud', 'aborted', 'burnout', 'failed'].includes(r.finish)
     || !Number.isInteger(r.seed) || r.seed < 0 || r.seed > 0xffffffff
     || !Number.isInteger(r.maxTier) || r.maxTier < 0 || r.maxTier > 3
     || ![r.seconds, r.repTotal, r.repBase, r.repQuietBonus, r.repResolves, r.repPerMin, r.combatSec, r.minSanityPct].every(Number.isFinite)

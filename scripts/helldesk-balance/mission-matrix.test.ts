@@ -30,7 +30,7 @@ function matrix(fault?: string, extended = false) {
   let active = false;
   let last: (typeof runs)[number];
   return { runs, lines, run: () => runInNewContext(recordSource + summarySource + source, {
-    process: { argv: extended ? ['node', 'matrix', '--vendor-quiet'] : ['node', 'matrix'], execPath: 'node', env: { HELLDESK_URL: 'served-build', MISSION_WALL_MINUTES: '3' } },
+    process: { argv: extended ? ['node', 'matrix', '--quiet-on-loud'] : ['node', 'matrix'], execPath: 'node', env: { HELLDESK_URL: 'served-build', MISSION_WALL_MINUTES: '3' } },
     URL, fileURLToPath: (url: URL) => url.pathname, join: (...parts: string[]) => parts.join('/'),
     mkdirSync: () => undefined, writeFileSync: () => undefined,
     spawnSync: (_exec: string, args: string[], options: { env: object; timeout: number }) => {
@@ -52,18 +52,25 @@ function matrix(fault?: string, extended = false) {
 }
 
 describe('mission matrix', () => {
-  it('measures 30 quiet staplers and ten of each loud card sequentially on paired seeds', () => {
+  it('measures every card of the S1b pool, quiet where its style allows and loud, ten seeds each, sequentially on paired seeds', () => {
     const m = matrix(); m.run();
-    expect(m.runs).toHaveLength(50);
-    expect(m.runs.slice(0, 30).every((r, i) => r.mission === 'stapler' && r.approach === 'quiet' && r.seed === 1700000000 + i)).toBe(true);
-    expect(m.runs.slice(30, 40).every((r, i) => r.mission === 'stapler' && r.approach === 'loud' && r.seed === 1700000000 + i)).toBe(true);
-    expect(m.runs.slice(40).every((r, i) => r.mission === 'vendor' && r.approach === 'loud' && r.seed === 1700000000 + i)).toBe(true);
-    expect(m.lines.filter((l) => /^(stapler|vendor) \d/.test(l))).toHaveLength(50);
-    expect(m.lines).toContain('stapler-quiet: detection rate 0.0000, median detectedAt nulls, quiet-finish share 1.0000 (30 runs)');
+    const plan: [string, string][] = [
+      ['stapler', 'quiet'], ['stapler', 'loud'], ['vendor', 'loud'], ['postits', 'quiet'], ['postits', 'loud'], ['phishing', 'quiet'], ['phishing', 'loud'],
+      ['josh', 'quiet'], ['josh', 'loud'], ['marcus', 'quiet'], ['marcus', 'loud'], ['printer', 'loud'],
+    ];
+    expect(m.runs).toHaveLength(plan.length * 10);
+    plan.forEach(([card, approach], k) => {
+      expect(m.runs.slice(k * 10, k * 10 + 10).every((r, i) => r.mission === card && r.approach === approach && r.seed === 1700000000 + i), `${card} ${approach}`).toBe(true);
+    });
+    expect(m.lines.filter((l) => /^[a-z]+ \d+ (quiet|loud) /.test(l))).toHaveLength(120);
+    expect(m.lines).toContain('stapler-quiet: detection rate 0.0000, median detectedAt nulls, quiet-finish share 1.0000 (10 runs)');
+    expect(m.lines).toContain('josh-quiet: detection rate 0.0000, median detectedAt nulls, quiet-finish share 1.0000 (10 runs)');
     expect(m.lines).toContain('vendor-quiet: not sampled');
-    expect(m.lines.at(-1)).toContain('ratio 1.0000');
+    expect(m.lines).toContain('printer-quiet: not sampled');
+    for (const card of ['stapler', 'postits', 'phishing', 'josh', 'marcus']) expect(m.lines.some((l) => l.startsWith(`${card} quiet/loud Rep/min ratio 1.0000`))).toBe(true);
+    expect(m.lines.some((l) => l.startsWith('vendor quiet/loud Rep/min ratio null'))).toBe(true);
     const both = matrix(undefined, true); both.run();
-    expect(both.runs).toHaveLength(60);
+    expect(both.runs).toHaveLength(140);
   });
 
   it.each(['exit', 'timeout', 'unfinished', 'page', 'bot'])('fails without a summary when a run has %s', (fault) => {

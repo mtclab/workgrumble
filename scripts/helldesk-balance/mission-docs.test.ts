@@ -6,7 +6,8 @@ describe('mission balance instructions', () => {
   it('gives readers served-build commands and explains every emitted measurement', () => {
     const doc = readFileSync('docs/HELLDESK.md', 'utf8');
     expect(doc.includes('HELLDESK_URL="$BALANCE_URL" node scripts/helldesk-balance/mission-matrix.mjs')).toBe(true);
-    expect(doc).toContain('mission-matrix.mjs --vendor-quiet');
+    expect(doc).toContain('mission-matrix.mjs --quiet-on-loud');
+    expect(doc).toContain('MISSION_RUNS');
     const scenarios = [...doc.matchAll(/run\.mjs '(\{"mission"[^']+\})'/g)].map((m) => JSON.parse(m[1]!) as { mission: string; approach: string; seed: number });
     expect(scenarios.map((s) => [s.mission, s.approach, s.seed])).toEqual([
       ['stapler', 'quiet', 1700000000], ['vendor', 'loud', 1700000000],

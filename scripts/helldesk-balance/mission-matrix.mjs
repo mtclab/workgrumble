@@ -1,18 +1,21 @@
-// Prototype cards, sequentially, one browser per run. Add --vendor-quiet for both approaches on both cards.
-// Env: HELLDESK_URL, CHROMIUM, MISSION_OUT (directory), MISSION_WALL_MINUTES (per card, default 12).
+// Every card of the S1b pool, sequentially, one browser per run: quiet (where the style allows) and loud,
+// MISSION_RUNS seeds each (default 10). Add --quiet-on-loud for quiet runs of the loud cards too (they start
+// Escalated, so quiet falls straight back to loud).
+// Env: HELLDESK_URL, CHROMIUM, MISSION_OUT (directory), MISSION_WALL_MINUTES (per card, default 12), MISSION_RUNS.
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { missionSummary } from './mission-summary.mjs';
-import { validateMissionRecord } from './mission-record.mjs';
+import { MISSION_CARDS, validateMissionRecord } from './mission-record.mjs';
 
-const scenarios = [
-  { mission: 'stapler', approach: 'quiet', runs: 30 },
-  { mission: 'stapler', approach: 'loud', runs: 10 },
-  { mission: 'vendor', approach: 'loud', runs: 10 },
-  ...(process.argv.includes('--vendor-quiet') ? [{ mission: 'vendor', approach: 'quiet', runs: 10 }] : []),
-];
+const runsEach = Number(process.env.MISSION_RUNS ?? 10);
+if (!Number.isInteger(runsEach) || runsEach <= 0) throw new Error('MISSION_RUNS must be a positive whole number');
+const quietOnLoud = process.argv.includes('--quiet-on-loud');
+const scenarios = MISSION_CARDS.flatMap((c) => [
+  ...(c.quiet || quietOnLoud ? [{ mission: c.id, approach: 'quiet', runs: runsEach }] : []),
+  { mission: c.id, approach: 'loud', runs: runsEach },
+]);
 const wallMinutes = Number(process.env.MISSION_WALL_MINUTES ?? 12);
 if (!Number.isFinite(wallMinutes) || wallMinutes <= 0) throw new Error('MISSION_WALL_MINUTES must be positive and finite');
 const dir = process.env.MISSION_OUT ?? 'mission-results';
@@ -33,7 +36,7 @@ for (const scenario of scenarios) {
     const result = JSON.parse(readFileSync(out, 'utf8'));
     const m = result.mission;
     if (result.errors.length || result.snaps.some((s) => s.err) || !m || m.card !== scenario.mission || m.approach !== scenario.approach || m.seed !== seed
-      || !['quiet', 'loud', 'aborted', 'burnout'].includes(m.finish) || ![m.seconds, m.repPerMin, m.combatSec, m.minSanityPct].every(Number.isFinite) || m.seconds <= 0) {
+      || !['quiet', 'loud', 'aborted', 'burnout', 'failed'].includes(m.finish) || ![m.seconds, m.repPerMin, m.combatSec, m.minSanityPct].every(Number.isFinite) || m.seconds <= 0) {
       throw new Error(`${name}: incomplete or errored mission; inspect its JSON`);
     }
     validateMissionRecord(m);
@@ -43,7 +46,11 @@ for (const scenario of scenarios) {
 }
 const summary = missionSummary(records);
 writeFileSync(join(dir, 'summary.json'), JSON.stringify(summary, null, 1));
-const q = summary.staplerQuiet;
-console.log(`stapler-quiet: detection rate ${q.detectionRate.toFixed(4)}, median detectedAt ${q.medianDetectedAt ?? 'null'}s, quiet-finish share ${q.quietFinishShare.toFixed(4)} (${q.runs} runs)`);
+for (const c of summary.cards) {
+  const q = c.quiet;
+  console.log(`${c.card}-quiet: ${q.runs ? `detection rate ${q.detectionRate.toFixed(4)}, median detectedAt ${q.medianDetectedAt ?? 'null'}s, quiet-finish share ${q.quietFinishShare.toFixed(4)} (${q.runs} runs)` : 'not sampled'}`);
+}
 for (const g of summary.repPerMin) console.log(`${g.card}-${g.approach}: ${g.runs ? `mean Rep/min ${g.mean.toFixed(2)}, spread ${g.spread.toFixed(2)} (max-min, ${g.runs} runs)` : 'not sampled'}`);
-console.log(`stapler quiet/loud Rep/min ratio ${summary.staplerQuietVsLoudRatio?.toFixed(4) ?? 'null'}; target 0.85-1.15: ${summary.withinTarget === null ? 'not measured' : summary.withinTarget ? 'within' : 'outside'}`);
+for (const c of summary.cards) {
+  console.log(`${c.card} quiet/loud Rep/min ratio ${c.quietVsLoudRatio?.toFixed(4) ?? 'null'}; target 0.85-1.15 (reported, enforced in S6): ${c.withinTarget === null ? 'not measured' : c.withinTarget ? 'within' : 'outside'}`);
+}

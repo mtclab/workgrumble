@@ -92,6 +92,7 @@
       const px = cell(p.x), pz = cell(p.z);
       for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]]) {
         const nx = px + ox, nz = pz + oz;
+        if (nx < 0 || nz < 0 || nx >= W || nz >= L.h) continue;
         const n = nz * W + nx;
         if (f[n] < 0 || f[n] >= best) continue;
         if (ox !== 0 && oz !== 0 && (L.solid[pz * W + nx] === 1 || L.solid[nz * W + px] === 1)) continue;
@@ -149,7 +150,8 @@
       // The lift's buttons: Friday when it is open, up to the week's major incident from the hub,
       // and never anywhere on a hub-only week.
       const friday = find(/^\d+\. Friday: to the m/);
-      const up = find(/the major incident$/);
+      // Up to the week's P1: the floor, or (an Overtime week at Helpdesk) the Printer Uprising card.
+      const up = find(/the major incident$|^\d+\. P1: /);
       const stay = find(/Not yet\./);
       i = B.policy.approach === 'hub-only' ? stay : friday >= 0 ? friday : up >= 0 ? up : stay;
       if (i < 0) i = opts.length - 1;
@@ -283,6 +285,24 @@
 
   let mission = null, spineRoute = [], spineIndex = 0, routeReturning = null;
   const patrolLast = new Map();
+  // Where the HUD last showed each of the card's people (the quiet escort keeps clear of them).
+  const seenPeople = new Map();
+
+  /** The card's objective as the compass shows it: the nearest gold diamond (one the bot can walk to). */
+  function objectiveMark() {
+    const p = g.player.pos;
+    const marks = g.markers.filter((a) => a.icon === '◆').sort((a, b) => Math.hypot(a.x - p.x, a.z - p.z) - Math.hypot(b.x - p.x, b.z - p.z));
+    return marks.find((mk) => reachable(mk.x, mk.z)) ?? marks[0] ?? null;
+  }
+
+  /** What stands at a diamond: a closet, a computer, the counter or the lift; somebody; or (neither) something lying on the floor. */
+  function objectiveAt(mark) {
+    const it = g.level.interactables.find((i) => ['locker', 'terminal', 'itdesk', 'elevator'].includes(i.kind) && Math.hypot(i.x - mark.x, i.z - mark.z) < 1);
+    if (it) return { it };
+    const actor = g.actors.find((a) => !a.resolved && Math.hypot(a.pos.x - mark.x, a.pos.z - mark.z) < 1);
+    return actor ? { actor } : {};
+  }
+
   function missionTarget(m) {
     const threat = nearestOf(g.actors.filter((a) => a.hostile && a.aggro && !a.resolved), 14);
     if (threat) return { kind: 'fight', actor: threat };
@@ -296,9 +316,15 @@
       const actor = consultant ?? vendor;
       return actor ? { kind: 'fight', actor } : null;
     }
-    const mark = g.markers.find((m) => m.icon === '◆');
-    const it = mark && g.level.interactables.find((i) => i.kind === 'locker' && Math.hypot(i.x - mark.x, i.z - mark.z) < 1);
-    return it ? { kind: 'use', it, x: it.x, z: it.z } : null;
+    // Every other card, loud: straight at whatever the compass marks.
+    const mark = objectiveMark();
+    if (!mark) return null;
+    const at = objectiveAt(mark);
+    // The escort's counter: get there, and the one you are escorting catches up.
+    if (at.it && at.it.kind === 'itdesk') return { kind: 'goto', x: at.it.x, z: at.it.z + 2.2, near: 1.2, wait: 2 };
+    if (at.it) return { kind: 'use', it: at.it, x: at.it.x, z: at.it.z };
+    if (at.actor) return { kind: 'fight', actor: at.actor };
+    return { kind: 'goto', x: mark.x, z: mark.z, near: 0.4, wait: 0.2 };
   }
 
   function routeAlongSpine(m, goal) {
@@ -322,6 +348,56 @@
     return route;
   }
 
+  /**
+   * A path to (tx, tz) that keeps out of the way of everyone the HUD has
+   * shown (cells within 7 m of where each was last seen), for the quiet
+   * escort; null when there is none, and the bot walks the plain way.
+   */
+  function quietField(tx, tz) {
+    const L = g.level, W = L.w, Hh = L.h;
+    const risky = new Uint8Array(W * Hh);
+    for (const at of seenPeople.values()) {
+      const cx = cell(at.x), cz = cell(at.z);
+      for (let dz = -4; dz <= 4; dz++) for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx, z = cz + dz;
+        if (x < 0 || z < 0 || x >= W || z >= Hh || Math.hypot(dx, dz) > 3.5) continue;
+        risky[z * W + x] = 1;
+      }
+    }
+    const start = cell(tz) * W + cell(tx);
+    const dist = new Int32Array(W * Hh).fill(-1);
+    const q = [start];
+    dist[start] = 0;
+    for (let i = 0; i < q.length; i++) {
+      const c = q[i], cx = c % W;
+      for (const n of [c - 1, c + 1, c - W, c + W]) {
+        if (n < 0 || n >= W * Hh || Math.abs(n % W - cx) > 1 || dist[n] !== -1 || L.solid[n] === 1 || risky[n] === 1) continue;
+        dist[n] = dist[c] + 1; q.push(n);
+      }
+    }
+    const here = cell(g.player.pos.z) * W + cell(g.player.pos.x);
+    return dist[here] >= 0 ? dist : null;
+  }
+
+  /** One step along a quiet field toward its goal; true when within `near`. */
+  function quietStep(f, tx, tz, near) {
+    const p = g.player.pos;
+    if (Math.hypot(tx - p.x, tz - p.z) < near) { release(); return true; }
+    const W = g.level.w;
+    const px = cell(p.x), pz = cell(p.z);
+    let best = f[pz * W + px], bx = null, bz = null;
+    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = px + ox, nz = pz + oz;
+      if (nx < 0 || nz < 0 || nx >= W || nz >= g.level.h) continue;
+      const n = nz * W + nx;
+      if (f[n] >= 0 && f[n] < best) { best = f[n]; bx = cc(nx); bz = cc(nz); }
+    }
+    face(bx ?? tx, bz ?? tz);
+    inp.keys.add(K.forward);
+    checkStuck(true);
+    return false;
+  }
+
   // Quiet reads only m.hud (eye, visible people/bars, learned patrols),
   // m.spine, objectiveDone, map geometry/markers and the player's own state.
   // m.actors is diagnostics and is never a quiet-policy input.
@@ -330,11 +406,13 @@
     inp.holdAttack(false); inp.holdBlock(false);
     inp.keys.delete(K.sprint);
     if (!g.player.crouching) press(K.sneak);
-    const mark = g.markers.find((a) => a.icon === '◆');
+    for (const a of m.hud.actors) if (a.visible) seenPeople.set(a.id, { x: a.x, z: a.z });
+    const mark = objectiveMark();
     if (!mark) { release(); return; }
-    if (routeReturning !== m.objectiveDone) {
-      routeReturning = m.objectiveDone;
-      spineRoute = routeAlongSpine(m, mark); spineIndex = 0;
+    const key = `${m.objectiveDone}|${Math.round(mark.x)},${Math.round(mark.z)}`;
+    if (routeReturning !== key) {
+      routeReturning = key;
+      spineRoute = m.spine.length > 0 ? routeAlongSpine(m, mark) : []; spineIndex = 0;
     }
     let node = spineRoute[spineIndex];
     const p = g.player.pos;
@@ -350,9 +428,26 @@
       node = spineRoute[++spineIndex];
     }
     if (node) { goTo(node.x, node.z, 0.6); checkStuck(true); return; }
-    const it = g.level.interactables.find((i) => (m.objectiveDone ? i.kind === 'elevator' : i.kind === 'locker') && Math.hypot(i.x - mark.x, i.z - mark.z) < 1);
-    if (!it) { release(); return; }
-    useMissionObjective(it);
+    const at = objectiveAt(mark);
+    if (at.it && at.it.kind === 'itdesk') {
+      // The escort: to the counter round everyone the HUD has shown, the one you are escorting behind.
+      const tx = at.it.x, tz = at.it.z + 2.2;
+      const f = quietField(tx, tz);
+      if (f) quietStep(f, tx, tz, 1.2);
+      else if (goTo(tx, tz, 1.2)) release(); else checkStuck(true);
+      return;
+    }
+    if (at.it) { useMissionObjective(at.it); return; }
+    if (at.actor) {
+      // Somebody the card is about (a debrief): go and talk to them.
+      const p = g.player.pos;
+      if (Math.hypot(at.actor.pos.x - p.x, at.actor.pos.z - p.z) > 1.9) { goTo(at.actor.pos.x, at.actor.pos.z, 1.7); checkStuck(true); return; }
+      release(); face(at.actor.pos.x, at.actor.pos.z); H.findPrompt();
+      if (g.promptTarget && g.promptTarget.kind === 'actor' && g.promptTarget.a === at.actor) press(K.interact);
+      return;
+    }
+    // Something lying on the floor: walk over it.
+    if (!goTo(mark.x, mark.z, 0.4)) checkStuck(true);
   }
 
   function useMissionObjective(it) {
@@ -364,6 +459,8 @@
   }
 
   function missionPolicy(m) {
+    // Another card (a career's next one): nothing remembered from the last map.
+    if (mission && (mission.card !== m.card || mission.seed !== m.seed)) { seenPeople.clear(); routeReturning = null; spineRoute = []; }
     mission = m;
     const quiet = B.policy.approach !== 'loud' && m.hud.tier < 2;
     if (quiet !== B.quiet) { target = null; targetT = 0; }
@@ -776,6 +873,8 @@
       if (B.ended || B.floors.length >= maxFloors) break;
       const m = H.mission?.();
       if (m) {
+        // A career's card: its results card goes back to the hub, and the career goes on.
+        if (m.over && m.career) { release(); inp.holdAttack(false); document.querySelectorAll('.screen-btn')[0]?.click(); step('other', true); continue; }
         if (m.over) { B.ended = true; release(); inp.holdAttack(false); break; }
         if (g.lockpick.open) { missionLock(); break; }
         if (g.screen !== 'play') { handleDialogue(); break; }

@@ -609,6 +609,117 @@ describe('mission approaches', () => {
 });
 
 
+describe('every card of the S1b pool', () => {
+  function card() {
+    const c = career(true);
+    c.game.save.sanity = 100;
+    c.game.player.pos.x = 1; c.game.player.pos.z = 1;
+    c.actor.hostile = false;
+    c.actor.aggro = false;
+    c.mission.spine = [];
+    c.game.level.interactables = [{ id: 2, kind: 'elevator', x: 1, z: 1 }];
+    return c;
+  }
+  const gold = (x: number, z: number, label: string) => ({ x, z, icon: '◆', color: '#ffd54a', label });
+
+  it('quiet, a scatter of copies: crouched to the nearest, never sprinting, and walks over it', () => {
+    const c = card();
+    c.bot.policy.approach = 'quiet';
+    c.actor.pos.x = 19;
+    c.game.markers = [gold(15, 1, 'Post-it'), gold(5, 1, 'Post-it')];
+    c.tick();
+    expect(c.game.input.pressed.has('c')).toBe(true);
+    expect(c.game.input.keys.has('w')).toBe(true);
+    expect(c.game.input.keys.has('shift')).toBe(false);
+    // Toward the near one (x 5), not the far one.
+    expect(c.game.player.yaw).toBeCloseTo(-Math.PI / 2);
+    c.game.player.pos.x = 5;
+    c.game.input.keys.clear();
+    c.tick();
+    expect(c.game.input.keys.has('w'), 'on it').toBe(false);
+  });
+
+  it('quiet, somebody to talk round (a debrief): walks up and presses E on them, no swing', () => {
+    const c = card();
+    c.bot.policy.approach = 'quiet';
+    c.actor.pos.x = 6; c.actor.pos.z = 1;
+    c.game.markers = [gold(6, 1, 'Dean from Sales')];
+    let swings = 0;
+    c.game.input.tapAttack = () => { swings++; };
+    c.tick();
+    expect(c.game.input.keys.has('w')).toBe(true);
+    c.game.player.pos.x = 4.6;
+    c.game.promptTarget = { kind: 'actor', a: c.actor };
+    c.tick();
+    expect(c.game.input.pressed.has('e')).toBe(true);
+    expect(swings).toBe(0);
+  });
+
+  it('quiet escort: to the counter the way round, keeping clear of everyone the HUD has shown', () => {
+    // A 15 x 9 floor: the straight way along row 4 passes somebody seen at (7, 4); rows 0 and 8 go round, out of their way.
+    const W = 15, Hh = 9;
+    const solid = new Uint8Array(W * Hh);
+    for (let x = 4; x <= 10; x++) for (const z of [1, 2, 3, 5, 6, 7]) solid[z * W + x] = 1;
+    const at = (c: number) => c * 2 + 1;
+    const escort = (seen: boolean) => {
+      const c = card();
+      c.bot.policy.approach = 'quiet';
+      Object.assign(c.game.level, { w: W, h: Hh, solid, roomOf: new Int16Array(W * Hh) });
+      c.game.player.pos.x = at(0); c.game.player.pos.z = at(4);
+      c.actor.pos.x = at(14); c.actor.pos.z = at(0);
+      c.game.level.interactables = [{ id: 3, kind: 'itdesk', x: at(14), z: at(4) - 2.2 }, { id: 2, kind: 'elevator', x: at(0), z: at(0) }];
+      c.game.markers = [gold(at(14), at(4) - 2.2, 'Internal IT')];
+      if (seen) c.mission.hud.actors = [{ id: 9, visible: true, sort: 'wander', x: at(7), z: at(4), patrol: [] }];
+      c.tick();
+      return c;
+    };
+    /** Walk the bot a cell at a time where it faces; the cells it went through. */
+    const walk = (c: ReturnType<typeof escort>) => {
+      const cells: [number, number][] = [];
+      for (let k = 0; k < 60; k++) {
+        const p = c.game.player.pos;
+        if (Math.hypot(p.x - at(14), p.z - at(4)) < 1.3) break;
+        expect(c.game.input.keys.has('w')).toBe(true);
+        expect(c.game.input.keys.has('shift')).toBe(false);
+        const cx = Math.round((p.x - 1) / 2 - Math.sin(c.game.player.yaw));
+        const cz = Math.round((p.z - 1) / 2 - Math.cos(c.game.player.yaw));
+        cells.push([cx, cz]);
+        p.x = at(cx); p.z = at(cz);
+        c.tick();
+      }
+      return cells;
+    };
+    // Somebody seen on the straight way: it goes round, never within 7 m of where they were.
+    const round = walk(escort(true));
+    expect(round.at(-1)).toEqual([14, 4]);
+    for (const [x, z] of round) expect(Math.hypot(x - 7, z - 4), `cell ${x},${z}`).toBeGreaterThan(3.5);
+    // Nobody seen: the straight way, fourteen cells.
+    const straight = walk(escort(false));
+    expect(straight).toHaveLength(14);
+    expect(straight.every(([, z]) => z === 4)).toBe(true);
+  });
+
+  it('loud: whoever the compass marks is fought; a career\'s results card goes back to the hub and the run goes on', () => {
+    const c = card();
+    c.bot.policy.approach = 'loud';
+    c.bot.policy.talk = 0;
+    c.bot.seed(3);
+    c.actor.hostile = true; c.actor.pos.x = 2; c.actor.pos.z = 1;
+    c.game.markers = [gold(2, 1, 'Hercules 400')];
+    let swings = 0;
+    c.game.input.tapAttack = () => { swings++; };
+    c.tick();
+    expect(swings).toBe(1);
+    // A career's card over: the results card's button, and no end to the run.
+    let pressed = 0;
+    c.overlay(() => { pressed++; return undefined; });
+    Object.assign(c.mission, { over: true, career: true });
+    c.tick();
+    expect(pressed).toBe(1);
+    expect(c.bot.ended).not.toBe(true);
+  });
+});
+
 describe('quiet policy honesty', () => {
   it('ignores hidden suspicion and raw patrol state, even if they claim Alert', () => {
     const c = career(true);

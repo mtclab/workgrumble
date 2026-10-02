@@ -61,7 +61,7 @@ async function run(seed = 1700000000, mission?: string, approach = 'quiet', faul
     chromium: { launch: () => ({ newPage: () => page, close: () => { calls.push('closed'); } }) },
     process: { exitCode: 0, argv: ['node', 'run.mjs', JSON.stringify({ ...(fault === 'cap' ? { wallMinutes: 0.000001 } : {}), name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3, ...(mission ? { mission, approach } : {}), ...(extra.scenario as object ?? {}) })], env: { OUT: 'result.json' } },
     URL,
-    missionRecord: runInNewContext(readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replaceAll('export ', '') + '\nmissionRecord') as unknown,
+    ...(runInNewContext(readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replaceAll('export ', '') + '\n({ missionRecord, MISSION_CARDS })') as object),
     readFileSync: () => '',
     writeFileSync: (_path: string, text: string) => { output = text; },
     console: { log: (...parts: unknown[]) => lines.push(parts.map(String).join(' ')) },
@@ -107,7 +107,7 @@ describe('mission runner', () => {
   });
 
   it('rejects unknown cards and approaches before opening a browser', async () => {
-    await expect(run(17, 'unknown')).rejects.toThrow('mission must be stapler or vendor');
+    await expect(run(17, 'unknown')).rejects.toThrow('mission must be one of stapler, vendor, postits, phishing, josh, marcus, printer');
     await expect(run(17, 'vendor', 'cheat')).rejects.toThrow('approach must be quiet, loud or auto');
   });
 });

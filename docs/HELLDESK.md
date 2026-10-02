@@ -624,28 +624,42 @@ Node-only regression checks (no browser or generated WASM needed):
 npx vitest run --config scripts/helldesk-balance/vitest.config.mjs
 ```
 
-For prototype cards on an already served build, `mission` is `stapler` or
-`vendor`; `approach` is `quiet`, `loud` or `auto` (default). Take the briefing
-with Enter, play to the results card, and write its measurement under `mission`:
+For a single card on an already served build, `mission` is any card of the
+S1b pool (`stapler`, `vendor`, `postits`, `phishing`, `josh`, `marcus`,
+`printer`: the list is `MISSION_CARDS` in `mission-record.mjs`, checked
+against `missions.ts` by `mission-cards.test.ts`); `approach` is `quiet`,
+`loud` or `auto` (default). Take the briefing with Enter, play to the results
+card, and write its measurement under `mission`:
 
 ```
 HELLDESK_URL="$BALANCE_URL" OUT=stapler-quiet.json node scripts/helldesk-balance/run.mjs '{"mission":"stapler","approach":"quiet","seed":1700000000,"wallMinutes":12}'
 HELLDESK_URL="$BALANCE_URL" OUT=vendor-loud.json node scripts/helldesk-balance/run.mjs '{"mission":"vendor","approach":"loud","seed":1700000000,"wallMinutes":12}'
 HELLDESK_URL="$BALANCE_URL" node scripts/helldesk-balance/mission-matrix.mjs
-HELLDESK_URL="$BALANCE_URL" node scripts/helldesk-balance/mission-matrix.mjs --vendor-quiet
+HELLDESK_URL="$BALANCE_URL" node scripts/helldesk-balance/mission-matrix.mjs --quiet-on-loud
 ```
 
-The default matrix is stapler quiet x 30 seeds, stapler loud x 10, vendor
-loud x 10, sequentially with one browser at a time. `--vendor-quiet` adds
-ten paired vendor quiet runs for both approaches on both cards; that card
-starts Escalated, so quiet immediately falls back to loud. Seeds start at
+The matrix plays every card of the S1b pool, quiet where its style allows
+(every card but the loud ones, Vendor Day and the Printer Uprising) and loud,
+ten seeds each (`MISSION_RUNS` changes that), sequentially with one browser
+at a time: 120 runs. `--quiet-on-loud` adds quiet runs of the two loud cards;
+they start Escalated, so quiet immediately falls back to loud. Seeds start at
 1700000000 for each group. `MISSION_OUT` selects the JSON directory
 (default `mission-results`, including `summary.json`); `MISSION_WALL_MINUTES`
 sets the per-card cap (default 12). `CHROMIUM` selects the browser executable.
-Errors and unfinished cards fail the matrix. A burnout or abort has a results
-card and counts as a nonquiet finish. Being outside a balance target is reported.
+Errors and unfinished cards fail the matrix. A burnout, abort or failed card
+has a results card and counts as a nonquiet finish. Being outside a balance
+target is reported (the targets are enforced in S6, not now).
 
-Mission fields: `card`, `seed`, `approach`, `finish` (quiet/loud/aborted/burnout),
+The quiet policy plays each objective the way the compass shows it (the
+nearest gold diamond): along the service spine where the map has one, then a
+closet or a computer used, somebody talked to (the debrief: the dialogue
+policy picks the best printed odds), a copy walked over, or, escorting Josh,
+the way to the counter that keeps 7 m clear of everybody the HUD has shown
+it. Loud fights whatever the compass marks. In a career the bot only takes
+the week's P1 (the floor, or the Printer Uprising card), and a career card's
+results card goes back to the hub.
+
+Mission fields: `card`, `seed`, `approach`, `finish` (quiet/loud/aborted/burnout/failed),
 `seconds` (active game time), `maxTier` (0-3), `detectedAt` (first Alert time),
 `noticedAt` (first Noticed time); times are game seconds, null if never reached,
 zero for a tier present at entry. `repTotal` is the results card's actual Rep
@@ -653,10 +667,11 @@ delta; `repBase`, `repQuietBonus`, `repResolves` are its listed parts, which may
 differ from the total after other Rep changes. `repPerMin` is total x 60 / seconds.
 `combatSec` keeps the floor definition above; `minSanityPct` is the lowest
 percentage of maximum sanity; `noiseEvents` counts emitted events when exposed.
-The summary reports stapler-quiet detection rate (finish not quiet / runs),
-median nonnull `detectedAt`, quiet-finish share, and Rep/min mean and max-min
-spread per card/approach, then the stapler quiet/loud mean-rate ratio against
-0.85-1.15. Unsampled groups and undefined ratios are labelled, not filled with zero.
+The summary reports, per card, the quiet runs' detection rate
+(finish not quiet / runs), median nonnull `detectedAt` and quiet-finish share,
+Rep/min mean and max-min spread per card/approach, then each card's
+quiet/loud mean-rate ratio against 0.85-1.15. Unsampled groups and undefined
+ratios are labelled, not filled with zero.
 
 It is a mediocre player on purpose: what kills it kills a new player. What
 it found so far: the first boss's summons had no cap, a woken boss chased
