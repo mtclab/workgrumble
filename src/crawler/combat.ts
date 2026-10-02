@@ -659,7 +659,10 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
   // Practice never burns anybody out, Ironman included.
   if (from?.kind === 'dummy') dmg = practiceDamage(dmg, s.sanity);
   s.sanity -= dmg;
-  if (dmg > 0) g.onCombatDamage?.();
+  if (dmg > 0) {
+    g.combatAt = g.time;
+    g.onCombatDamage?.();
+  }
   g.hurtFlash = Math.min(1, g.hurtFlash + 0.25 + dmg / 40);
   g.exercise('sisu', Math.min(1, dmg / 20));
   if (from?.elite === 'passive') s.energy = Math.max(0, s.energy - 12);

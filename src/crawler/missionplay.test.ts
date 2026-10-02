@@ -41,6 +41,7 @@ class Host implements GameCtx {
   readonly floor: number;
   readonly difficulty = 1;
   time = 0;
+  combatAt = -Infinity;
   readonly stealth = 0;
   invisible = false;
   readonly staffStanding = 0;

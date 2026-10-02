@@ -72,6 +72,7 @@ class Arena implements GameCtx {
   readonly floor = 0;
   readonly difficulty = 1;
   time = 0;
+  combatAt = -Infinity;
   readonly stealth = 0;
   readonly invisible = false;
   readonly staffStanding = 0;

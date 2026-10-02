@@ -284,6 +284,8 @@ export interface GameCtx {
   readonly time: number;
   /** A landed hit by or on the player, for balance measurements. */
   onCombatDamage?: () => void;
+  /** Game time of the last damage the player dealt or took (-Infinity: none yet). The hub keeps walk-ups out of a fight by it. */
+  combatAt: number;
   /** 0..1 how hard you are to notice right now (gear, skill, sneaking). */
   readonly stealth: number;
   readonly invisible: boolean;
@@ -1104,7 +1106,10 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.poisonT > 0) {
     a.poisonT -= dt;
     a.hp -= a.poisonDps * dt;
-    if (a.poisonDps > 0) ctx.onCombatDamage?.();
+    if (a.poisonDps > 0) {
+      ctx.combatAt = ctx.time;
+      ctx.onCombatDamage?.();
+    }
     a.hpFill.scale.x = Math.max(0.001, a.hp / a.maxHp);
     a.hpFill.position.x = -(1 - a.hpFill.scale.x) / 2;
   }
@@ -2245,7 +2250,10 @@ export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vect
     return;
   }
   a.hp -= dmg;
-  if (player && dmg > 0) ctx.onCombatDamage?.();
+  if (player && dmg > 0) {
+    ctx.combatAt = ctx.time;
+    ctx.onCombatDamage?.();
+  }
   a.flash = 1;
   if (a.kind === 'boss' && !a.bossActive) {
     // Hitting a boss starts the fight properly, wherever you hit it from.

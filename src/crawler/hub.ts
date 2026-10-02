@@ -59,6 +59,12 @@ const WALKUP_GAP: readonly [number, number] = [60, 120];
 /** A walk-up who cannot reach you for this long gives up (no ignore counted). */
 const WALKUP_GIVE_UP = 90;
 
+/** A fight: anyone after you this close (metres) and on to you... */
+export const FIGHT_RANGE = 20;
+
+/** ...or damage dealt or taken this many seconds ago. Nobody walks up with a printer problem mid-fight. */
+export const FIGHT_MEMORY = 10;
+
 /** Below this Staff standing, somebody on the hub has been waiting all weekend. */
 const GRUDGE_STAFF = -40;
 
@@ -230,8 +236,18 @@ export class Hub implements HubCtx {
     h.clock += dt;
     this.forget();
     this.smellTest();
-    if (this.walker !== null) this.tickWalkUp(dt);
-    else if (h.clock - h.lastWalkUp >= this.gap) this.startWalkUp();
+    const fight = this.fighting();
+    if (this.walker !== null) this.tickWalkUp(dt, fight);
+    // A walk-up that falls due mid-fight waits for the fight to be over.
+    else if (!fight && h.clock - h.lastWalkUp >= this.gap) this.startWalkUp();
+  }
+
+  /** Is the player in a fight: anyone after you and on to you within FIGHT_RANGE, or damage dealt or taken in the last FIGHT_MEMORY seconds? */
+  fighting(): boolean {
+    const g = this.g;
+    if (g.time - g.combatAt < FIGHT_MEMORY) return true;
+    const pp = g.player.pos;
+    return g.actors.some((a) => a.hostile && a.aggro && !a.resolved && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < FIGHT_RANGE);
   }
 
   /**
@@ -433,14 +449,20 @@ export class Hub implements HubCtx {
    * LINE_TIME: walking past them is not stopping for them, so it is not
    * ignoring them either. Once they have reached you, walking off past
    * IGNORE_DIST counts one ignore. Somebody who never reaches you gives up
-   * after WALKUP_GIVE_UP seconds, and that counts nothing.
+   * after WALKUP_GIVE_UP seconds, and that counts nothing. In a fight it
+   * all waits: nothing counts, and they have to reach you again after it.
    */
-  private tickWalkUp(dt: number): void {
+  private tickWalkUp(dt: number, fight: boolean): void {
     const g = this.g;
     const a = this.walker;
     if (a === null) return;
     if (a.resolved || a.hostile) {
       this.walker = null;
+      return;
+    }
+    if (fight) {
+      this.reached = false;
+      this.lineT = 0;
       return;
     }
     this.walkerT += dt;

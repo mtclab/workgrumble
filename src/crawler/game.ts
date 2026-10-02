@@ -232,6 +232,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   saveIn = 60;
   time = 0;
   onCombatDamage?: () => void;
+  /** Game time of the last damage the player dealt or took. */
+  combatAt = -Infinity;
   screen: Screen = 'title';
   // Combat.
   attackCd = 0;

@@ -34,7 +34,7 @@ reporter comes to find you, up the lift if they are not on the floor); a
 colleague with a problem who walks up (one every 60-120 s of hub time, "?"
 over them), comes to your side, says their piece, and is walked away from
 three times within ten minutes of hub time (walking past them is not
-ignoring them); hitting or shoving a
+ignoring them, and nobody walks up mid-fight); hitting or shoving a
 colleague (they, every colleague within 12 m who saw it, and an HR warning);
 a crime a colleague witnesses (the manager who smells the drink, whoever sees
 you at the fridge or a supply closet); Staff standing below -40 on a Monday;

@@ -1,11 +1,11 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { shove, standBeforeActor, strike } from './combat';
+import { resolveActor, shove, standBeforeActor, strike } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
 import { DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
-import { HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, REACHED_DIST, WITNESS_RANGE } from './hub';
+import { FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
 import { flowField, generateLevel, type LevelRecipe, lineOfSight, NEIGHBOURS8, toCell } from './level';
 import { fx } from './rng';
@@ -377,6 +377,10 @@ describe('gate 4: walk-ups', () => {
     expect(g.save.hub.hostile).toEqual([{ spawnIndex: w.spawnIndex, reason: 'ignored' }]);
     announced(h, w, 'ignored three times');
     graceThenFight(h, w);
+    // Beaten (resolved), and the fight over: nobody walks up mid-fight.
+    w.hp = 0;
+    resolveActor(g, w);
+    h.run(FIGHT_MEMORY + 1, answering(h, watch));
 
     // The next one, talked to: resolved, paid, and nobody turned.
     hub.walkUpNow();
@@ -410,7 +414,7 @@ describe('gate 4: walk-ups', () => {
     watch();
     expect(hub.walkingUp()).toBeNull();
     expect(g.save.queue.map((q) => q.from)).toContain(third.name);
-    expect(hostiles(h)).toEqual(w.resolved ? [] : [w]);
+    expect(hostiles(h)).toEqual([]);
   });
 
   it('walking past a walk-up without stopping is not ignoring them; nor is a walk-up who gives up without reaching you', () => {
@@ -494,6 +498,51 @@ describe('gate 4: walk-ups', () => {
     expect(w.hostile).toBe(false);
     expect(g.save.hub.ignores[w.spawnIndex]?.length).toBe(1);
     expect(h.toasts.at(-1)).toContain(`(1/${IGNORES_TO_TURN})`);
+  });
+
+  it('nobody walks up mid-fight (somebody after you within 20 m, or a hit in the last 10 s), and a walk-up waits out a fight', { timeout: 60_000 }, () => {
+    const h = hubFor();
+    const g = h.g;
+    const hub = g.hub!;
+    // Among people (somebody in walking distance), with somebody after you 14 m off: a walk-up that falls due waits.
+    const near = neutral(h).find((a) => (a.kind === 'caller' || a.kind === 'user') && neutral(h).filter((o) => o !== a && Math.hypot(o.pos.x - a.pos.x, o.pos.z - a.pos.z) < 12).length >= 2)!;
+    standBeforeActor(g, near, 4);
+    const c = neutral(h).find((a) => a.kind === 'user' && a !== near && named(h, a))!;
+    breach(g, { t: c.ticket, sla: 0, from: c.name, struck: [], gold: false });
+    const spot = spotInView(h, FIGHT_RANGE - 7, FIGHT_RANGE - 5) ?? { x: g.player.pos.x + FIGHT_RANGE - 6, z: g.player.pos.z };
+    c.pos.set(spot.x, 0, spot.z);
+    c.stunned = 1e9;
+    hub.walkUpNow();
+    h.run(5, answering(h));
+    expect(hub.fighting()).toBe(true);
+    expect(hub.walkingUp(), 'nobody walks up with somebody after you 14 m off').toBeNull();
+    // They are dealt with: no walk-up for ten seconds after the last blow, then one comes.
+    c.hp = 0;
+    resolveActor(g, c);
+    g.combatAt = g.time;
+    const blow = g.time;
+    h.run(FIGHT_MEMORY - 1, answering(h));
+    expect(hub.walkingUp(), 'nine seconds after the last blow, still nobody').toBeNull();
+    // (Nobody in walking distance: the hub looks again ten seconds on.)
+    for (let t = 0; t < 15 && hub.walkingUp() === null; t += DT) h.run(DT, answering(h));
+    const w = hub.walkingUp();
+    expect(w, 'the fight over, the walk-up comes').not.toBeNull();
+    expect(g.time - blow, 'not before ten seconds after the last blow').toBeGreaterThanOrEqual(FIGHT_MEMORY);
+    if (w === null) return;
+
+    // Reached, and then a fight breaks out: running off mid-fight is not ignoring them.
+    for (let t = 0; t < 40 && !hub.debug().reached; t += 0.5) h.run(0.5, answering(h));
+    expect(hub.debug().reached).toBe(true);
+    const m = neutral(h).find((a) => a !== w && a.kind !== 'manager' && named(h, a))!;
+    breach(g, { t: m.ticket, sla: 0, from: m.name, struck: [], gold: false });
+    m.pos.set(g.player.pos.x + 0.5, 0, g.player.pos.z);
+    h.run(DT, answering(h));
+    expect(hub.debug().reached, 'a fight: they have to catch you again after it').toBe(false);
+    const p = awayFrom(h, w);
+    g.player.pos.set(p.x, 0, p.z);
+    h.run(3, answering(h));
+    expect(g.save.hub.ignores[w.spawnIndex], 'no ignore counted mid-fight').toBeUndefined();
+    expect(hub.walkingUp(), 'still waiting for you').toBe(w);
   });
 
   it('nobody walks up while the induction runs, even once the floor is awake for its last steps', () => {
