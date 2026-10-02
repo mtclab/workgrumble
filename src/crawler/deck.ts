@@ -178,11 +178,6 @@ export function handIds(d: Deck): string[] {
   return d.cards.filter((c) => !c.p1).map((c) => c.id);
 }
 
-/** The deck's P1. */
-export function p1Of(d: Deck): DealtCard | undefined {
-  return d.cards.find((c) => c.p1);
-}
-
 /** The pay multiplier on a dealt card: the giver's after-hours rate (D6), or 1 in the day. */
 export function payRate(d: Pick<DealtCard, 'id' | 'afterHours'>): number {
   if (!d.afterHours) return 1;

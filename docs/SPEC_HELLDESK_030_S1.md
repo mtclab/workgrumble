@@ -44,6 +44,7 @@ Every source below is announced before anyone attacks: a toast naming who and wh
 | Witnessed crime | `vices.ts caughtCheck` | Unchanged, plus a combat-capable witness is hostile for the rest of the week; a non-combat witness goes cold for the week instead (as for an assault). |
 | Low Staff standing | grudge | Below -40 Staff, one random worker turns hostile each Monday (announced). |
 | Story choice | story.ts | A story choice that makes an enemy (for example blaming Derek) brings them to the hub, announced like the others. |
+| Failed coworker card (S1b) | `game.ts cardFailed` | A card failed on its map (its own failure, or a burnout on it) whose failure says so turns its giver, a coworker on the hub, hostile on your next visit to the hub, announced like the others ("<name> heard how <card> went"). A card missed on Friday costs its standing only: Monday starts the hub's week again. |
 
 Hostility lasts until that person is resolved (talked down or beaten) or until next Monday. Resolved hub people come back next Monday, neutral (they had the weekend).
 
@@ -146,6 +147,19 @@ Unit, each proven to fail with its behaviour removed:
 6. Save and reload mid-mission: same map, tier, suspicion, objective progress.
 Browser (staging): take a card at the workstation, ride the lift, finish it quiet, come back paid; take a loud card and abort it: it is still on the board; a coworker's in-person card offered by talking to them.
 Bot (staging): every card in the pool completes with approach quiet (where the style allows) and loud, over 10 seeds each, no errors; report detection rate and quiet/loud Rep/min per card (targets are enforced in S6, reported now).
+
+### As built (S1b notes)
+
+Calls made where the spec left room or met the code, for review:
+
+- **Givers on the hub** are colleagues with indices of their own (`HUB_GIVER_BASE` plus the giver's place in `GIVERS`), at a seeded open-plan desk, the same person whenever their cards are dealt; they never walk up with a problem. Declining or failing their card moves a per-giver standing (`save.rapport`), shown on the cards; no faction moves.
+- **The pool by band:** a band deals from its own and the bands below it. With six non-P1 cards, a deal always leaves one out so next week can differ: an Architect week deals 5-6 cards, not 7, until the pool grows.
+- **The Printer Uprising as P1** only stands in for the floor P1 in Overtime at Helpdesk band (one week in three): the story floors keep their bosses. Failing it (its 240 s clock) still opens Friday, at Management -6.
+- **The same story twice:** a card is not dealt while the side quest it retells is in hand, and that side quest is not offered on a week the card is dealt; Marcus's card is not dealt on a week Marcus is the hub's story person.
+- **Escort:** helpers take no damage in this engine, so Josh fails by nerve: it drains with anyone after you near him, and at zero he takes the lift (the card fails).
+- **A mission's people** keep their patrols when you are far away (they are the stealth clock). People called in by a card's going-loud (the Head of People) are after you but never a second alarm.
+- **Debug path:** `?mission=<id>` plays any card of the pool on a fresh trainee (`&alarm=` picks the rule); nothing saved.
+- **Not yet:** the team on missions (D3, S5), optional goals and new objective kinds beyond the pool's (S3), staffing as cards (S5).
 
 ## S1c outline: decor, special items and buffs
 

@@ -404,7 +404,7 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     announced(h, d, 'coming for you');
     expect(new Set(hostiles(h)), 'the manager (a breach) and Derek (a story choice), nobody else').toEqual(new Set(m.resolved ? [d] : [m, d]));
     // Every hostile on the hub's books came from an announced source in the table.
-    for (const e of g.save.hub.hostile) expect(['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story']).toContain(e.reason);
+    for (const e of g.save.hub.hostile) expect(['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story', 'failed']).toContain(e.reason);
     expect(g.save.hub.hostile.find((e) => e.spawnIndex === d.spawnIndex)?.reason).toBe('story');
   });
 });

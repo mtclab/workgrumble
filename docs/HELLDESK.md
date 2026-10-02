@@ -27,6 +27,25 @@ Saunatonttu). On Monday you drive back to the hub, and the next floor is
 this week's P1. Floor 4 ends the story (one of seven endings); after it
 comes Overtime: endless floors, stronger every loop.
 
+**Your desk and the weekly deck** (0.3.0 S1b, `deck.ts`). One desk of the
+hub is yours (the first computer in an open-plan room; "YOUR DESK" on the
+map). Its WorkgrumbleOS has a Projects window over the queue: this week's
+deck, dealt on Monday from the career's seed and the week - the P1 plus a
+hand of tasks and projects (Helpdesk 3-4 cards in all, Specialist 4-5,
+Architect 5-7 less one while the pool is small), never all one style, never
+last week's hand, some after hours, about a third handed over in person by
+a coworker with a "!" (the desk says to ask them). Each card shows its
+giver, size, style, band, pay (and what quiet adds), deadline (Friday, or a
+P1's clock), after hours, and its alarm rule in plain words; Accept or
+Decline (a coworker's costs a little standing with them, and nobody else).
+Accepted cards weigh on your workload like any other work. The hub's lift
+lists each card you took on; on its map the lift finishes it (paid at once,
+times the giver's after-hours rate), aborts it (it stays on the board until
+Friday) or, for a P1 card, leaves it as it is. A card failed on its map (a
+burnout on it, Josh bolting, a P1's clock) costs its standing, and a
+coworker who handed it out is waiting for you on the hub, announced. On
+Friday every card you took and never finished is missed.
+
 **Nobody on the hub fights you without a reason, and every reason is
 announced** (`hub.ts`): a toast naming who and why, a bark, a red "!" over
 them, and no swing for 1.5 s. The reasons: an SLA breach (the ticket's
@@ -42,7 +61,8 @@ a crime a colleague witnesses (the manager who smells the drink, whoever sees
 you at the fridge or a supply closet; a healer, Internal IT, a quest giver or
 the story person who sees a crime goes cold instead: no talk, tea or quests
 from them for the rest of the week); Staff standing below -40 on a Monday;
-and a story choice that makes an enemy. A failed talk-down still enrages.
+a story choice that makes an enemy; and a coworker whose card you failed
+(S1b: on your next visit). A failed talk-down still enrages.
 It lasts until they are resolved or Monday. Nobody on the hub summons
 anybody, and quest fights (hunts, counts of trouble) wait on the P1 floor.
 The hub is the same building every week (one theme, the same people by spawn
@@ -443,7 +463,12 @@ An autosave, a quicksave (F5, F9 to load) and three slots, all in this
 browser. v2 and v3 saves are migrated: saves are version 4, with the hub's
 week in them (`save.hub`); a v3 career on a floor loads into the hub of the
 same week with that floor waiting up the lift exactly as it was, and one at
-the mökki stays there. Options (the title's Settings, before any
+the mökki stays there. S1b adds, still as version 4: the week's deck
+(`save.deck`, dealt on load for a save from before it), the card being
+played (`save.mission`: a reload mid-card lands at its lift with the map,
+the alarm, everyone's suspicion and the objective as they were), a P1 card
+left mid-way (`save.p1Run`) and each giver's standing (`save.rapport`).
+Options (the title's Settings, before any
 game exists; the backpack's Control Panel; or the pause menu):
 first/third person, field of view, sensitivity, invert Y, render scale,
 bloom, quality (lights), damage numbers, tips, compass, music and effects
@@ -678,14 +703,42 @@ it found so far: the first boss's summons had no cap, a woken boss chased
 you round the whole floor for ever, managers could chain meeting invites
 into a lock, and floor 3 (index 3) was a wall - all fixed (see Combat).
 
+## Missions: the cards (0.3.0 S1b)
+
+The S1b pool (`missions.ts`, docs/SPEC_HELLDESK_030_S1.md): #1 The Red
+Stapler (sneaky: HR's closet; HR now crosses the service spine once a
+round, and going loud bolts the closet 25 harder and calls the Head of
+People), #7 Vendor Day (loud), #4 Password Hygiene Week (sneaky: 8 of 12
+post-its), #5 Phishing Test Debrief (social: three from Sales at one table,
+who expect you, talked down with the odds printed; a failed check goes
+loud), #3 Josh's First Day, Again (escort, on the annex: Josh follows you to
+Internal IT's counter round the vendors' pitch; his nerve drains near
+anyone after you, and at zero he bolts), #9 Marcus and the Backups (sneaky:
+his computer has the agent, then his three-way choice; his manager must not
+notice you), and #2 P1: The Printer Uprising (loud, today's generator: six
+jams and Hercules 400 in 240 s; the P1 of an Overtime week at Helpdesk band
+one week in three). Sneaking is 0.7 of walking.
+
+Each card plays by the **alarm rule** it was dealt (D7, `stealth.ts`
+`Watch.tick`), shown on the card, the briefing and the mission HUD:
+one-way ("Once they know, they know": the spike's model); search ("Lose
+them and they search, then give up": a person at Alert who has not seen
+you for 8 s searches, a countdown over their head walking to where they
+last saw you, and drops to Noticed at zero; Escalated stays; the tier
+follows the highest person); cooldown ("It blows over": any tier,
+Escalated too, drops a step after 45 s with nobody seeing you and no
+fighting, announced). After hours: half the crowd (the card's own people
+kept), the lights at 40%, and the giver's after-hours rate (1.5x from
+Priya, Marcus and Procurement).
+
 ## Spike: missions (0.3.0, behind ?mission=)
 
 A prototype of the 0.3.0 proposal (`docs/SPEC_HELLDESK_030.md` 6.0), for
-walking and measuring; nothing in it is decided. `crawler.html?mission=stapler`
-or `?mission=vendor` (add `&seed=N` to pin the map) puts a fresh trainee
-straight onto that card: no induction, no boss, no staffing, and nothing is
-saved, so career saves are untouched. Without the query the page is what it
-always was.
+walking and measuring. `crawler.html?mission=<card>` (any card of the pool;
+add `&seed=N` to pin the map, `&alarm=search` or another rule to play it by)
+puts a fresh trainee straight onto that card: no induction, no boss, no
+staffing, and nothing is saved, so career saves are untouched. Without the
+query the page is what it always was.
 
 - **Templates** (`templates.ts`): the corner-office row (T3) with a service
   spine stub from the lobby's back door to HR's back door, and the meeting
@@ -711,8 +764,9 @@ always was.
   Alert during the first second of that walk; at 80 they are Alert, attack
   no sooner than half a second later (then the wind-up), and everyone within
   12 m (6 through a wall) is Noticed. Two people Alert and the mission is
-  Escalated: today's game, everyone hostile on sight. The tier (Quiet,
-  Noticed, Alert, Escalated) only goes up, and every change is announced (a
+  Escalated: today's game, everyone hostile on sight. Under the one-way rule
+  the tier (Quiet, Noticed, Alert, Escalated) only goes up (S1b adds the
+  search and cooldown rules, above), and every change is announced (a
   toast, the tannoy at Alert, the alarm tint and boss music at Escalated, the
   HUD eye closed, half open, open red). Each person shows an amber bar as it
   rises, through walls from 40 up. HR walks a seeded route of corridor
@@ -808,7 +862,9 @@ runtime:
 | `quests.ts` | Side quests, Project Phoenix, quest stages and turn-in dialogue. |
 | `upgrades.ts` | Mökki upgrades, fish, achievements, tips. |
 | `state.ts` | The save (v4, with the hub's week), migration from v2 and v3, derived stats, skills and level-up. |
-| `hub.ts` | The hub: its seed and theme, its people (colleagues rolled by spawn index), walk-ups, and every announced reason anyone there turns on you. |
+| `hub.ts` | The hub: its seed and theme, its people (colleagues rolled by spawn index), your desk, the week's card givers, walk-ups, and every announced reason anyone there turns on you. |
+| `deck.ts`, `mission.ts`, `missions.ts` | The weekly deck (pure): the deal, card states, after-hours pay, the workstation's view of a card; the card rules (objectives, the run, the payout, alarm rules); the pool and its givers. |
+| `missionplay.ts`, `stealth.ts`, `templates.ts` | A card in the game (its crowd, watch, HUD, lift, results, save and reload); suspicion and the alarm rules; the template footprints. |
 | `saves.ts`, `settings.ts` | Save slots; global options, the bindings (keys and mouse buttons). |
 | `autoquality.ts` | The first launch's graphics-quality pick (pure): when a launch picks, the timing window, the verdict per level. |
 | `a11y.ts` | Comfort and accessibility rules (pure): shake and hit pause when off, the screen edge's shape per kind. |
@@ -912,3 +968,17 @@ ways, the P1 resumed as left, save v4 round trips and v3 fixtures from
 walking the hub take no damage, a walk-up ignored three times and the next
 one talked to, and the lift up, a fight, down and up again with the floor as
 it was left.
+
+The deck's gates (S1b) run the same way (the headless game also records a
+mission's HUD and results card): `deck.test.ts` (the deal over 200 careers
+x 8 weeks at every band: the same deck for the same career and week, the
+P1, the count by band, the style mix, never last week's hand, two alarm
+rules, in person only from coworkers, the floor P1 never after hours),
+`deckgame.test.ts` (your desk, Accept and Decline, capacity, a card handed
+over in person, the lift to a card and back, after hours, a failed card's
+giver on the hub, Friday, reloads mid-card and a P1 card left and resumed),
+`alarm.test.ts` (one-way, search and cooldown frame by frame) and
+`cards.test.ts` (each card of the pool to its objective, the stapler's
+tuning). `e2e/helldesk-deck.spec.ts` plays a card from the desk to its
+quiet finish and pay, a loud one aborted and still on the board, and a card
+handed over in person.
