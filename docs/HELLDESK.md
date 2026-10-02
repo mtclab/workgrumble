@@ -13,14 +13,35 @@ Play it: `npm run dev`, then open `/crawler.html`. It ships in the same
 
 ## The loop
 
-One floor of Workgrumble Ltd is one work week. Work the floor (your ticket
-queue at any computer, the people who bring their problems to you in person,
-the quests people hand you), resolve the boss in the corner office, take the
-lift, and it is Friday: you drive to the **mökki** (salary, HR, the
-performance review, sauna, lake, grill, fishing, sleep and level-up, the
-upgrade board, the Saunatonttu). On Monday you drive back to the next floor.
-Floor 4 ends the story (one of seven endings); after it comes Overtime:
-endless floors, stronger every loop.
+A career has one office floor of its own, **the hub** (0.3.0 S1a,
+docs/SPEC_HELLDESK_030_S1.md), and every work week starts there on Monday:
+your ticket queue at any computer, the kitchen, Internal IT, the sauna room
+if it rolled, the people who hand you quests, the week's story person,
+staffing calls and mentoring. The week's **major incident (P1)** is a floor
+of Workgrumble Ltd up the lift, played as a floor always was (fights, the
+boss in the corner office); the lift goes up and back down at any time, and
+the P1 floor waits as you left it. Resolve its boss and the lift's buttons
+offer Friday: you drive to the **mökki** (salary, HR, the performance review,
+sauna, lake, grill, fishing, sleep and level-up, the upgrade board, the
+Saunatonttu). On Monday you drive back to the hub, and the next floor is
+this week's P1. Floor 4 ends the story (one of seven endings); after it
+comes Overtime: endless floors, stronger every loop.
+
+**Nobody on the hub fights you without a reason, and every reason is
+announced** (`hub.ts`): a toast naming who and why, a bark, a red "!" over
+them, and no swing for 1.5 s. The reasons: an SLA breach (the ticket's
+reporter comes to find you, up the lift if they are not on the floor); a
+colleague with a problem who walks up (one every 60-120 s of hub time, "?"
+over them) and is walked away from three times; hitting or shoving a
+colleague (they, every colleague within 12 m who saw it, and an HR warning);
+a crime a colleague witnesses (the manager who smells the drink, whoever sees
+you at the fridge or a supply closet); Staff standing below -40 on a Monday;
+and a story choice that makes an enemy. A failed talk-down still enrages.
+It lasts until they are resolved or Monday. Nobody on the hub summons
+anybody, and quest fights (hunts, counts of trouble) wait on the P1 floor.
+The hub is the same building every week (one theme, the same people by spawn
+index); the coffee machine refills over the weekend, and whoever you resolved
+is back, neutral, on Monday.
 
 ## Difficulty: three dials
 
@@ -373,7 +394,9 @@ testing.
 C to sneak. Supply closets are locked: paperclips and a timing minigame
 (Security vs the lock), with runes, drinks, books, gear, quest items and
 Rep inside. The office fridge is always Jukka's. Doing any of it in front of
-someone earns an HR warning.
+someone earns an HR warning; on the hub the colleagues who saw it are after
+you for the rest of the week. Hitting a colleague on the hub is allowed, and
+is a crime (see The loop).
 
 ## Looks
 
@@ -411,7 +434,10 @@ Quality (low / medium / high) scales all of it.
 ## Saves and options
 
 An autosave, a quicksave (F5, F9 to load) and three slots, all in this
-browser. v2 saves are migrated. Options (the title's Settings, before any
+browser. v2 and v3 saves are migrated: saves are version 4, with the hub's
+week in them (`save.hub`); a v3 career on a floor loads into the hub of the
+same week with that floor waiting up the lift exactly as it was, and one at
+the mökki stays there. Options (the title's Settings, before any
 game exists; the backpack's Control Panel; or the pause menu):
 first/third person, field of view, sensitivity, invert Y, render scale,
 bloom, quality (lights), damage numbers, tips, compass, music and effects
@@ -529,6 +555,17 @@ debug handles on `window.__helldesk`.
 npx vite build --outDir /tmp/helldesk && npx vite preview --outDir /tmp/helldesk --port 4179 &
 node scripts/helldesk-balance/run.mjs '{"name":"trainee","floors":5,"wallMinutes":15}'
 node scripts/helldesk-balance/run.mjs '{"name":"senior","rung":6,"kit":["cat6","cardigan"]}'
+```
+
+Bot careers go through the hub like a player (the lift up on Monday, Friday
+from the lift's buttons); only the P1 floors are measured. `"approach":
+"hub-only"` plays a week on the hub instead and never takes the lift
+(tickets, talk, walk-ups, whoever has been given a reason; no swing with a
+colleague in the arc), for `hubMinutes` of hub time (default 20), and reports
+its combat share against the hub's gate of at most 5% (a failing run exits 1):
+
+```
+node scripts/helldesk-balance/run.mjs '{"name":"hub","approach":"hub-only","seed":1700000000,"hubMinutes":20,"wallMinutes":30}'
 ```
 
 Add `"seed":1700000000` (uint32) to pin `Date.now` before startup and seed
@@ -749,7 +786,8 @@ runtime:
 | `loot.ts`, `books.ts` | Rarity, affixes, legendaries, skill books. |
 | `quests.ts` | Side quests, Project Phoenix, quest stages and turn-in dialogue. |
 | `upgrades.ts` | Mökki upgrades, fish, achievements, tips. |
-| `state.ts` | The save (v3), migration from v2, derived stats, skills and level-up. |
+| `state.ts` | The save (v4, with the hub's week), migration from v2 and v3, derived stats, skills and level-up. |
+| `hub.ts` | The hub: its seed and theme, its people (colleagues rolled by spawn index), walk-ups, and every announced reason anyone there turns on you. |
 | `saves.ts`, `settings.ts` | Save slots; global options, the bindings (keys and mouse buttons). |
 | `autoquality.ts` | The first launch's graphics-quality pick (pure): when a launch picks, the timing window, the verdict per level. |
 | `a11y.ts` | Comfort and accessibility rules (pure): shake and hit pause when off, the screen edge's shape per kind. |
@@ -768,7 +806,7 @@ runtime:
 | `desk.ts` | The ticket queue and mail tasks. |
 | `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
 | `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts, the loading card. |
-| `level.ts`, `mokki.ts` | Seeded floors and the cottage plot (grid collision, line of sight, flow fields). |
+| `level.ts`, `mokki.ts` | Seeded floors (and the hub's recipe) and the cottage plot (grid collision, line of sight, flow fields). |
 | `entities.ts` | Every NPC: stats, elites, AI, boss patterns and phases. |
 | `os.ts` | WorkgrumbleOS: tickets, mail, KB, Internal IT (buy/sell), inventory, character and perks, HR, journal, achievements, settings, help. |
 | `graphics.ts`, `particles.ts` | The render pipeline and mood shader, generated normal maps; the particle pool. |
@@ -825,14 +863,31 @@ to a key and to the right button.
 
 `e2e/helldesk-playthrough.spec.ts` is the shipped path, played: four
 careers from the title of the served build, each asserting what the player
-got. The keyboard into a new career and the whole induction, a user fought
-(wind-up seen, hits landed, resolved) and one talked down with a biscuit, a
-ticket fixed at a terminal (queue one shorter, on the status bar too); F5 and
-F9, a slot saved and loaded from pause; the floor-0 boss resolved by real
-swings, the lift to Friday, the mökki sauna and the drive back, Monday on
-floor 1; a burnout and Clock back in; a quality change made from pause,
-applied at once and still there after a reload. Its `window.__helldesk`
-handles (`standAt`, `face`, `toBoss`, `weakenBoss`, `wear`, `boss`) only
-place or turn the player, skip a long wait or read the fight; none resolves,
-fixes, saves or loads anything. A save keeps no position: every load,
-F9 included, stands the player at the floor's start.
+got. The keyboard into a new career and the whole induction on the hub, the
+lift up, a user fought (wind-up seen, hits landed, resolved) and one talked
+down with a biscuit, the lift back down and a ticket fixed at a terminal
+(queue one shorter, on the status bar too); F5 and F9, a slot saved and
+loaded from pause; the floor-0 boss resolved by real swings, Friday from the
+lift's buttons, the mökki sauna and the drive back, Monday on the hub with
+floor 1 up the lift; a burnout and Clock back in; a quality change made from
+pause, applied at once and still there after a reload. Its
+`window.__helldesk` handles (`standAt`, `face`, `toBoss`, `toPerson`,
+`weakenBoss`, `wear`, `boss`, `hub`, `hubWalkUpNow`) only place or turn the
+player, skip a long wait or read state; none turns, resolves, fixes, saves
+or loads anything. A save keeps no position: every load, F9 included, stands
+the player at the floor's start.
+
+The hub's gates (docs/SPEC_HELLDESK_030_S1.md) run on the real Game without
+a screen (`headlessgame.ts`, test support: the renderer, HUD and menus are
+stand-ins that record what they were asked): `hublevel.test.ts` (the recipe
+on 150 seeds), `hubgen.test.ts` (nobody hostile on 150 hubs; the same hub,
+people and names on a reload and next week), `hub.test.ts` (every hostility
+source turns exactly the right people, announced, nobody swings within
+1.5 s, nothing else turns anyone; walk-ups: three ignores, talking, never two
+at once) and `hubweek.test.ts` (the week through the hub and the lifts both
+ways, the P1 resumed as left, save v4 round trips and v3 fixtures from
+`fixtures/` recorded with the v3 code, burnout on the hub and upstairs).
+`e2e/helldesk-hub.spec.ts` plays it on the served build: three minutes of
+walking the hub take no damage, a walk-up ignored three times and the next
+one talked to, and the lift up, a fight, down and up again with the floor as
+it was left.
