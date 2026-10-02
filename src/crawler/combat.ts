@@ -9,6 +9,7 @@ import {
   type ActorKind,
   type HazardKind,
   allyIgnores,
+  handsOn,
   hittable,
   hurtActor,
   type ProjectileKind,
@@ -201,8 +202,8 @@ export function muzzle(g: Game): THREE.Vector3 {
  * buffs, auras, and the legendary specials.
  */
 export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | null, kind: 'melee' | 'ranged' | 'spell', power = false): void {
-  // A colleague on the hub can be hit too: `hurtActor` makes it the crime it is.
-  if (a.resolved || !hittable(a) || shrugsOff(g, a)) return;
+  // A colleague on the hub can be struck too, by a swing or shove at them (`handsOn`): `hurtActor` makes it the crime it is.
+  if (a.resolved || !(a.hostile || a.colleague) || shrugsOff(g, a)) return;
   const s = g.save;
   const d = g.derivedCache;
   let dmg = base * (kind === 'melee' ? d.meleeMult : kind === 'ranged' ? d.rangedMult : d.spellMult);
@@ -279,15 +280,18 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
       const range = w.range * (power ? 1.2 : 1);
       const arc = (w.arc ?? 1) * (power ? 1.4 : 1);
       const hit: Actor[] = [];
-      for (const a of g.actors) {
-        if (!hittable(a) || a.resolved) continue;
+      const inArc = (a: Actor): boolean => {
         const dx = a.pos.x - pp.x;
         const dz = a.pos.z - pp.z;
         const dist = Math.hypot(dx, dz);
-        if (dist > range + a.radius) continue;
+        if (dist > range + a.radius) return false;
         const dot = (dx * yawFwd.x + dz * yawFwd.z) / Math.max(dist, 1e-4);
-        if (dist > 0.8 && Math.acos(Math.max(-1, Math.min(1, dot))) > arc / 2 + 0.25) continue;
-        if (!lineOfSight(g.level, pp.x, pp.z, a.pos.x, a.pos.z)) continue;
+        if (dist > 0.8 && Math.acos(Math.max(-1, Math.min(1, dot))) > arc / 2 + 0.25) return false;
+        return lineOfSight(g.level, pp.x, pp.z, a.pos.x, a.pos.z);
+      };
+      for (const a of handsOn(g.actors, inArc)) {
+        const dx = a.pos.x - pp.x;
+        const dz = a.pos.z - pp.z;
         // Drunk swings sometimes miss the person entirely.
         if (d.band.sway >= 1.5 && fx.chance(0.2)) {
           floatText(g, a.pos.clone().setY(2.4), 'MISS', '#bbbbbb');
@@ -400,13 +404,16 @@ export function shove(g: Game): void {
   const fwd = fwdOf(g.player.yaw);
   // A small ring pushed out in front: the reach of the shove.
   fxRing(g, pp.clone().addScaledVector(fwd, 1.1).setY(1), 0xdfe8ff, 1.5);
-  for (const a of g.actors) {
-    if (!hittable(a) || a.resolved || a.kind === 'boss' || a.kind === 'turret') continue;
+  const inReach = (a: Actor): boolean => {
+    if (a.kind === 'boss' || a.kind === 'turret') return false;
     const dx = a.pos.x - pp.x;
     const dz = a.pos.z - pp.z;
     const dist = Math.hypot(dx, dz);
-    if (dist > 2.6) continue;
-    if ((dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4) < 0.3) continue;
+    return dist <= 2.6 && (dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4) >= 0.3;
+  };
+  for (const a of handsOn(g.actors, inReach)) {
+    const dx = a.pos.x - pp.x;
+    const dz = a.pos.z - pp.z;
     // Shoving a colleague is laying hands on them: the same crime as a swing.
     if (!a.hostile) g.assault(a);
     if (!a.hostile) continue;
@@ -423,8 +430,8 @@ export function shove(g: Game): void {
 
 export function splash(g: Game, at: THREE.Vector3, radius: number, dmg: number, skip = -1, ally = false): void {
   for (const a of g.actors) {
-    // The player's own splash reaches colleagues too (`hurtActor` makes it a crime); an ally's never does.
-    if (!(a.hostile || (a.colleague && !ally)) || a.resolved || a.id === skip || (ally && allyIgnores(g, a))) continue;
+    // Only the fight is in it: a blast passes neutral colleagues by, whoever's it is.
+    if (!a.hostile || a.resolved || a.id === skip || (ally && allyIgnores(g, a))) continue;
     const dist = Math.hypot(a.pos.x - at.x, a.pos.z - at.z);
     if (dist > radius) continue;
     hurtActor(g, a, dmg * (1 - dist / (radius * 1.5)) * (a.shielded ? 0.5 : 1), new THREE.Vector3(a.pos.x - at.x, 0, a.pos.z - at.z).normalize().multiplyScalar(5), !ally);
@@ -510,8 +517,8 @@ export function updateProjectiles(g: Game, dt: number): void {
       }
     } else if (!dead) {
       for (const a of g.actors) {
-        // The player's own shots land on colleagues too; an ally's never do.
-        if (!(a.hostile || (a.colleague && p.owner === null)) || a.resolved || p.hitIds.has(a.id)) continue;
+        // Shots pass through anyone not in the fight (a neutral colleague on the hub), the player's and an ally's alike.
+        if (!a.hostile || a.resolved || p.hitIds.has(a.id)) continue;
         // An ally's shot goes past whoever the ally may not touch (the dummy; the calm, while the floor sleeps).
         if (p.owner !== null && allyIgnores(g, a)) continue;
         const h = a.kind === 'boss' ? 3.8 : a.kind === 'reply' || a.kind === 'mosquito' ? 1.8 : 2;

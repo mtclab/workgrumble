@@ -1233,9 +1233,26 @@ export function isFoe(a: Actor): boolean {
   return a.hostile && a.kind !== 'dummy';
 }
 
-/** Somebody the player's own swings and shots land on: anyone hostile, and a hub colleague (which is a crime). */
+/**
+ * Somebody the player's shots, splash, area effects and fight swings land
+ * on: anyone hostile. A neutral colleague on the hub is not in the fight:
+ * shots and blasts pass through them. Only a swing or shove at them, with
+ * nobody hostile in its reach, lands on them (`handsOn`), and that is the
+ * crime (D4).
+ */
 export function hittable(a: Actor): boolean {
-  return a.hostile || a.colleague;
+  return a.hostile;
+}
+
+/**
+ * Who a swing or shove lands on, of the people in its reach (`inReach`):
+ * the hostile ones; and a neutral colleague only when nobody hostile is in
+ * reach, so the swing was at them (a deliberate assault). A colleague who
+ * happens to stand beside your fight is not caught in it.
+ */
+export function handsOn(actors: readonly Actor[], inReach: (a: Actor) => boolean): Actor[] {
+  const reach = actors.filter((a) => !a.resolved && (a.hostile || a.colleague) && inReach(a));
+  return reach.some((a) => a.hostile) ? reach.filter((a) => a.hostile) : reach;
 }
 
 /**

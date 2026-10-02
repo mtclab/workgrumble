@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { resolveActor, shove, standBeforeActor, strike } from './combat';
+import { attack, fire, resolveActor, shove, splash, standBeforeActor, strike } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
 import { DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
 import { FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
+import { itemById, type WeaponDef } from './items';
 import { flowField, generateLevel, type LevelRecipe, lineOfSight, NEIGHBOURS8, toCell } from './level';
 import { fx } from './rng';
 import { newSave, normalizeSave, type QueuedTicket, type SaveState } from './state';
@@ -152,6 +153,62 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     shove(h.g);
     expect(hostiles(h)).toContain(victim);
     announced(h, victim, 'You hit');
+  });
+
+  it('collateral is not a crime: shots, splash and the Power Cycle pass through a colleague in a fight; a swing at the enemy beside them misses them; a swing at them is still assault', () => {
+    const h = hubFor();
+    const g = h.g;
+    const [c, e] = neutral(h).filter((a) => a.kind === 'user' && named(h, a));
+    if (c === undefined || e === undefined) throw new Error('no users');
+    // A legitimate fight: e is after you (an SLA breach), c is a bystander in the line of fire.
+    breach(g, { t: e.ticket, sla: 0, from: e.name, struck: [], gold: false });
+    expect(e.hostile && !c.hostile).toBe(true);
+    const run = openRun(h, 9);
+    const at = (a: Actor, m: number, side = 0): void => { a.pos.set(run.x0 + run.dx * m + run.sx * side, 0, run.z0 + run.dz * m + run.sz * side); };
+    g.player.pos.set(run.x0, 0, run.z0);
+    g.player.yaw = Math.atan2(-run.dx, -run.dz);
+    const freeze = (): void => { at(c, 3); at(e, 7); c.stunned = 1e9; e.stunned = 1e9; };
+    const untouched = (what: string): void => {
+      expect(c.hp, `${what}: no damage to the colleague`).toBe(c.maxHp);
+      expect(c.hostile, `${what}: no crime`).toBe(false);
+      expect(g.save.warnings, `${what}: no HR warning`).toBe(0);
+    };
+    // A label-maker shot straight through them at the enemy behind.
+    freeze();
+    const eHp = e.hp;
+    fire(g, { kind: 'label', from: g.player.pos.clone().setY(1.3), dir: new THREE.Vector3(run.dx, 0, run.dz), speed: 30, damage: 12, hostile: false, owner: null, ttl: 3 });
+    h.run(0.5, answering(h, freeze));
+    expect(e.hp, 'the shot went through them and hit the enemy').toBeLessThan(eHp);
+    untouched('a shot');
+    // A rubber duck's splash on the enemy, the colleague a metre and a half away.
+    at(c, 5.5);
+    splash(g, e.pos.clone(), 3.8, 60);
+    untouched('splash');
+    // The Power Cycle (a nova) with both of them in range.
+    freeze();
+    const pc = itemById('powercycle') as WeaponDef;
+    g.save.energy = 100;
+    const beforeNova = e.hp;
+    attack(g, pc, 1, false);
+    untouched('the Power Cycle');
+    expect(e.hp, 'the nova hit the enemy').toBeLessThan(beforeNova);
+    // A swing at the enemy, the colleague right beside them in the arc.
+    const stapler = itemById('stapler') as WeaponDef;
+    at(e, 1.4);
+    at(c, 1.4, 0.7);
+    const before = e.hp;
+    attack(g, stapler, 1, false);
+    expect(e.hp, 'the swing landed on the enemy').toBeLessThan(before);
+    untouched('a swing at the enemy beside them');
+    // And a swing at the colleague, nobody hostile in reach: that is assault (D4).
+    e.pos.set(run.x0 + run.dx * 16, 0, run.z0 + run.dz * 16);
+    at(c, 1.4);
+    g.attackCd = 0;
+    attack(g, stapler, 1, false);
+    expect(c.hostile, 'a deliberate swing is a crime').toBe(true);
+    expect(c.hp).toBeLessThan(c.maxHp);
+    expect(g.save.warnings, 'HR hears of it').toBe(1);
+    announced(h, c, 'You hit');
   });
 
   it('a witnessed crime: the manager who smells it is after you for the week (and HR hears)', () => {
