@@ -47,6 +47,8 @@ export interface QuestState {
   returned?: boolean;
   /** Mentoring a teammate (`by` is who). */
   mentor?: boolean;
+  /** The mentee's role, so they can come with you through the lift as who they are. */
+  role?: HelperRole;
 }
 
 /** Where a quest item is put into the world. */

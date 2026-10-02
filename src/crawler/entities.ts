@@ -596,6 +596,8 @@ export interface SpawnOpts {
   readonly spawnIndex?: number;
   /** A particular person's clothes (Morag's cardigan), instead of the kind's usual roll. */
   readonly outfit?: Outfit;
+  /** A particular person's name (a mentee coming up the lift with you), instead of the kind's usual roll. */
+  readonly name?: string;
   /** A colleague on the hub: spawned neutral (see `Actor.colleague`). */
   readonly colleague?: boolean;
 }
@@ -655,6 +657,7 @@ export function rollActor(kind: ActorKind, floor: number, r: Rng, ticketCount: n
       default: break;
     }
   }
+  if (opts.name !== undefined) name = opts.name;
   const elite = kind !== 'healer' && kind !== 'helper' && kind !== 'npc' && kind !== 'tonttu' && kind !== 'boss' && kind !== 'turret' && kind !== 'reply' && kind !== 'mosquito' ? opts.elite ?? null : null;
   const staff = opts.staffStanding ?? 0;
   const docile = (kind === 'user' || kind === 'caller') && elite === null && staff > 20 && r.chance((staff - 20) / 120);

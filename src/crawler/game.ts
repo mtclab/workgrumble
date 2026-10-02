@@ -82,7 +82,7 @@ import {
   startStage,
   tickQuests,
 } from './questing';
-import { type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
+import { isActive, type QuestDef, type QuestEvent, type QuestHost, type QuestState } from './quests';
 import { MenuKeys } from './menukeys';
 import { lockLossDefers, lockLossPauses, playPrompt } from './menus';
 import { browserStorage, takeWhatsNew } from './releases';
@@ -826,9 +826,37 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   /** Musti comes along, if you have a dog. */
   spawnCompanions(): void {
+    this.bringMentees();
     if (!this.save.upgrades.includes('dog')) return;
     const p = this.level.start;
     this.spawnAt('helper', p.x + 1.2, p.z + 1.2, -1, false, { role: 'dog' });
+  }
+
+  /**
+   * Whoever you are mentoring comes with you, at work: through the lift
+   * both ways, and back after a reload, beside you at the start, so the
+   * mentoring can go on wherever the work is. Somebody of that name already
+   * on this floor (the hub's own people) is them; otherwise they step out
+   * of the lift with you, looking like themselves (seeded by their name).
+   */
+  private bringMentees(): void {
+    const s = this.save;
+    if (s.location === 'mokki') return;
+    const p = this.level.start;
+    for (const st of s.questLog) {
+      const name = st.by;
+      if (st.mentor !== true || !isActive(st) || name === undefined) continue;
+      let a = this.actors.find((x) => x.kind === 'helper' && x.name === name && !x.resolved);
+      if (a === undefined) {
+        let seed = 0x6d656e74;
+        for (let i = 0; i < name.length; i++) seed = Math.imul(seed ^ name.charCodeAt(i), 0x01000193) >>> 0;
+        a = this.spawnAt('helper', p.x - 1.2, p.z + 1.2, -1, false, { role: st.role ?? 'intern', name }, new Rng(seed)) ?? undefined;
+        if (a === undefined) continue;
+      } else {
+        a.pos.set(p.x - 1.2, 0, p.z + 1.2);
+      }
+      a.recruited = true;
+    }
   }
 
   /** Recompute the boss's strength when the reasons for it change (findings, deals). */

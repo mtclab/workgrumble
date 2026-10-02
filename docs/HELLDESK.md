@@ -234,7 +234,7 @@ back. Rarity is never colour alone: the backpack puts a mark before the name
   shadow two talk-downs, a server room induction, cover their on-call, lock
   picking 101, backing them up against a manager, the intern's grand tour.
   Take it on (it counts against your workload, and most of it only counts
-  with them beside you), give them five minutes on the spot (a
+  with them beside you: they follow you, through the lift both ways), give them five minutes on the spot (a
   Troubleshooting check, no workload, no reward), or send them to the KB.
   See it through by Friday and you get a perk point (one a week; a second
   mentee that week pays double Rep instead), they become a protégé

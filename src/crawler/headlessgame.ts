@@ -160,13 +160,13 @@ export function press(h: Headless, it: Interactable): string[] {
   return node.options.map((o) => o.label);
 }
 
-/** A new career with the induction skipped, on the hub on Monday. The clock it seeds from is pinned: every run builds the same hub. */
-export function newCareer(): Headless {
+/** A new career (hired at `rung`) with the induction skipped, on the hub on Monday. The clock it seeds from is pinned: every run builds the same hub. */
+export function newCareer(rung = 0): Headless {
   const h = headless(newSave(1));
   const now = Date.now;
   Date.now = (): number => 1_700_000_000_000;
   try {
-    h.g.beginCareer({ name: 'Pat Hub', background: 'grad', sign: 'patch', rung: 0, domain: null, track: null }, true);
+    h.g.beginCareer({ name: 'Pat Hub', background: 'grad', sign: 'patch', rung, domain: null, track: null }, true);
   } finally {
     Date.now = now;
   }

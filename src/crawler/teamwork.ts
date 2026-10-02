@@ -333,7 +333,7 @@ export function mentorRequestNode(g: Game, a: Actor): DialogueNode {
 function acceptMentoring(g: Game, a: Actor, def: QuestDef): void {
   const s = g.save;
   const overBefore = workload(s).over;
-  const st: QuestState = { id: def.id, stage: 0, progress: 0, done: false, floor: g.floor, by: a.name, mentor: true };
+  const st: QuestState = { id: def.id, stage: 0, progress: 0, done: false, floor: g.floor, by: a.name, mentor: true, ...(a.role !== null ? { role: a.role } : {}) };
   s.questLog.push(st);
   a.recruited = true;
   changeMorale(g, a, 8);

@@ -10,6 +10,7 @@ import { HUB_EXTRA_BASE } from './hub';
 import { interact, standAt } from './interact';
 import * as host from './hosts';
 import { isPracticeTicket } from './induction';
+import { requestMentoring } from './teamwork';
 import { generateLevel, type LevelRecipe } from './level';
 import { plainInstance, uniqueInstance } from './loot';
 import { generateMokki } from './mokki';
@@ -515,6 +516,43 @@ describe('S1a: the induction\'s early exit', () => {
     expect(g.save.induction).toBeNull();
     expect(g.save.queue.some((q) => isPracticeTicket(q)), 'the practice ticket went with it').toBe(false);
     expect(g.settings.inductionDone, 'abandoned, not finished: the next career is still offered it').not.toBe(true);
+  });
+});
+
+describe('S1a: a mentee comes with you', () => {
+  it('Soft Skills Shadowing taken on the hub: the mentee rides up with you, a talk-down upstairs counts, and they come back down', () => {
+    // A senior (the team asks seniors for help).
+    const h = newCareer(3);
+    const g = h.g;
+    expect(requestMentoring(g, 'm-talkdown'), 'somebody on the hub asks').toBe(true);
+    const ask = g.mentorAsk!;
+    const mentee = ask.actor;
+    g.promptTarget = { kind: 'actor', a: mentee };
+    interact(g);
+    h.pick('Of course. Show me.');
+    h.pick(/./);
+    const st = g.save.questLog.find((q) => q.id === 'm-talkdown')!;
+    expect(st.by).toBe(mentee.name);
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    // Upstairs, with you.
+    const up = g.actors.filter((a) => a.name === mentee.name && !a.resolved);
+    expect(up.length, 'the mentee came up the lift').toBe(1);
+    expect(up[0]?.recruited, 'following you').toBe(true);
+    expect(up[0]?.role).toBe(mentee.role);
+    expect(Math.hypot(up[0]!.pos.x - g.player.pos.x, up[0]!.pos.z - g.player.pos.z)).toBeLessThan(3);
+    // A talk-down here, with them watching: it counts.
+    const target = g.actors.find((a) => a.hostile && !a.resolved && a.kind === 'user')!;
+    target.pos.set(g.player.pos.x + 2, 0, g.player.pos.z);
+    g.resolvePeacefully(target, 'charmed');
+    expect(st.progress, 'the talk-down counted').toBe(1);
+    // And back down: still with you, not two of them.
+    press(h, lift(g, ARRIVAL_LIFT_ID));
+    h.pick('Back to the hub');
+    const down = g.actors.filter((a) => a.name === mentee.name && !a.resolved);
+    expect(down.length, 'one of them on the hub').toBe(1);
+    expect(down[0]?.recruited).toBe(true);
+    expect(Math.hypot(down[0]!.pos.x - g.player.pos.x, down[0]!.pos.z - g.player.pos.z)).toBeLessThan(3);
   });
 });
 
