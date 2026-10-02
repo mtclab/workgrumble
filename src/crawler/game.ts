@@ -243,6 +243,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   onCombatDamage?: () => void;
   /** Game time of the last damage the player dealt or took. */
   combatAt = -Infinity;
+  /** Game time a fight in a kitchen hub (T4) last cost Kitchen standing (combat.ts `kitchenFight`). */
+  kitchenFightAt = -Infinity;
   screen: Screen = 'title';
   // Combat.
   attackCd = 0;

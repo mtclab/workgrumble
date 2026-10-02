@@ -197,6 +197,28 @@ export function muzzle(g: Game): THREE.Vector3 {
   return p.addScaledVector(right, 0.35).addScaledVector(fwdOf(yaw), 0.4);
 }
 
+/** How long one fight in the kitchen stays one fight, seconds: it costs Kitchen standing once. */
+export const KITCHEN_FIGHT_MEMORY = 30;
+/** What a fight in a kitchen hub (T4) costs with the Kitchen Cabinet. */
+export const KITCHEN_FIGHT_COST = 3;
+
+/**
+ * The kitchen is neutral ground (S2a, T4): a hit landed in a kitchen hub,
+ * by the player standing in it or on somebody standing in it, costs Kitchen
+ * standing, once a fight.
+ */
+function kitchenFight(g: Game, a: Actor): void {
+  const lv = g.level;
+  const kitchens = lv.recipe?.templates.filter((t) => t.id === 'T4').flatMap((t) => t.rooms) ?? [];
+  if (kitchens.length === 0) return;
+  const roomAt = (x: number, z: number): number => lv.roomOf[toCell(z) * lv.w + toCell(x)] ?? -1;
+  if (!kitchens.includes(roomAt(g.player.pos.x, g.player.pos.z)) && !kitchens.includes(roomAt(a.pos.x, a.pos.z))) return;
+  if (g.time - g.kitchenFightAt < KITCHEN_FIGHT_MEMORY) return;
+  g.kitchenFightAt = g.time;
+  adjustStanding(g.save, 'kitchen', -KITCHEN_FIGHT_COST);
+  g.hud.toast(`A fight in the kitchen. The Kitchen Cabinet will remember this (Kitchen -${KITCHEN_FIGHT_COST}).`, 'bad');
+}
+
 /**
  * Every hit the player lands goes through here: sneak attacks, skills,
  * buffs, auras, and the legendary specials.
@@ -221,6 +243,7 @@ export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | n
   // quick swing): x3 keeps a charged cycle worth what it was.
   if (power) dmg *= 3 * (perk(s, 'powercycle') > 0 ? 1.25 : 1);
   hurtActor(g, a, dmg, knock);
+  kitchenFight(g, a);
   g.particles.emit('sparks', a.pos.clone().setY(a.kind === 'boss' ? 2.4 : 1.3), power ? 16 : kind === 'spell' ? 4 : 7, 0.25);
   // Legendary specials.
   if (kind === 'melee') {
@@ -760,7 +783,9 @@ export function resolveActor(g: Game, a: Actor): void {
   if (a.expired) return;
   const rep = Math.round(a.rep * (1 + perk(s, 'listening') * 0.05));
   // On a mission card the resolve counts the moment it happens, at what it really paid (missionplay.ts).
-  g.mission?.resolvedPerson(a, g.addRep(rep));
+  // Paid first, always: an optional call would skip its own argument when no card is running.
+  const earned = g.addRep(rep);
+  g.mission?.resolvedPerson(a, earned);
   sfx.resolved();
   g.faceMood = 'grin';
   g.faceT = 1.2;

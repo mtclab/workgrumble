@@ -109,7 +109,7 @@ export function headless(save: SaveState): Headless {
     abilityCd: 0, auraSlow: 0, hazardSlow: 0, mark: null, lastVisionDiff: null, headless: true,
     // The frame's own working state (class field defaults, which Object.create skips).
     athleticsT: 0, stealthT: 0, stumbleT: 3, withdrawalT: 0, jitterT: 4, stillT: 0, stepIn: 0, busyAt: null, rootReason: '',
-    pauseAfterLoad: false, dustIn: 0, combatAt: -Infinity, moveDir: new THREE.Vector2(),
+    pauseAfterLoad: false, dustIn: 0, combatAt: -Infinity, kitchenFightAt: -Infinity, moveDir: new THREE.Vector2(),
     meterFacts: { step: null, loyly: 0, maxLoyly: 0, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 },
     openDialogue: (node: DialogueNode, after?: () => void): void => {
       dialogues.push(node);
