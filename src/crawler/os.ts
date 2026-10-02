@@ -564,7 +564,7 @@ export class Os {
       if (v.state === 'declined') continue;
       const state = v.p1 ? (v.state === 'done' || v.state === 'failed' ? 'Resolved' : 'Mandatory') : { offered: 'On offer', accepted: 'Accepted', done: 'Done', failed: 'Failed', declined: 'Declined' }[v.state];
       const card = el('div', { class: `os-card${v.p1 ? ' is-p1' : ''}${v.state === 'done' || v.state === 'failed' ? ' is-done' : ''}`, 'data-card': v.id },
-        el('div', { class: 'os-mail-head' }, el('b', {}, v.title), el('span', {}, ` - ${v.giver}${v.coworker ? ' (coworker)' : ''}`)),
+        el('div', { class: 'os-mail-head' }, el('b', {}, v.title), el('span', {}, ` - ${v.giver}${v.coworker ? ` (coworker: ${v.rapport ?? 'fine'} with you)` : ''}`)),
         el('p', { class: 'os-meta' }, `${v.size} · ${v.style} · ${v.band} · ${v.place}${v.afterHours ? ' · After hours' : ''}`),
         el('p', {}, `Pay: ${v.pay}`),
         el('p', {}, `Due: ${v.deadline}`),

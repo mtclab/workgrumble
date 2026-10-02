@@ -70,6 +70,8 @@ export interface DealInput {
   readonly previous: readonly string[];
   /** Cards that may not be dealt this week (a side quest in hand that tells the same story). */
   readonly exclude: readonly string[];
+  /** Coworkers cool on you (`rapportWord`): none of their cards is handed over in person; theirs are on your desk. */
+  readonly cool?: readonly string[];
   /**
    * Dealt for a week already under way (a save from before the deck, or a
    * deck that did not read back): the P1 is the week's floor, whose progress
@@ -171,9 +173,10 @@ export function deal(input: DealInput): Deck {
     }
   }
 
-  // About a third in person, from the cards whose giver is a coworker.
+  // About a third in person, from the cards whose giver is a coworker who is not cool on you.
   const inPersonN = Math.round(hand.length / 3);
-  const people = r.shuffle(hand.filter(coworkerCard).map((c) => c.id)).slice(0, inPersonN);
+  const cool = new Set(input.cool ?? []);
+  const people = r.shuffle(hand.filter((c) => coworkerCard(c) && !cool.has(c.giver.id)).map((c) => c.id)).slice(0, inPersonN);
 
   hand.forEach((c, k) => {
     cards.push({
@@ -189,11 +192,40 @@ export function handIds(d: Deck): string[] {
   return d.cards.filter((c) => !c.p1).map((c) => c.id);
 }
 
-/** The pay multiplier on a dealt card: the giver's after-hours rate (D6), or 1 in the day. */
-export function payRate(d: Pick<DealtCard, 'id' | 'afterHours'>): number {
-  if (!d.afterHours) return 1;
+/** How a coworker feels about you, as their cards say it (S1b, decided): warm, fine or cool. */
+export type Rapport = 'warm' | 'fine' | 'cool';
+
+/** Rapport at or above this is warm (a card done for them is +3). */
+export const WARM_RAPPORT = 3;
+/** At or below this it is cool: two cards declined (-2 each), or one failed (-5). */
+export const COOL_RAPPORT = -4;
+/** A coworker cool on you pays this share for their cards. */
+export const COOL_PAY = 0.9;
+
+export function rapportWord(n: number): Rapport {
+  return n <= COOL_RAPPORT ? 'cool' : n >= WARM_RAPPORT ? 'warm' : 'fine';
+}
+
+/** The coworkers cool on you, by giver id (the deal hands none of their cards over in person). */
+export function coolGivers(rapport: Readonly<Record<string, number>>): string[] {
+  return Object.entries(rapport).filter(([, n]) => rapportWord(n) === 'cool').map(([id]) => id);
+}
+
+/** Is this card's giver a coworker who is cool on you? */
+function coolOn(card: MissionCard, rapport: Readonly<Record<string, number>>): boolean {
+  return coworkerCard(card) && rapportWord(rapport[card.giver.id] ?? 0) === 'cool';
+}
+
+/**
+ * The pay multiplier on a dealt card: the giver's after-hours rate (D6), or
+ * 1 in the day; and 10% less from a coworker who is cool on you (`rapport`,
+ * the career's standing with each giver).
+ */
+export function payRate(d: Pick<DealtCard, 'id' | 'afterHours'>, rapport: Readonly<Record<string, number>> = {}): number {
   const card = deckCard(d);
-  return card === undefined ? 1 : giverDef(card.giver.id)?.afterHours ?? 1;
+  if (card === undefined) return 1;
+  const hours = d.afterHours ? giverDef(card.giver.id)?.afterHours ?? 1 : 1;
+  return coolOn(card, rapport) ? hours * COOL_PAY : hours;
 }
 
 /** Cards you hold: accepted, not finished, not the P1 (the P1 was never on your plate to choose). */
@@ -229,6 +261,8 @@ export interface CardView {
   readonly giver: string;
   /** The giver is a coworker on the hub (declining costs a little with them). */
   readonly coworker: boolean;
+  /** How the giver feels about you (a coworker's card), in words; null for a department's. */
+  readonly rapport: Rapport | null;
   readonly size: string;
   readonly style: string;
   readonly band: string;
@@ -249,24 +283,27 @@ export interface FloorP1 {
   readonly place: string;
 }
 
-/** What the workstation shows for a dealt card. */
-export function cardView(d: DealtCard, index: number, floor: FloorP1): CardView {
+/** What the workstation shows for a dealt card; `rapport` is the career's standing with each giver. */
+export function cardView(d: DealtCard, index: number, floor: FloorP1, rapport: Readonly<Record<string, number>> = {}): CardView {
   const card = deckCard(d);
   if (card === undefined) {
     return {
-      index, id: d.id, title: floor.title, giver: 'The Service Desk', coworker: false, size: 'Project', style: 'Loud', band: 'Every band',
+      index, id: d.id, title: floor.title, giver: 'The Service Desk', coworker: false, rapport: null, size: 'Project', style: 'Loud', band: 'Every band',
       pay: 'The boss\'s bounty, and Friday', deadline: 'Friday (it opens Friday)', afterHours: false, rule: 'A floor as it always was: everyone hostile on sight.',
       place: floor.place, state: d.state, inPerson: false, p1: true,
     };
   }
-  const rate = payRate(d);
+  const rate = payRate(d, rapport);
+  const hours = payRate(d);
+  const cool = coolOn(card, rapport);
   const base = Math.round(card.value * rate);
   const bonus = Math.round(card.value * QUIET_BONUS * rate);
   const quiet = card.style === 'loud' ? '' : `, +₡${bonus} and Management +${QUIET_STANDING.management}, Staff +${QUIET_STANDING.staff} if nobody notices`;
   return {
     index, id: card.id, title: card.title, giver: card.giver.name, coworker: coworkerCard(card),
+    rapport: coworkerCard(card) ? rapportWord(rapport[card.giver.id] ?? 0) : null,
     size: card.size === 'task' ? 'Task' : 'Project', style: card.style[0]?.toUpperCase() + card.style.slice(1), band: BAND_NAMES[card.band],
-    pay: `₡${base}${quiet}${d.afterHours && rate !== 1 ? ` (after-hours rate x${rate})` : ''}`,
+    pay: `₡${base}${quiet}${d.afterHours && hours !== 1 ? ` (after-hours rate x${hours})` : ''}${cool ? ' (they are cool on you: 10% less)' : ''}`,
     deadline: card.sla !== undefined ? `A ${card.sla} s clock, once started` : 'Friday',
     afterHours: d.afterHours, rule: ALARM_WORDS[d.alarm ?? card.alarm], place: card.place, state: d.state, inPerson: d.inPerson, p1: d.p1,
   };

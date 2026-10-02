@@ -487,7 +487,7 @@ export class Hub implements HubCtx {
     return {
       speaker: a.name,
       subtitle: `${v.size}: #${card.number} ${card.title}`,
-      text: `"${card.voice}" ${card.objective.text} Pay ${v.pay}. Due ${v.deadline}.${dealt.afterHours ? ' After hours.' : ''} The alarm: ${ALARM_WORDS[dealt.alarm ?? card.alarm]}`,
+      text: `"${card.voice}" ${card.objective.text} Pay ${v.pay}. Due ${v.deadline}.${dealt.afterHours ? ' After hours.' : ''} The alarm: ${ALARM_WORDS[dealt.alarm ?? card.alarm]} (${a.name} is ${v.rapport ?? 'fine'} with you.)`,
       options: [
         { label: 'Leave it with me.', tag: 'Accept', pick: () => { const m = g.acceptCard(index, true); this.markGivers(); return said(a.name, m.ok ? 'Brilliant. It is on your board.' : m.text, m.ok ? 'good' : 'neutral'); } },
         { label: 'Not this week, sorry.', tag: 'Decline', pick: () => { g.declineCard(index, true); this.markGivers(); return said(a.name, 'Right. Fine. I will ask someone who cares.', 'bad'); } },

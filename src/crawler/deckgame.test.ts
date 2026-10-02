@@ -572,3 +572,42 @@ describe('the floor\'s P1 on the board', () => {
     expect(g.deckViews()[0]?.state).toBe('done');
   });
 });
+
+describe('rapport with a coworker shows, and matters', () => {
+  it('two of Priya\'s cards declined: her cards say she is cool on you, pay 10% less, and next week hers is on your desk, not handed over', () => {
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits' }, { id: 'phishing' }, { id: 'stapler' }]);
+    expect(g.cardView(index(h, 'postits')).rapport, 'fine to start with').toBe('fine');
+    expect(g.cardView(index(h, 'stapler')).rapport).toBe('fine');
+    g.declineCard(index(h, 'postits'));
+    expect(g.cardView(index(h, 'phishing')).rapport, 'one declined: still fine').toBe('fine');
+    g.declineCard(index(h, 'phishing'));
+    expect(g.cardView(index(h, 'phishing')).rapport, 'two: cool').toBe('cool');
+    expect(g.cardView(index(h, 'stapler')).rapport, 'Milton is not Priya').toBe('fine');
+    // Next week: a career whose Monday would have Priya hand one over in person.
+    const s = g.save;
+    const previous = handIds(s.deck);
+    const exclude = g.deckExclude();
+    const seed = Array.from({ length: 400 }, (_, k) => k + 1).find((x) => deal({ careerSeed: x, week: s.week + 1, floor: s.floor, rung: s.rung, previous, exclude })
+      .cards.some((c) => c.inPerson && deckCard(c)?.giver.id === 'priya'));
+    expect(seed, 'a Monday where Priya would hand hers over').toBeDefined();
+    s.seed = seed!;
+    s.week += 1;
+    g.startWeek(s.floor);
+    g.loadHub(false, true);
+    const k = s.deck.cards.findIndex((c) => deckCard(c)?.giver.id === 'priya');
+    const card = deckCard(s.deck.cards[k]!)!;
+    const v = g.cardView(k);
+    expect(s.deck.cards.filter((c) => deckCard(c)?.giver.id === 'priya' && c.inPerson), 'hers are on your desk, none handed over').toEqual([]);
+    expect(v.rapport).toBe('cool');
+    const hours = payRate(s.deck.cards[k]!);
+    expect(v.pay.startsWith(`₡${Math.round(card.value * hours * 0.9)},`), v.pay).toBe(true);
+    expect(v.pay).toContain('they are cool on you: 10% less');
+    expect(h.g.hub?.giverActor('priya')?.marker ?? null, 'no "!" over her').toBeNull();
+    expect(g.acceptCard(k).ok, 'taken at the workstation').toBe(true);
+    // Up the lift to it: the card is played at nine tenths of its pay.
+    liftTo(h, card.id);
+    expect(g.mission?.rate, 'her card pays nine tenths').toBeCloseTo(hours * 0.9, 10);
+  });
+});

@@ -59,7 +59,7 @@ import { InductionDay } from './inductionday';
 import { type AlarmRule, type MissionCard, type Outcome } from './mission';
 import { AFTER_HOURS_LIGHT, briefing, MissionPlay, type MissionView } from './missionplay';
 import { POOL } from './missions';
-import { type CardView, cardView, coworkerCard, deal, DECLINE_RAPPORT, deckCard, FLOOR_P1, handIds, payRate } from './deck';
+import { type CardView, cardView, coolGivers, coworkerCard, deal, DECLINE_RAPPORT, deckCard, FLOOR_P1, handIds, payRate } from './deck';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
@@ -871,7 +871,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.player.pitch = 0;
     this.player.crouching = false;
     this.arrivalLift();
-    this.mission = new MissionPlay(this, card, m.seed, true, this.missionView?.(card), { alarm: m.alarm, afterHours: m.afterHours, rate: payRate(dealt), career: true, from: m.run });
+    this.mission = new MissionPlay(this, card, m.seed, true, this.missionView?.(card), { alarm: m.alarm, afterHours: m.afterHours, rate: payRate(dealt, s.rapport), career: true, from: m.run });
     restoreGearDrops(this);
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
@@ -1019,7 +1019,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const d = s.deck.cards[index];
     if (d === undefined) throw new Error(`no card ${index}`);
     const dealt = d.id === FLOOR_P1 && p1Resolved(s) ? { ...d, state: 'done' as const } : d;
-    return cardView(dealt, index, { title: `Floor ${floorLabel(s.floor)}: the major incident (${bossName(s.floor)})`, place: `Floor ${floorLabel(s.floor)}` });
+    return cardView(dealt, index, { title: `Floor ${floorLabel(s.floor)}: the major incident (${bossName(s.floor)})`, place: `Floor ${floorLabel(s.floor)}` }, s.rapport);
   }
 
   /** The week's deck, card by card (the Projects window). */
@@ -1075,7 +1075,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
    */
   dealWeek(midWeek = false): void {
     const s = this.save;
-    s.deck = deal({ careerSeed: s.seed, week: s.week, floor: s.floor, rung: s.rung, previous: handIds(s.deck), exclude: this.deckExclude(), midWeek });
+    s.deck = deal({ careerSeed: s.seed, week: s.week, floor: s.floor, rung: s.rung, previous: handIds(s.deck), exclude: this.deckExclude(), midWeek, cool: coolGivers(s.rapport) });
     s.left = [];
   }
 
