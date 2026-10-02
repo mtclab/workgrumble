@@ -82,13 +82,70 @@ Browser (staging, real keys, e2e/helldesk-hub.spec.ts; the existing suite update
 
 Bot (staging): a hub-only week (`approach: 'hub-only'`: tickets, talk, walk-ups, no lift to the P1) has combat share at most 5%.
 
-## S1b outline: the workstation and the weekly deck
+## S1b: the workstation and the weekly deck (build-ready)
 
-- **Your workstation:** a desk in the hub that is yours (the terminal you log on to there opens a Projects tab in WorkgrumbleOS). It lists the week's cards: tasks (small, short) and projects (bigger, multi-stage), each with size, difficulty, style, giver, pay and deadline. Coworkers with "!" also hand you cards in person.
-- **The weekly deck (D2):** each Monday deals a random mix by band and week (seeded per career and week): 3-7 cards, varied in size, style (sneaky, loud, mixed, social, investigation, escort), giver and after-hours or not (D6: pay by giver). The P1 is always one of them and unlocks Friday.
-- **Mission maps:** a taken card sends you by lift to a fresh map built from its recipe (the spike's T2/T3 first; S2 adds the rest). The P1 becomes a card whose finale is the week's boss.
-- **Alarm rule per card (D7):** one-way, search-then-calm, or full cool-down, shown on the card.
-- Gates: deck variety over seeds (no two consecutive weeks deal the same mix), every card reachable and completable by the bot quiet and loud where allowed, P1 always present.
+### What the player gets
+
+Monday on the hub, your workstation (your own desk, with its computer) shows **this week's deck**: a different random hand of tasks and projects every week, small and big, quiet and loud, from different people, some after hours. The week's major incident is always one of them. Some cards are handed to you in person by a coworker with a "!" instead. You choose what to take on (up to your workload capacity), take the lift to it, play it, and come back to the hub with the pay and the consequences. Missions do not all play the same: each card says how its alarm behaves.
+
+### Your workstation
+
+- **One desk in the hub is yours** (generated with the hub, persistent, marked on the map as "your desk"). Its terminal opens WorkgrumbleOS with a new **Projects** tab: the week's cards. Every other hub terminal still works the ticket queue as today; only your workstation shows the deck (so it is a place you go back to).
+- **A card shows:** title, giver, size (task or project), style, difficulty band, pay (Rep, plus standing if quiet), deadline (P1: a clock once started; others: Friday), after-hours or not, and **the alarm rule** (D7) in plain words. Buttons: Accept / Decline (declining a coworker's card costs a little standing with them).
+- **Accepted cards** count toward workload capacity (existing `Derived.capacity`); over capacity gives today's overload penalties.
+
+### The weekly deck (D2)
+
+- **Dealt each Monday**, seeded by career seed and week (same career, same week, same deck): the P1 plus 2-6 others (count by rung band: Helpdesk 3-4 total, Specialist 4-5, Architect 5-7), drawn without repeats from the card pool by band, with style weights so a week is never all one style (at least one non-loud card and at least one non-sneaky card whenever the pool allows).
+- **No two consecutive weeks deal the same set** of non-P1 cards.
+- **In-person cards:** about a third of the non-P1 cards are attributed to a hub coworker (their giver) who carries a "!"; talking to them offers the card. They also appear on the workstation as "ask <name>".
+- **Staffing** (today's phone calls) keeps working as today in S1b; turning staffing into cards is S5.
+
+### Cards
+
+- **Data:** `MissionCard` (mission.ts) extended with: `size: 'task' | 'project'`, `band`, `giver` (id + name, hub coworker or department), `afterHours?: boolean` with the giver's after-hours pay multiplier (D6: some givers pay 1.5x after hours, some 1.0x; a table in the giver data), `alarm` (D7, below), `recipe`, `style` (extend to 'sneaky' | 'loud' | 'mixed' | 'social' | 'escort'), `failure` (what happens when it fails: giver hostile on the hub next visit (announced), standing loss, card gone).
+- **S1b pool** (built on maps that exist: the spike's T2 meeting ring and T3 office row, plus today's generator as a "large" recipe):
+  1. #1 The Red Stapler (sneaky, task, T3), with the spike's tuning applied: one patroller whose route crosses the spine at one point, crouch speed raised to 0.7 of walking, and going loud locks HR's closet (a Security check under pressure) and calls HR's manager.
+  2. #7 Vendor Day (loud, task, T2).
+  3. #4 Password Hygiene Week (sneaky, task, T3: collect 8 of 12 post-its unnoticed).
+  4. #5 Phishing Test Debrief (social, task, T2: three talk-downs at the meeting table, printed odds; a failed check goes loud).
+  5. #3 Josh's First Day, Again (escort/mixed, project, T2 + T3: escort Josh past a hostile vendor pocket).
+  6. #9 Marcus and the Backups (sneaky/social, project, T3: reach Marcus's office unnoticed, fix the agent, the existing three-way choice).
+  7. #2 P1 The Printer Uprising (loud, project, large recipe: today's generator, 6 jams and the elite).
+  8. **The week's P1:** a card whose map is the week's floor exactly as today (today's floor and boss, P1 rules), so the story bosses keep their floors. On a week where #2 is the P1 it replaces the floor P1 at Helpdesk band only; otherwise the floor P1 is the P1.
+  After-hours versions: any card except the floor P1 may be dealt after hours: half the crowd, dimmer lights (lighting only; light-affects-sight is S4), the giver's after-hours pay.
+
+### The alarm rule per card (D7)
+
+Each card names one of three rules, shown on the card and in the mission HUD:
+
+| Rule | Plain words on the card | Behaviour |
+|---|---|---|
+| `one-way` | "Once they know, they know." | Today's spike model: tiers only go up. |
+| `search` | "Lose them and they search, then give up." | A person at Alert who has not seen you for 8 s starts **searching** (visible countdown over their head, 20 s, walking to your last seen spot); at 0 they drop to Noticed. Escalated (everyone) stays. The mission tier follows the highest person. |
+| `cooldown` | "It blows over." | Any tier, Escalated included, drops one step after 45 s with nobody seeing you or fighting; announced like a rise. |
+
+Loud cards are dealt `one-way` or `cooldown`; sneaky and social cards any of the three; the deck weights so a week has at least two different rules when it has three or more non-P1 cards.
+
+### The lift as mission select
+
+The hub lift lists: each accepted card ("<title> (<place>)"), "Floor <n>: the major incident" when the P1 is the floor card, and Friday once the P1 is resolved. On a mission map the lift offers "Finish" (objective done), "Abort" (card stays on the board until Friday; a P1 cannot be aborted, only left), and Friday when allowed. Results card as in the spike, then back to the hub.
+
+### Saves
+
+Saving works on a mission map (the spike refused it): `save.mission` holds the card, seed, run state (objective progress, tier, per-person suspicion and mood, resolved, used, picked), so a reload mid-mission lands at the mission's lift with everything as it was. `save.deck` holds the week's deal and each card's state (offered, accepted, done, failed, declined). Save version stays 4 with additive fields (old v4 saves get an empty deck dealt on load).
+
+### Gates (S1b)
+
+Unit, each proven to fail with its behaviour removed:
+1. The deal: same career and week give the same deck; P1 always present; card count by band; style mix rule; two consecutive weeks never deal the same non-P1 set; over 200 career seeds x 8 weeks.
+2. Accept/decline: capacity counts accepted cards; declining a coworker's card costs standing with that coworker only; in-person cards are only offered by their giver.
+3. Alarm rules: one-way never drops; search drops an Alert person to Noticed only after 8 s unseen plus the 20 s countdown, never Escalated; cooldown drops one tier after 45 s unseen and no fighting, announced.
+4. After hours: half crowd, the giver's multiplier applied to pay, the floor P1 never after hours.
+5. Failure: a failed coworker card turns that coworker hostile on the hub next visit, announced (a new S1a hostility source: add the row).
+6. Save and reload mid-mission: same map, tier, suspicion, objective progress.
+Browser (staging): take a card at the workstation, ride the lift, finish it quiet, come back paid; take a loud card and abort it: it is still on the board; a coworker's in-person card offered by talking to them.
+Bot (staging): every card in the pool completes with approach quiet (where the style allows) and loud, over 10 seeds each, no errors; report detection rate and quiet/loud Rep/min per card (targets are enforced in S6, reported now).
 
 ## S1c outline: decor, special items and buffs
 
