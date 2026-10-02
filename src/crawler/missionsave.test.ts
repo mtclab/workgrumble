@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Game } from './game';
-import { DT, type Headless, lift, newCareer, press } from './headlessgame';
+import { DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
 import { abortCard, alertOne, cardIndex, deskWatchers, hide, holdAll, liftTo, pickUp, reload, withDeck } from './deckplay';
+import { readSlot } from './saves';
+import { normalizeSave } from './state';
 import { SEARCH_AFTER } from './stealth';
 import type { Actor } from './entities';
 import { findPrompt, interact } from './interact';
@@ -349,5 +351,84 @@ describe('an aborted card is still the same card', () => {
     h.pick('Finish: close the card');
     const card = g.save.rep - rep0 - 50;
     expect(h.results?.rows.get('Rep')?.startsWith(`+${card} `), `the card's own ${card}: ${h.results?.rows.get('Rep') ?? ''}`).toBe(true);
+  });
+});
+
+describe('a broken mid-card save', () => {
+  /** A career on the post-its, three picked up and someone suspicious, saved: the save as JSON, to break. */
+  function midCard(): { raw: Record<string, unknown>; run: Record<string, unknown> } {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits', alarm: 'search' }]);
+    g.acceptCard(cardIndex(h, 'postits'));
+    liftTo(h, 'postits');
+    pickUp(h, 3);
+    const w = deskWatchers(h)[0]!;
+    g.player.crouching = true;
+    g.mission!.standInView(w.actor.id, 6);
+    h.run(0.6, () => { g.mission!.standInView(w.actor.id, 6); });
+    expect(g.writeSlotFor('auto')).toBe(true);
+    const raw = JSON.parse(JSON.stringify(readSlot('auto')!.data)) as Record<string, unknown>;
+    const run = (raw.mission as Record<string, unknown>).run as Record<string, unknown>;
+    return { raw, run };
+  }
+
+  const people = (run: Record<string, unknown>): Record<string, unknown>[] => run.people as Record<string, unknown>[];
+  const breaks: readonly [string, (run: Record<string, unknown>) => void][] = [
+    ['the run is not a run', (run) => { run.run = 'garbage'; }],
+    ['a counted person is not a place in the crowd', (run) => { (run.run as Record<string, unknown>).counted = ['x']; }],
+    ['the people are missing', (run) => { delete run.people; }],
+    ['the people are not a list', (run) => { run.people = { 0: {} }; }],
+    ['a person has no position', (run) => { delete people(run)[0]!.x; }],
+    ['a person is in a mood the game does not have', (run) => { people(run)[0]!.mood = 'furious'; }],
+    ['a person\'s place in the crowd is negative', (run) => { people(run)[0]!.i = -1; }],
+    ['two people in one place', (run) => { people(run)[1]!.i = people(run)[0]!.i; }],
+    ['a person\'s memo is not words', (run) => { people(run)[0]!.memo = [1, 2]; }],
+    ['a person who joined later is of no kind', (run) => { people(run)[0]!.extra = { kind: 'dragon' }; }],
+    ['the copies picked up are not places', (run) => { run.collected = [-1]; }],
+    ['the copies picked up are missing', (run) => { delete run.collected; }],
+    ['the tier is out of range', (run) => { run.tier = 7; }],
+  ];
+
+  it('as written, it loads onto the card (the control)', () => {
+    const { raw } = midCard();
+    const s = normalizeSave(raw)!;
+    expect(s.location).toBe('mission');
+    const back = headless(s);
+    back.g.loadWorld(true);
+    expect(back.g.mission?.run.progress).toBe(3);
+  });
+
+  it.each(breaks)('%s: the load lands on the hub, the card still on the board, and taking it again starts it fresh', (_why, brk) => {
+    const { raw, run } = midCard();
+    brk(run);
+    const s = normalizeSave(raw);
+    expect(s, 'the career still loads').not.toBeNull();
+    expect(s!.location).toBe('hub');
+    expect(s!.mission).toBeNull();
+    const back = headless(s!);
+    expect(() => back.g.loadWorld(true)).not.toThrow();
+    expect(back.g.hub, 'on the hub').not.toBeNull();
+    expect(back.g.save.deck.cards[cardIndex(back, 'postits')]?.state, 'still on the board').toBe('accepted');
+    back.g.screen = 'play';
+    liftTo(back, 'postits');
+    expect(back.g.mission!.run.progress, 'fresh').toBe(0);
+    expect(back.g.mission!.run.seconds).toBe(0);
+  });
+
+  it('a card left at its lift whose run is broken is dropped: taking it again starts it fresh', () => {
+    const { raw, run } = midCard();
+    people(run)[0]!.mood = 'furious';
+    raw.left = [raw.mission];
+    raw.location = 'hub';
+    raw.mission = null;
+    const s = normalizeSave(raw)!;
+    expect(s.left).toEqual([]);
+    const back = headless(s);
+    back.g.loadWorld(true);
+    back.g.screen = 'play';
+    liftTo(back, 'postits');
+    expect(back.g.mission!.run.progress).toBe(0);
   });
 });

@@ -379,3 +379,64 @@ export class MissionRun {
     return { outcome, pay: payout(this.card, outcome, rate) };
   }
 }
+
+// ---------------------------------------------------------------- a saved run, checked
+
+/** Every actor kind, mood, sort and elite affix a save may name (checked against the types: a new one must be added here). */
+const KINDS: Readonly<Record<ActorKind, true>> = {
+  user: true, caller: true, customer: true, manager: true, reply: true, jam: true, mosquito: true, consultant: true, shadowit: true,
+  vendor: true, chatbot: true, turret: true, boss: true, healer: true, helper: true, npc: true, tonttu: true, dummy: true,
+};
+const MOODS: Readonly<Record<Mood, true>> = { calm: true, investigating: true, wary: true, alert: true, searching: true };
+const SORTS: Readonly<Record<Sort, true>> = { desk: true, wander: true, patrol: true };
+const AFFIXES: Readonly<Record<EliteAffix, true>> = { relentless: true, tenured: true, vip: true, cc: true, escalating: true, passive: true };
+
+type Raw = Readonly<Record<string, unknown>>;
+
+const isObj = (v: unknown): v is Raw => typeof v === 'object' && v !== null && !Array.isArray(v);
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const isCount = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+const isBool = (v: unknown): v is boolean => typeof v === 'boolean';
+const isTier = (v: unknown): v is Tier => v === 0 || v === 1 || v === 2 || v === 3;
+const isKey = <K extends string>(table: Readonly<Record<K, true>>) => (v: unknown): v is K => typeof v === 'string' && Object.hasOwn(table, v);
+const isPoint = (v: unknown): v is Point => isObj(v) && isNum(v.x) && isNum(v.z);
+const isMaybe = <T>(ok: (v: unknown) => v is T) => (v: unknown): v is T | null => v === null || ok(v);
+const isList = <T>(ok: (v: unknown) => v is T) => (v: unknown): v is T[] => Array.isArray(v) && v.every(ok);
+/** An optional field: absent (a save from before it), or as it should be. */
+const isOpt = <T>(ok: (v: unknown) => v is T) => (v: unknown): v is T | undefined => v === undefined || ok(v);
+
+function isRun(v: unknown): v is RunSave {
+  return isObj(v) && isNum(v.seconds) && v.seconds >= 0 && isTier(v.maxTier) && isBool(v.spoiled) && isNum(v.resolvedRep)
+    && isCount(v.progress) && isBool(v.objectiveDone) && isList(isCount)(v.counted);
+}
+
+function isExtra(v: unknown): v is ExtraSave {
+  return isObj(v) && isKey(KINDS)(v.kind) && typeof v.name === 'string' && Number.isInteger(v.room) && isMaybe(isKey(AFFIXES))(v.elite)
+    && isNum(v.rep) && isKey(SORTS)(v.sort) && isMaybe((x): x is string => typeof x === 'string')(v.tag) && isBool(v.called)
+    && Number.isInteger(v.owner) && isNum(v.ttl);
+}
+
+function isPerson(v: unknown): v is PersonSave {
+  return isObj(v) && isCount(v.i) && isNum(v.x) && isNum(v.z) && isNum(v.yaw) && isNum(v.hp) && isBool(v.resolved) && isBool(v.aggro)
+    && isNum(v.suspicion) && isNum(v.peak) && isKey(MOODS)(v.mood) && isNum(v.countdown) && v.countdown >= 0 && isMaybe(isPoint)(v.spot)
+    && isOpt(isNum)(v.stolen) && isOpt(isBool)(v.talked) && isOpt(isNum)(v.enragedT)
+    && isOpt(isList((x): x is string => typeof x === 'string'))(v.memo) && isOpt(isBool)(v.gift) && isOpt(isNum)(v.fleeT)
+    && isOpt(isNum)(v.lost) && isOpt(isMaybe(isPoint))(v.lastSeen) && isOpt(isExtra)(v.extra);
+}
+
+/**
+ * A saved run (`MissionSave.run`), checked field by field: a run is put back
+ * only when every field is what the game wrote. Anything else (a save from
+ * a broken build, a hand-edited one) is null: the card starts again fresh.
+ */
+export function normalizePlay(raw: unknown): PlaySave | null {
+  const v = raw;
+  if (!isObj(v)) return null;
+  const ok = isRun(v.run) && isTier(v.tier) && isNum(v.quietT) && isOpt(isNum)(v.unseenT)
+    && isList(isPerson)(v.people) && new Set(v.people.map((p) => p.i)).size === v.people.length
+    && isOpt(isList(isCount))(v.alerted) && isList(isCount)(v.collected) && isBool(v.loudDone)
+    && isNum(v.nerve) && isNum(v.repAtStart) && isNum(v.managementAtStart) && isNum(v.staffAtStart)
+    && isOpt((x): x is PlaySave['leftAt'] => isObj(x) && isNum(x.rep) && isNum(x.management) && isNum(x.staff))(v.leftAt)
+    && isMaybe(isNum)(v.detectedAt) && isMaybe(isNum)(v.noticedAt) && isCount(v.noiseEvents);
+  return ok ? v as unknown as PlaySave : null;
+}

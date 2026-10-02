@@ -22,7 +22,7 @@ import { HUD_METERS, type HudMeter, type InductionState, normalizeInduction } fr
 import { freshOnCall, normalizeOnCall, type OnCallState } from './oncall';
 import { type Deck, emptyDeck, heldCards, normalizeDeck } from './deck';
 import type { PlaySave } from './mission';
-import { ALARM_RULES, type AlarmRule } from './mission';
+import { ALARM_RULES, type AlarmRule, normalizePlay } from './mission';
 import { canTake, treePerk } from './perks';
 import type { TeamMember } from './team';
 import { isActive, type QuestState } from './quests';
@@ -252,18 +252,25 @@ export function freshMission(card: string, index: number, seed: number, alarm: A
   return { card, index, seed, alarm, afterHours, used: [], picked: [], drinksHere: 0, gearDrops: [], run: null, unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false };
 }
 
-/** A saved mission, checked: anything broken and it is dropped (the card stays on the board). */
+/**
+ * A saved mission, checked field by field: anything broken (its run too:
+ * mission.ts `normalizePlay`) and it is dropped, so the card stays on the
+ * board, starts fresh when taken again, and a load that was on it lands on
+ * the hub (`normalizeSave`).
+ */
 export function normalizeMission(raw: unknown): MissionSave | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const o = raw as Partial<Record<keyof MissionSave, unknown>>;
-  if (typeof o.card !== 'string' || typeof o.index !== 'number' || typeof o.seed !== 'number' || !ALARM_RULES.includes(o.alarm as AlarmRule)) return null;
+  if (typeof o.card !== 'string' || !Number.isInteger(o.index) || (o.index as number) < 0 || typeof o.seed !== 'number' || !ALARM_RULES.includes(o.alarm as AlarmRule)) return null;
+  const run = o.run === undefined || o.run === null ? null : normalizePlay(o.run);
+  if (run === null && o.run !== undefined && o.run !== null) return null;
   const nums = (v: unknown): number[] => (Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []);
-  const m = freshMission(o.card, o.index, o.seed >>> 0, o.alarm as AlarmRule, o.afterHours === true);
+  const m = freshMission(o.card, o.index as number, o.seed >>> 0, o.alarm as AlarmRule, o.afterHours === true);
   m.used = nums(o.used);
   m.picked = Array.isArray(o.picked) ? o.picked.filter((x): x is string => typeof x === 'string') : [];
   m.drinksHere = typeof o.drinksHere === 'number' ? o.drinksHere : 0;
   m.gearDrops = Array.isArray(o.gearDrops) ? o.gearDrops as MissionSave['gearDrops'] : [];
-  m.run = typeof o.run === 'object' && o.run !== null ? o.run as PlaySave : null;
+  m.run = run;
   for (const k of ['unbreakableUsed', 'nokiaUsed', 'suo', 'coldSteam'] as const) m[k] = o[k] === true;
   return m;
 }
