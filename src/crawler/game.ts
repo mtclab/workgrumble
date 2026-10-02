@@ -33,6 +33,7 @@ import { disposeTree } from './dispose';
 import {
   type Actor,
   type ActorKind,
+  bossName,
   createActor,
   rollActor,
   disposeActor,
@@ -52,6 +53,7 @@ import {
   updateAuras,
 } from './entities';
 import { Hud, type HudFrame } from './hud';
+import { buildHub, floorLabel, Hub, HUB_FLOOR, hubSeed, hubTheme, p1Resolved } from './hub';
 import { floorAwake, HUD_METERS, inductionOnLoad, type InductionEvent, isPracticeTicket, type MeterFacts, MORAG, startInduction, stillHidden, welcomeLine } from './induction';
 import { InductionDay } from './inductionday';
 import type { MissionCard } from './mission';
@@ -121,6 +123,7 @@ import {
   type Derived,
   freshFloorState,
   freshWeekend,
+  hubWeek,
   levelUpReady,
   loadLegacy,
   newSave,
@@ -173,6 +176,9 @@ function hasDomainAbility(s: SaveState): boolean {
 
 /** Half a person's width, for the sight lines past a door frame. */
 const SHOULDER = 0.45;
+
+/** The P1 floor's arrival lift, made into the way back to the hub: well clear of anything a level numbers itself. */
+export const ARRIVAL_LIFT_ID = 9_000_100;
 
 export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly renderer: THREE.WebGLRenderer;
@@ -327,6 +333,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   inductionDay: InductionDay | null = null;
   /** A mission card being played (the 0.3.0 spike, `?mission=`), or null: then nothing below changes anything. */
   mission: MissionPlay | null = null;
+  /** The hub while you are on it (hub.ts), or null. */
+  hub: Hub | null = null;
   /** What the meter reveal looks at, refilled in place each frame (no allocation while meters wait). */
   private readonly meterFacts: { -readonly [K in keyof MeterFacts]: MeterFacts[K] } = { step: null, loyly: 0, maxLoyly: 0, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 };
 
@@ -495,9 +503,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   floorName(): string {
     if (this.mission) return `${this.mission.card.place} - ${this.mission.card.title}`;
     if (this.save.location === 'mokki') return `The Mökki - weekend ${this.save.week}`;
+    if (this.save.location === 'hub') return `The hub - ${hubTheme(this.save.seed).name}`;
     const theme = THEMES[this.save.floor % THEMES.length];
     const n = this.save.floor;
-    return n > FINAL_FLOOR ? `Overtime ${n - FINAL_FLOOR} - ${theme?.name ?? ''}` : `Floor ${n === 0 ? 'B1' : n} - ${theme?.name ?? ''}`;
+    return `${n > FINAL_FLOOR ? '' : 'Floor '}${floorLabel(n)} - ${theme?.name ?? ''}`;
   }
 
   // ================================================================== world
@@ -513,6 +522,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.inductionDay = null;
     this.mission?.dispose();
     this.mission = null;
+    this.hub?.dispose();
+    this.hub = null;
     for (const a of this.actors) disposeActor(this.scene, a);
     this.actors = [];
     for (const p of this.projectiles) this.scene.remove(p.mesh);
@@ -560,18 +571,25 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   loadWorld(fromSave: boolean): void {
     if (this.save.location === 'mokki') this.loadMokki(fromSave);
+    else if (this.save.location === 'hub') this.loadHub(fromSave);
     else this.loadFloor(this.save.floor, fromSave);
   }
 
-  loadFloor(n: number, fromSave: boolean): void {
+  /**
+   * A floor: the week's P1 (`location` 'office'). `byLift` is the lift up
+   * from the hub: the floor resumes from its `FloorState` (the week started
+   * it on Monday), and arriving saves, as any arrival does.
+   */
+  loadFloor(n: number, fromSave: boolean, byLift = false): void {
     this.clearWorld();
     const s = this.save;
     s.floor = n;
     s.location = 'office';
-    const fresh = !fromSave || s.floorState.floor !== n;
+    const fresh = (!fromSave && !byLift) || s.floorState.floor !== n;
     if (fresh) {
       s.floorState = freshFloorState(n);
-      s.queue = [];
+      // A new floor without a hub week behind it (a floor jumped to) starts its own queue.
+      if (!byLift) s.queue = [];
     }
     const fs = s.floorState;
     if (n === FINAL_FLOOR && (s.flags.ceoDeal === true || s.flags.goldenParachute === true)) fs.bossDone = true;
@@ -613,8 +631,12 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);
     this.player.yaw = Math.PI;
     this.player.pitch = 0;
+    // The lift you came up in goes back down to the hub (the corner office's goes there too, or to Friday).
+    // It comes first: "the lift" is the one by the start, not the one past the boss.
+    const back = this.level.arrival;
+    if (back !== undefined) this.level.interactables.unshift({ kind: 'elevator', x: back.x, z: back.z, id: ARRIVAL_LIFT_ID, room: 0, used: false, mesh: back.mesh, lock: 0 });
 
-    if (fresh) {
+    if (fresh && !byLift) {
       s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');
       delete s.consumables.laptop;
     } else {
@@ -638,7 +660,53 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.spawnCompanions();
     // Before the flow field: the lobby computer takes up a cell.
     this.syncInduction();
-    if (!fromSave) host.consequencesOnArrival(this, n);
+    // Earlier choices come due the first time you set foot on the floor (each is once only).
+    if (!fromSave || byLift) host.consequencesOnArrival(this, n);
+    this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
+    this.refreshDerived();
+    this.markSeen();
+    this.updateLights(true);
+    this.settleWorld();
+    sfx.setBoss(false);
+    sfx.setAmbient('office');
+    if (!fromSave || byLift) this.autosave();
+  }
+
+  /**
+   * The hub (hub.ts): the career's own office floor, the same building every
+   * week. `monday` is the start of a week on it: the staffing clock starts
+   * early, and low Staff standing has somebody waiting.
+   */
+  loadHub(fromSave: boolean, monday = false): void {
+    this.clearWorld();
+    const s = this.save;
+    s.location = 'hub';
+    if (s.hub.week !== s.week) s.hub = hubWeek(s.hub, s.week);
+    const theme = hubTheme(s.seed);
+    const seed = hubSeed(s.seed);
+    this.levelRng = new Rng(seed ^ 0x5bd1e995);
+    this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
+    this.level = buildHub(s.seed);
+    this.dressOffice(theme, HUB_FLOOR);
+    // What you already used this week stays used; the weekend refills it.
+    for (const it of this.level.interactables) if (s.hub.used.includes(it.id)) it.used = true;
+    this.slackedTerminals.clear();
+    this.loggedOn.clear();
+    this.player.pos.set(this.level.start.x, 0, this.level.start.z);
+    this.player.yaw = Math.PI;
+    this.player.pitch = 0;
+    this.hub = new Hub(this);
+    this.hub.populate();
+    this.elevatorOpen = p1Resolved(s);
+    this.majorIncidentLine();
+    restoreGearDrops(this);
+    placeQuestContent(this);
+    this.pendingStaff = null;
+    scheduleStaffing(this, monday);
+    scheduleMentoring(this, monday);
+    this.spawnCompanions();
+    this.syncInduction();
+    if (monday) this.hub.monday();
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
     this.markSeen();
@@ -647,6 +715,19 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     sfx.setBoss(false);
     sfx.setAmbient('office');
     if (!fromSave) this.autosave();
+  }
+
+  /** The week's major incident, in the tracker while it is open, wherever you are at work. */
+  private majorIncidentLine(): void {
+    const s = this.save;
+    s.quests = s.quests.filter((q) => q.kind !== 'boss');
+    if (p1Resolved(s) || (s.floor === FINAL_FLOOR && (s.flags.ceoDeal === true || s.flags.goldenParachute === true))) return;
+    const name = bossName(s.floor);
+    s.quests.unshift({
+      id: s.nextQuestId++, kind: 'boss', title: `MAJOR INCIDENT: ${name}`,
+      body: `${name} is holding the corner office on floor ${floorLabel(s.floor)} hostage. Take the lift up and resolve them to unlock Friday - and the weekend.`,
+      from: 'The Service Desk', goal: 1, progress: 0, reward: 0, done: false,
+    });
   }
 
   /** The office's air and light around a floor just generated. */
@@ -846,7 +927,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.sun.castShadow = this.settings.quality !== 'low' && this.sun.intensity > 0;
   }
 
-  spawnAt(kind: ActorKind, x: number, z: number, room: number, aggro: boolean, opts: SpawnOpts = {}): Actor | null {
+  /** `rng` rolls who they are (the hub rolls each of its people by spawn index: hub.ts `personRng`). */
+  spawnAt(kind: ActorKind, x: number, z: number, room: number, aggro: boolean, opts: SpawnOpts = {}, rng: Rng = this.levelRng): Actor | null {
     if (isSolidAt(this.level, x, z) && kind !== 'boss') {
       let placed = false;
       for (let t = 0; t < 12 && !placed; t++) {
@@ -860,7 +942,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       }
       if (!placed) return null;
     }
-    const a = createActor(this, kind, x, z, room, this.levelRng, TICKETS.length, { staffStanding: this.save.standing.staff, ...opts });
+    const a = createActor(this, kind, x, z, room, rng, TICKETS.length, { staffStanding: this.save.standing.staff, ...opts });
     castShadows(a.root);
     if (aggro) a.aggro = true;
     // The CEO's hat: managers will not start anything with you.
@@ -875,7 +957,12 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
 
   markResolved(a: Actor): void { markResolved(this, a); }
 
+  /** A colleague hit on the hub (`hurtActor`): the crime and its witnesses (hub.ts). */
+  assault(a: Actor): void { this.hub?.assault(a); }
+
   spawn(kind: ActorKind, x: number, z: number, room: number): Actor | null {
+    // On the hub nobody summons anybody: every fight there has an announced reason (hub.ts).
+    if (this.hub !== null) return null;
     if (this.actors.filter((a) => !a.resolved && isFoe(a)).length > 70) return null;
     // Summoned trouble arrives after you, unless the floor is still asleep for
     // the induction: then it arrives as calm as everyone else (a breach's
@@ -911,10 +998,16 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
     // A vision is never saved: whatever asks waits until you surface. Nor is a mission card's trainee.
     if (this.vision !== null || this.mission) return false;
-    if (s === this.save && this.boss !== null && !this.boss.resolved && !s.floorState.bossDone) {
+    if (s === this.save) this.recordBoss();
+    return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
+  }
+
+  /** Where the P1's boss fight stands, into the floor's state: kept by a save, and by a trip down to the hub. */
+  private recordBoss(): void {
+    const s = this.save;
+    if (s.location === 'office' && this.boss !== null && !this.boss.resolved && !s.floorState.bossDone) {
       s.floorState.boss = { hp: this.boss.hp, phase: this.boss.phase };
     }
-    return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
   }
 
   autosave(): void {
@@ -1154,7 +1247,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.caughtPending) {
       this.caughtPending = false;
       const back = new THREE.Vector3(Math.sin(this.player.yaw), 0, Math.cos(this.player.yaw)).multiplyScalar(2.5);
-      const m = this.spawn('manager', this.player.pos.x + back.x, this.player.pos.z + back.z, -1);
+      // On the hub it is a colleague with words, not a fight: nobody there turns without a reason announced.
+      const m = this.hub !== null ? this.hub.visit('manager', this.player.pos.x + back.x, this.player.pos.z + back.z) : this.spawn('manager', this.player.pos.x + back.x, this.player.pos.z + back.z, -1);
       if (m !== null) {
         say(m, 'Are those... CATS? My office. Now. Well, here. Now.', 4);
         this.hud.toast('CAUGHT! A manager saw the cat pictures.', 'bad');
@@ -1185,14 +1279,16 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.derivedCache = derive(this.save);
     this.resetTransient();
     this.fixCache = new WeakMap();
-    this.loadFloor(0, false);
+    // Week one, Monday: the hub. The first major incident is up the lift.
+    this.loadHub(false, true);
     this.journal(`Day one. ${this.save.name}, ${this.title}. The badge photo is terrible.`);
     screens.startPlay(this);
+    this.mondayToast();
     if (this.save.induction !== null) {
       this.openDialogue(said(MORAG, welcomeLine(this.save.name), 'neutral', 'Clock in'));
       return;
     }
-    this.openDialogue(said('Morag from Internal IT', bindingText(`Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. The users have tickets; the tickets have users. Computers are blue on the map; I am green. You can talk most people down ({interact}) instead of stapling them. Hold {attack} to wind up a heavy swing, hold {block} to block. Every Friday you go to the mökki. Do not drink from the office fridge. Good luck.`, this.settings.keys), 'neutral', 'Clock in'), () => this.tip('start'));
+    this.openDialogue(said('Morag from Internal IT', bindingText(`Welcome to Workgrumble, ${this.save.name}. Here is a stapler and a label maker. This floor is yours: the users have tickets, the tickets have users, and computers are blue on the map; I am green. This week's major incident is upstairs - take the lift when you are ready, and Friday opens once it is dealt with. You can talk most people down ({interact}) instead of stapling them. Hold {attack} to wind up a heavy swing, hold {block} to block. Do not drink from the office fridge. Good luck.`, this.settings.keys), 'neutral', 'Clock in'), () => this.tip('start'));
   }
 
   /**
@@ -1202,7 +1298,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
    * there to say so.
    */
   private syncInduction(): void {
-    const how = inductionOnLoad(this.save.induction, this.save.location, this.save.floor);
+    const how = inductionOnLoad(this.save.induction, this.save.location, this.save.week);
     if (how === 'none') return;
     if (how === 'run' && this.save.induction !== null) {
       this.inductionDay = new InductionDay(this, this.save.induction);
@@ -1373,7 +1469,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       face: this.faceMood,
       ammoText: this.ammoText(),
       floorName: this.floorName(),
-      elevatorOpen: this.elevatorOpen,
+      // The map's lift is white when E on it goes somewhere: always now (the hub, the P1, Friday), except mid-induction.
+      elevatorOpen: this.inductionDay === null,
       title: this.title,
       spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : spellLabel(this, sp),
       abilityText: domainReady ? `${s.domain ?? ''} (G): ${this.abilityCd > 0 ? `${Math.ceil(this.abilityCd)}s` : 'ready'}` : '',
@@ -1388,7 +1485,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       caffeineZone: [50, 300],
       crash: s.crash,
       questLines: questLines(this),
-      overload: this.save.location === 'office' ? this.derivedCache.overload : 0,
+      overload: this.save.location !== 'mokki' ? this.derivedCache.overload : 0,
       markers: this.markers,
       patrolRoutes: this.mission?.hud().routes ?? [],
       charge: this.derivedCache.weapon.kind === 'melee' ? chargeShown(this, POWER_TIME) : 0,
@@ -1404,7 +1501,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     for (const a of this.actors) {
       const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > ACTOR_RANGE;
       a.root.visible = !far;
-      if (far && !a.aggro && !a.recruited && !a.resolved && !(a.hostile && a.hp <= 0)) continue;
+      // Far away and not after you, they wait - unless they are walking over to you with a problem.
+      if (far && !a.aggro && !a.recruited && !a.resolved && !(a.hostile && a.hp <= 0) && this.hub?.seeks(a) !== true) continue;
       updateActor(this, a, dt);
       if (a.hostile && !a.resolved && a.hp <= 0) resolveActor(this, a);
     }
@@ -1596,12 +1694,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     }
     this.updateActors(dt);
+    this.hub?.update(dt);
     updateProjectiles(this, dt);
     updatePickups(this, dt);
     updateHazards(this, dt);
     updateFx(this, dt);
 
-    if (s.location === 'office') {
+    if (s.location !== 'mokki') {
       for (const q of [...s.queue]) {
         // The induction's ticket has no SLA: it waits for you.
         if (isPracticeTicket(q)) continue;
@@ -2103,7 +2202,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       s.palju = false;
       s.weekend = freshWeekend();
       s.caffeineTol = Math.max(0, s.caffeineTol - 0.25);
-      if (this.boss === null || this.boss.resolved) s.floorState.bossDone = true;
+      // From the P1 floor: its boss is resolved (that is what opens Friday). From the hub it already was.
+      if (s.location === 'office' && (this.boss === null || this.boss.resolved)) s.floorState.bossDone = true;
       const week = settleWeek(this);
       restTeam(this);
       const pay = Math.round(salaryFor(s.rung) * WORKPLACES[s.workplace].rep);
@@ -2130,13 +2230,57 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const next = s.floor + 1;
     s.week += 1;
     const theme = THEMES[next % THEMES.length];
-    screens.transitionTo(this, theme?.name ?? '', String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => screens.showLoading(this, screens.LOADING_OFFICE, () => {
+    screens.transitionTo(this, `This week: floor ${floorLabel(next)} - ${theme?.name ?? ''}`, String(next), 'Monday. The lift plays a pan-pipe cover of a song you used to like.', () => screens.showLoading(this, screens.LOADING_OFFICE, () => {
       endOnCall(this);
-      this.loadFloor(next, false);
+      this.startWeek(next);
+      this.loadHub(false, true);
       screens.resume(this);
-      this.hud.toast(`Welcome to ${this.floorName()}.`, 'epic');
+      this.mondayToast();
       if (s.upgrades.includes('dog')) this.achieve('dog');
     }));
+  }
+
+  /**
+   * Monday morning's paperwork: the week's P1 is floor `n`, its floor not
+   * started yet; the queue and the week's mail tasks are new; the hub's week
+   * begins (the coffee machine has been refilled, and everybody had the weekend).
+   */
+  startWeek(n: number): void {
+    const s = this.save;
+    s.floor = n;
+    s.floorState = freshFloorState(n);
+    s.queue = [];
+    s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');
+    delete s.consumables.laptop;
+    s.hub = hubWeek(s.hub, s.week);
+  }
+
+  /** "Monday. This week's major incident: <boss>, floor <n>." */
+  mondayToast(): void {
+    this.hud.toast(`Monday. This week's major incident: ${bossName(this.save.floor)}, floor ${floorLabel(this.save.floor)}.`, 'epic');
+  }
+
+  /** The lift from the hub up to the week's P1 floor: as you left it, if you have been up already. */
+  liftToP1(): void {
+    this.autosave();
+    sfx.ding();
+    screens.showLoading(this, screens.LOADING_OFFICE, () => {
+      this.loadFloor(this.save.floor, true, true);
+      screens.resume(this);
+      this.hud.toast(`${this.floorName()}: the major incident.`, 'info');
+    });
+  }
+
+  /** The lift from the P1 floor back down to the hub. The floor waits, as it is. */
+  liftToHub(): void {
+    this.recordBoss();
+    this.autosave();
+    sfx.ding();
+    screens.showLoading(this, screens.LOADING_OFFICE, () => {
+      this.loadHub(false);
+      screens.resume(this);
+      this.hud.toast(`${this.floorName()}.`, 'info');
+    });
   }
 
   finishStory(): void {
@@ -2193,7 +2337,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const sway = BAND_EFFECTS[bandFor(s.bac)].sway;
     if (this.vision !== null) this.moodTint.setRGB(1.1, 0.97, 0.82);
     else if (s.location === 'mokki') this.moodTint.setRGB(1.04, 1.0, 0.96);
-    else if (s.floor % 5 === 0) this.moodTint.setRGB(0.95, 1.0, 1.06);
+    else if (s.location === 'office' && s.floor % 5 === 0) this.moodTint.setRGB(0.95, 1.0, 1.06);
     else this.moodTint.setRGB(1, 1, 1);
     this.pipeline.setMood({
       drunk: play ? Math.min(2.5, sway * (d.ultra ? 0.4 : 1)) : 0,
@@ -2208,7 +2352,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.screen !== 'play') return;
     // Dust in the light, and the white shimmer of the ascended.
     this.dustIn -= dt;
-    if (this.dustIn <= 0 && s.location === 'office' && this.vision === null && this.settings.quality !== 'low') {
+    if (this.dustIn <= 0 && s.location !== 'mokki' && this.vision === null && this.settings.quality !== 'low') {
       this.dustIn = 0.3;
       const p = this.player.pos;
       this.particles.emit('dust', new THREE.Vector3(p.x + fx.range(-5, 5), fx.range(0.6, 2.8), p.z + fx.range(-5, 5)), 2, 1.5);
@@ -2287,7 +2431,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
    * every wall, so nobody vanishes while still peeking round a door frame.
    */
   private cullHidden(): void {
-    if (this.save.location !== 'office') return;
+    if (this.save.location === 'mokki') return;
     const cam = this.camera.getWorldPosition(this.camPos);
     const lv = this.level;
     const cx = toCell(cam.x);
@@ -2334,7 +2478,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       }
       l.visible = true;
       l.position.copy(spot);
-      l.intensity = this.save.floor === 0 ? 10 : 16;
+      l.intensity = this.save.location === 'office' && this.save.floor === 0 ? 10 : 16;
       l.castShadow = i === 0 && this.settings.quality === 'high';
     });
     const flick = this.lights[2];

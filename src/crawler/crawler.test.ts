@@ -340,7 +340,9 @@ describe('Helldesk saves', () => {
     const s = migrate(v2);
     expect(s).not.toBeNull();
     if (s === null) return;
-    expect(s.version).toBe(3);
+    // On through v3 to v4: a career that was on a floor goes on from the hub of its week.
+    expect(s.version).toBe(4);
+    expect(s.location).toBe('hub');
     expect(s.gear.map((g) => g.base)).toEqual(['stapler', 'keyboard', 'cardigan']);
     expect(s.gear.find((g) => g.uid === s.equipped.weapon)?.base).toBe('keyboard');
     expect(s.gear.find((g) => g.uid === s.equipped.body)?.base).toBe('cardigan');

@@ -30,6 +30,8 @@ interface Bot {
 
 function career(mode = false) {
   const save = newSave(1);
+  // On the week's P1 floor (a new career's save starts on the hub).
+  save.location = 'office';
   save.sanity = 20;
   const actor = { kind: 'user', hostile: true, resolved: false, aggro: true, pos: { x: 14, z: 0 } };
   const game = {

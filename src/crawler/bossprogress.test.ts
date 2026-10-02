@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { afterEach, expect, it, vi } from 'vitest';
+import type { DialogueNode } from './dialogue';
 import { hurtActor } from './entities';
 import { Game } from './game';
 import { bossDeal } from './hosts';
@@ -19,7 +20,7 @@ vi.mock('./teamwork', async (orig) => ({ ...await orig<typeof import('./teamwork
 function world(save = newSave(77)): Game {
   const g = Object.create(Game.prototype) as Game;
   Object.assign(g, {
-    save, vision: null, boss: null, hazards: [], afterDialogue: null, scene: new THREE.Scene(), actors: [], pickups: [],
+    save, vision: null, boss: null, inductionDay: null, hazards: [], afterDialogue: null, scene: new THREE.Scene(), actors: [], pickups: [],
     derivedValue: derive(save), derivedDirty: false,
     player: { pos: new THREE.Vector3() }, hemi: { color: new THREE.Color(), groundColor: new THREE.Color() }, sun: {},
     renderer: {}, pipeline: { bloom: {} }, lights: [], slackedTerminals: new Set(), loggedOn: new Set(),
@@ -73,7 +74,13 @@ it.each(['nda', 'parachute'] as const)('sign %s, Continue: the floor is resolved
   const loaded = world(saved);
   loaded.loadFloor(4, true);
   const leave = vi.fn();
-  Object.assign(loaded, { promptTarget: { kind: 'interact', it: loaded.level.interactables.find((i) => i.kind === 'elevator')! }, goToMokki: leave, autosave: vi.fn() });
+  let lift: DialogueNode | null = null;
+  Object.assign(loaded, { promptTarget: { kind: 'interact', it: loaded.level.interactables.find((i) => i.kind === 'elevator')! }, goToMokki: leave, autosave: vi.fn(), openDialogue: (n: DialogueNode) => { lift = n; } });
   interact(loaded);
+  // The lift's buttons: Friday is one of them, and pressing it is the drive to the mökki.
+  const friday = (lift as DialogueNode | null)?.options.find((o) => o.label === 'Friday: to the mökki');
+  expect(friday, 'the continued career\'s lift offers Friday').toBeDefined();
+  friday?.pick();
+  loaded.afterDialogue?.();
   expect(leave, 'the continued career can use the unlocked lift').toHaveBeenCalledOnce();
 });

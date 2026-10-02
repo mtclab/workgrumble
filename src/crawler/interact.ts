@@ -5,6 +5,7 @@ import { type DialogueNode, type DialogueOption, said } from './dialogue';
 import { type Actor, setMarker, TALKERS } from './entities';
 import { FINAL_FLOOR, type Game, type PromptTarget } from './game';
 import * as host from './hosts';
+import { floorLabel, p1Resolved } from './hub';
 import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from './items';
 import { type Interactable, lineOfSight, toCell } from './level';
 import { livePage } from './oncall';
@@ -32,7 +33,10 @@ import { caffeinate } from './vices';
 
 function markUsed(g: Game, it: Interactable): void {
   it.used = true;
-  if (g.save.location === 'office' && !g.save.floorState.used.includes(it.id)) g.save.floorState.used.push(it.id);
+  const s = g.save;
+  // Kept by the floor (the P1) or by the hub's week, so a reload and the lift keep it used.
+  const used = s.location === 'office' ? s.floorState.used : s.location === 'hub' ? s.hub.used : null;
+  if (used !== null && !used.includes(it.id)) used.push(it.id);
 }
 
 export function findPrompt(g: Game): void {
@@ -89,7 +93,7 @@ export function findPrompt(g: Game): void {
     const quest = questOf(a);
     g.prompt = a.hostile ? `E: Talk to ${a.name} (${a.kind === 'manager' ? 'negotiate' : a.kind === 'boss' ? 'parley' : 'talk them down'})`
       : quest !== undefined ? `E: Talk to ${a.name}`
-        : a.kind === 'healer' ? `E: Talk to ${a.name}`
+        : a.kind === 'healer' || a.colleague ? `E: Talk to ${a.name}`
           : a.kind === 'tonttu' ? 'E: Talk to the Saunatonttu (runes, training)'
             : a.kind === 'npc' ? `E: Talk to ${a.name}` : `E: ${a.recruited ? 'Talk to' : 'Recruit'} ${a.name}`;
     return;
@@ -106,7 +110,7 @@ export function findPrompt(g: Game): void {
     coffee: it.used ? 'Coffee machine (descaling)' : 'E: Coffee machine (90 mg)',
     vending: 'E: Vending machine (₡10, mostly cans)',
     itdesk: 'E: Internal IT Service Desk (requisition gear, sell kit)',
-    elevator: g.mission ? g.mission.liftPrompt() : g.elevatorOpen ? 'E: Take the lift - Friday, the mökki' : 'Lift locked - Major Incident in progress',
+    elevator: g.mission ? g.mission.liftPrompt() : liftPrompt(g),
     crate: it.used ? 'Empty spares crate' : 'E: Rummage in the spares crate',
     kiuas: s.location === 'mokki' ? (w.saunas >= saunaMax ? 'The kiuas is cooling (next weekend)' : 'E: Throw löyly (sauna)') : it.used ? 'The kiuas is cooling' : 'E: Throw löyly (sauna)',
     locker: it.used ? 'Supply closet (empty)' : `E: Pick the supply-closet lock (lock ${it.lock})${g.lockerItems.has(it.id) ? ' ◆' : ''}`,
@@ -175,6 +179,11 @@ function talkTo(g: Game, a: Actor): void {
   if (a.hostile) {
     if (a.kind === 'boss') g.openDialogue(talkAuditor(g, a));
     else g.openDialogue(a.kind === 'manager' ? talkManager(g, a) : talkHostile(g, a));
+    return;
+  }
+  // A colleague on the hub who is not after you: a walk-up's problem, or small talk.
+  if (a.colleague && g.hub !== null) {
+    g.openDialogue(g.hub.talk(a));
     return;
   }
   // A teammate who came to you with a problem.
@@ -310,14 +319,13 @@ function useThing(g: Game, it: Interactable): void {
         g.mission.lift();
         break;
       }
-      if (!g.elevatorOpen) {
+      // Induction day: Morag has the new starter until the card is done.
+      if (g.inductionDay !== null) {
         sfx.error();
-        g.hud.toast(`The lift is locked while ${g.boss?.name ?? 'the boss'} is unresolved.`, 'bad');
+        g.hud.toast('Morag: "The lift will still be there after your induction. Finish the card first."', 'info');
         break;
       }
-      g.autosave();
-      if (s.floor === FINAL_FLOOR && !s.won) g.finishStory();
-      else g.goToMokki();
+      g.openDialogue(liftNode(g));
       break;
     case 'kiuas':
       sauna(g, it);
@@ -425,6 +433,48 @@ function useThing(g: Game, it: Interactable): void {
       break;
     }
   }
+}
+
+// ================================================================== the lift
+
+/** What E on the lift says it will do. */
+function liftPrompt(g: Game): string {
+  if (g.inductionDay !== null) return 'The lift (after your induction)';
+  const friday = g.elevatorOpen ? ', or Friday' : '';
+  return g.save.location === 'hub' ? `E: Take the lift - floor ${floorLabel(g.save.floor)}, the major incident${friday}` : `E: Take the lift - back to the hub${friday}`;
+}
+
+/**
+ * The lift's buttons. On the hub: up to the week's P1 floor, always, and
+ * Friday once the P1 is resolved. On the P1 floor: back down to the hub,
+ * always, and Friday once its boss is resolved. Friday on the last floor of
+ * the story is the ending.
+ */
+export function liftNode(g: Game): DialogueNode {
+  const s = g.save;
+  const hub = s.location === 'hub';
+  const friday = hub ? p1Resolved(s) : g.elevatorOpen;
+  const go = (then: () => void): (() => null) => () => {
+    g.afterDialogue = then;
+    return null;
+  };
+  const options: DialogueOption[] = [
+    hub
+      ? { label: `Floor ${floorLabel(s.floor)}: the major incident`, pick: go(() => g.liftToP1()) }
+      : { label: 'Back to the hub', pick: go(() => g.liftToHub()) },
+  ];
+  if (friday) {
+    options.push({ label: 'Friday: to the mökki', pick: go(() => {
+      g.autosave();
+      if (s.floor === FINAL_FLOOR && !s.won) g.finishStory();
+      else g.goToMokki();
+    }) });
+  }
+  options.push({ label: 'Not yet.', leave: true, pick: () => null });
+  const boss = hub ? null : g.boss;
+  const status = friday ? 'The major incident is resolved: Friday is a button away.'
+    : `The major incident is still open${boss !== null && !boss.resolved ? `: ${boss.name} is in the corner office` : ''}. Friday waits until it is resolved.`;
+  return { speaker: 'The lift', subtitle: hub ? 'The hub' : g.floorName(), text: `A pan-pipe cover of something you used to like. ${status}`, options };
 }
 
 // ================================================================== the sauna and the lake
@@ -541,6 +591,7 @@ function fridgeNode(g: Game, it: Interactable): DialogueNode {
             adjustStanding(s, 'staff', -4);
             adjustStanding(s, 'kitchen', -6);
             g.warn('Seen stealing from the office fridge');
+            g.hub?.witnessed(seen, 'take Jukka\'s drinks from the fridge');
             return said('Somebody behind you', 'Is that JUKKA\'S? I am telling Denise.', 'bad');
           }
           g.exercise('stealth', 2);
@@ -589,8 +640,9 @@ function pickLock(g: Game, it: Interactable): void {
       if (seen.length > 0) {
         adjustStanding(s, 'staff', -4);
         g.warn(`${seen[0]?.name ?? 'Someone'} saw you breaking into a supply closet`);
-        // On a mission a witnessed crime makes the witnesses Alert.
+        // On a mission a witnessed crime makes the witnesses Alert; on the hub, after you for the week.
         g.mission?.crime(seen);
+        g.hub?.witnessed(seen, 'break into a supply closet');
       }
     }
     g.refreshDerived();

@@ -119,6 +119,41 @@ export interface FloorState {
   coldSteam: boolean;
 }
 
+/** Why somebody on the hub turned on you (docs/SPEC_HELLDESK_030_S1.md, "Hostility is earned"). */
+export type HubReason = 'breach' | 'ignored' | 'assault' | 'witness' | 'caught' | 'grudge' | 'story';
+
+/** Somebody on the hub who is after you, until they are resolved or Monday comes. */
+export interface HubHostile {
+  /** Their level spawn's index, or HUB_EXTRA_BASE and up for somebody who came up in the lift. */
+  readonly spawnIndex: number;
+  readonly reason: HubReason;
+  /** Who came up in the lift (an SLA breach's reporter), so a reload brings the same person back. */
+  readonly name?: string;
+}
+
+/**
+ * The hub, the career's own office floor: what has happened on it, so a
+ * reload and the trips to the P1 floor keep it. Everything but the gear
+ * left lying about belongs to one week; Monday starts it again (the coffee
+ * machine refills over the weekend, and everybody had the weekend).
+ */
+export interface HubState {
+  /** The week this belongs to. */
+  week: number;
+  hostile: HubHostile[];
+  /** Hub spawns resolved this week (the hostile ones, talked down or beaten): back next Monday. */
+  resolved: number[];
+  /** Walk-ups ignored, by spawn index: the third turns them. */
+  ignores: Record<number, number>;
+  /** Interactable ids used this week. */
+  used: number[];
+  /** Seconds of hub play this week, and that clock at the last walk-up. */
+  clock: number;
+  lastWalkUp: number;
+  /** Uncollected gear on the hub, where it lies. It is your floor: it waits. */
+  gearDrops: { gear: GearInstance; x: number; z: number }[];
+}
+
 export interface WeekendState {
   saunas: number;
   grill: boolean;
@@ -133,7 +168,7 @@ export interface WeekendState {
 }
 
 export interface SaveState {
-  version: 3;
+  version: 4;
   careerId?: string | undefined;
   name: string;
   background: string;
@@ -141,9 +176,10 @@ export interface SaveState {
   workplace: Workplace;
   ironman: boolean;
   floor: number;
-  /** The week number: one floor is one week, the weekend is at the mökki. */
+  /** The week number: the hub all week, that week's P1 floor up the lift, the weekend at the mökki. */
   week: number;
-  location: 'office' | 'mokki';
+  /** The hub, the week's P1 floor ('office': `floor` and `floorState`), or the mökki. */
+  location: 'hub' | 'office' | 'mokki';
   rep: number;
   level: number;
   attrs: Record<Attribute, number>;
@@ -200,6 +236,7 @@ export interface SaveState {
   /** Timed can buffs (White Monster, Red Bull wings...), seconds left. */
   buffs: Record<string, number>;
   floorState: FloorState;
+  hub: HubState;
   weekend: WeekendState;
   /** The on-call rota: whether the pager comes to the mökki this weekend, and its pages. */
   oncall: OnCallState;
@@ -229,6 +266,62 @@ export function freshFloorState(floor: number): FloorState {
   return { floor, bossDone: false, used: [], picked: [], resolved: [], gearDrops: [], extras: [], unbreakableUsed: false, nokiaUsed: false, drinksHere: 0, suo: false, coldSteam: false };
 }
 
+export function freshHub(week: number): HubState {
+  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [] };
+}
+
+/** Monday on the hub: the week's people and props start again; the gear on the floor is still there. */
+export function hubWeek(h: HubState, week: number): HubState {
+  return { ...freshHub(week), gearDrops: h.gearDrops };
+}
+
+const HUB_REASONS: readonly HubReason[] = ['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story'];
+
+/** A saved hub, checked field by field (a field from an older build, or a broken one, is fresh). */
+export function normalizeHub(raw: unknown, week: number): HubState {
+  const fresh = freshHub(week);
+  if (typeof raw !== 'object' || raw === null) return fresh;
+  const o = raw as Partial<Record<keyof HubState, unknown>>;
+  const nums = (v: unknown): number[] => (Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []);
+  const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+  const h: HubState = {
+    week: num(o.week, week),
+    hostile: Array.isArray(o.hostile) ? (o.hostile as unknown[]).filter((x): x is HubHostile => {
+      const e = x as Partial<HubHostile> | null;
+      return typeof e === 'object' && e !== null && typeof e.spawnIndex === 'number' && HUB_REASONS.includes(e.reason as HubReason)
+        && (e.name === undefined || typeof e.name === 'string');
+    }) : [],
+    resolved: nums(o.resolved),
+    ignores: {},
+    used: nums(o.used),
+    clock: num(o.clock, 0),
+    lastWalkUp: num(o.lastWalkUp, 0),
+    gearDrops: Array.isArray(o.gearDrops) ? o.gearDrops as HubState['gearDrops'] : [],
+  };
+  if (typeof o.ignores === 'object' && o.ignores !== null) {
+    for (const [k, v] of Object.entries(o.ignores)) if (/^\d+$/.test(k) && typeof v === 'number') h.ignores[Number(k)] = v;
+  }
+  // A hub saved in another week is that week's: this one starts fresh.
+  return h.week === week ? h : hubWeek(h, week);
+}
+
+/**
+ * Somebody from the level's spawns dealt with: kept by the P1 floor, or by
+ * the hub for the week (and no longer after you), so a reload and the lift
+ * do not bring them back.
+ */
+export function noteResolved(s: SaveState, spawnIndex: number): void {
+  if (spawnIndex < 0) return;
+  const list = s.location === 'office' ? s.floorState.resolved : s.location === 'hub' ? s.hub.resolved : null;
+  if (list !== null && !list.includes(spawnIndex)) list.push(spawnIndex);
+  if (s.location === 'hub') s.hub.hostile = s.hub.hostile.filter((h) => h.spawnIndex !== spawnIndex);
+}
+
+/** Gear lying on the floor you are on: the P1's, or the hub's (which keeps it from week to week). */
+export function gearDropsHere(s: SaveState): { gear: GearInstance; x: number; z: number }[] {
+  return s.location === 'hub' ? s.hub.gearDrops : s.floorState.gearDrops;
+}
+
 export function freshWeekend(): WeekendState {
   return { saunas: 0, grill: false, lake: false, palju: false, fish: 0, visitorDone: false, book: false, potatoes: false, suo: false };
 }
@@ -254,7 +347,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
   const stapler = plainInstance('stapler', r);
   const label = plainInstance('labelmaker', r);
   const s: SaveState = {
-    version: 3,
+    version: 4,
     careerId: crypto.randomUUID(),
     name: setup?.name ?? 'Pat Pending',
     background: bg?.id ?? 'grad',
@@ -263,7 +356,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     ironman: setup?.ironman ?? false,
     floor: 0,
     week: 1,
-    location: 'office',
+    location: 'hub',
     rep: 40 + (bg?.rep ?? 0),
     level: 1,
     attrs: zeroAttrs(35),
@@ -315,6 +408,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     suoBlessing: false,
     buffs: {},
     floorState: freshFloorState(0),
+    hub: freshHub(1),
     weekend: freshWeekend(),
     oncall: freshOnCall(),
     upgrades: [],
@@ -365,11 +459,24 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
 
 // ---------------------------------------------------------------- persistence
 
-/** Upgrade an older save in place. v2 saves (one flat slot) become v3. */
+/**
+ * v3 to v4 (0.3.0, the hub): a career on an office floor is now on the hub
+ * of the same week, its floor (and everything done on it) waiting up the
+ * lift as that week's P1; one at the mökki stays there, and lands on the hub
+ * on Monday. Nothing else changes: Rep, items, quests, standing and the
+ * floor's progress are carried as they were.
+ */
+function toV4(v3: Record<string, unknown>): SaveState {
+  const week = typeof v3.week === 'number' ? v3.week : 1;
+  return { ...v3, version: 4, location: v3.location === 'mokki' ? 'mokki' : 'hub', hub: freshHub(week) } as unknown as SaveState;
+}
+
+/** Upgrade an older save in place. v2 saves (one flat slot) become v3, and v3 saves v4. */
 export function migrate(raw: unknown): SaveState | null {
   if (typeof raw !== 'object' || raw === null) return null;
   const o = raw as Record<string, unknown>;
-  if (o.version === 3) return raw as SaveState;
+  if (o.version === 4) return raw as SaveState;
+  if (o.version === 3) return toV4(o);
   if (o.version !== 2) return null;
   const old = raw as Record<string, unknown> & { owned?: string[]; equipped?: Record<string, string | null>; perks?: Record<string, number>; rung?: number };
   const fresh = newSave(typeof o.seed === 'number' ? o.seed : 1);
@@ -393,7 +500,7 @@ export function migrate(raw: unknown): SaveState | null {
     else refund += n;
   }
   const merged = { ...fresh, ...(raw) };
-  merged.version = 3;
+  merged.version = 4;
   delete merged.careerId;
   merged.gear = gear.length > 0 ? gear : fresh.gear;
   merged.equipped = {
@@ -405,7 +512,8 @@ export function migrate(raw: unknown): SaveState | null {
   merged.rung = RUNG_MAP[Math.max(0, Math.min(8, old.rung ?? 0))] ?? 0;
   merged.stats = { ...fresh.stats, ...(o.stats as object) };
   delete (merged as unknown as Record<string, unknown>).owned;
-  return merged;
+  // A v2 career was on a floor or at the mökki: as a v3 one, it goes on through the hub.
+  return toV4(merged);
 }
 
 /**
@@ -424,6 +532,7 @@ export function normalizeSave(raw: unknown): SaveState | null {
     weekend: { ...fresh.weekend, ...m.weekend },
     oncall: normalizeOnCall((m as Partial<SaveState>).oncall),
     floorState: { ...freshFloorState(m.floor ?? 0), ...m.floorState },
+    hub: normalizeHub((m as Partial<SaveState>).hub, typeof m.week === 'number' ? m.week : 1),
     ammo: { ...fresh.ammo, ...m.ammo },
     standing: { ...fresh.standing, ...m.standing },
     attrUps: { ...fresh.attrUps, ...m.attrUps },

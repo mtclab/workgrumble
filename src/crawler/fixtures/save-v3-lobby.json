@@ -1,0 +1,220 @@
+{
+ "version": 3,
+ "careerId": "fixture-lobby",
+ "name": "Pat Pending",
+ "background": "grad",
+ "sign": "patch",
+ "workplace": "standard",
+ "ironman": false,
+ "floor": 0,
+ "week": 1,
+ "location": "office",
+ "rep": 40,
+ "level": 1,
+ "attrs": {
+  "grit": 35,
+  "reflex": 40,
+  "tech": 55,
+  "charm": 35,
+  "patience": 35,
+  "liver": 30
+ },
+ "skills": {
+  "hardware": {
+   "value": 5,
+   "progress": 0
+  },
+  "scripting": {
+   "value": 21,
+   "progress": 0
+  },
+  "troubleshooting": {
+   "value": 23,
+   "progress": 0
+  },
+  "soft": {
+   "value": 5,
+   "progress": 0
+  },
+  "sisu": {
+   "value": 5,
+   "progress": 0
+  },
+  "stealth": {
+   "value": 6,
+   "progress": 0
+  },
+  "security": {
+   "value": 8,
+   "progress": 0
+  },
+  "drinking": {
+   "value": 5,
+   "progress": 0
+  },
+  "runecraft": {
+   "value": 20,
+   "progress": 0
+  },
+  "athletics": {
+   "value": 5,
+   "progress": 0
+  }
+ },
+ "major": [
+  "troubleshooting",
+  "scripting",
+  "runecraft"
+ ],
+ "skillUps": 0,
+ "attrUps": {
+  "grit": 0,
+  "reflex": 0,
+  "tech": 0,
+  "charm": 0,
+  "patience": 0,
+  "liver": 0
+ },
+ "perkPoints": 0,
+ "perks": {},
+ "rung": 0,
+ "domain": null,
+ "track": null,
+ "arch": null,
+ "standing": {
+  "staff": 0,
+  "management": 0,
+  "kitchen": 10,
+  "itcrowd": 0
+ },
+ "warnings": 0,
+ "gear": [
+  {
+   "uid": "muqlufep-1-byw5",
+   "base": "stapler",
+   "rarity": "common",
+   "affixes": [],
+   "name": "Swingline Stapler"
+  },
+  {
+   "uid": "muqlufep-2-3h4a",
+   "base": "labelmaker",
+   "rarity": "common",
+   "affixes": [],
+   "name": "Label Maker"
+  }
+ ],
+ "equipped": {
+  "weapon": "muqlufep-1-byw5",
+  "head": null,
+  "body": null,
+  "feet": null,
+  "trinket": null
+ },
+ "consumables": {
+  "coffee": 1,
+  "biscuits": 2,
+  "paperclip": 2
+ },
+ "stash": {},
+ "ammo": {
+  "labels": 60,
+  "air": 0,
+  "ducks": 0,
+  "toner": 0
+ },
+ "sanity": 96,
+ "energy": 100,
+ "loyly": 64,
+ "bac": 0,
+ "stomach": 0,
+ "peakBac": 0,
+ "dependency": 0,
+ "hangover": 0,
+ "empties": 0,
+ "caffeine": 0,
+ "caffeinePeak": 0,
+ "caffeineTol": 0,
+ "crash": 0,
+ "actionItems": 0,
+ "spells": [],
+ "spell": null,
+ "queue": [],
+ "quests": [],
+ "nextQuestId": 1,
+ "questLog": [],
+ "questItems": [],
+ "journal": [],
+ "flags": {},
+ "findings": 0,
+ "makkara": false,
+ "hauki": false,
+ "palju": false,
+ "saunaBuff": false,
+ "suoBlessing": false,
+ "buffs": {},
+ "floorState": {
+  "floor": 0,
+  "bossDone": false,
+  "used": [],
+  "picked": [],
+  "resolved": [],
+  "gearDrops": [],
+  "extras": [],
+  "unbreakableUsed": false,
+  "nokiaUsed": false,
+  "drinksHere": 0,
+  "suo": false,
+  "coldSteam": false
+ },
+ "weekend": {
+  "saunas": 0,
+  "grill": false,
+  "lake": false,
+  "palju": false,
+  "fish": 0,
+  "visitorDone": false,
+  "book": false,
+  "potatoes": false,
+  "suo": false
+ },
+ "oncall": {
+  "week": 0,
+  "active": false,
+  "lastWeek": -1,
+  "clock": 0,
+  "pages": [],
+  "missed": 0
+ },
+ "upgrades": [],
+ "achievements": [],
+ "tipsShown": [],
+ "booksRead": [],
+ "stats": {
+  "resolvedField": 0,
+  "resolvedDesk": 0,
+  "resolvedPeace": 0,
+  "breaches": 0,
+  "burnouts": 0,
+  "bosses": 0,
+  "wrongFixes": 0,
+  "drinks": 0,
+  "blackouts": 0,
+  "locks": 0,
+  "spellsCast": 0,
+  "cans": 0,
+  "fish": 0,
+  "elites": 0,
+  "staffedDone": 0,
+  "staffedMissed": 0,
+  "mentored": 0,
+  "treats": 0,
+  "pagesAnswered": 0,
+  "pagesMissed": 0
+ },
+ "team": {},
+ "induction": null,
+ "hudHidden": [],
+ "seed": 1700000000,
+ "won": false
+}

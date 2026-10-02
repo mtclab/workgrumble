@@ -72,6 +72,8 @@ class Host implements GameCtx {
     if (theme === undefined) throw new Error('theme');
     this.level = generateLevel(card.floor, theme, seed, true, false, card.recipe);
     this.floor = card.floor;
+    // A floor, as `loadMission` sets it (not the hub a new career starts on).
+    this.save.location = 'office';
     this.save.floor = card.floor;
     this.save.floorState = freshFloorState(card.floor);
     this.player.pos.set(this.level.start.x, 0, this.level.start.z);

@@ -21,7 +21,7 @@ export interface FixEntry {
 
 export function enqueueTicket(g: Game, from: Actor, gold: boolean): void {
   const s = g.save;
-  if (s.location !== 'office') return;
+  if (s.location === 'mokki') return;
   if (s.queue.some((q) => q.from === from.name)) return;
   if (s.queue.length >= g.derivedCache.queueMax) {
     g.hurtPlayer(6, null, 'ticket');
@@ -45,6 +45,12 @@ export function breach(g: Game, q: QueuedTicket): void {
   adjustStanding(s, 'staff', -2);
   g.hurtPlayer(q.gold ? 22 : 12, null, 'ticket');
   const title = TICKETS[q.t]?.title ?? '';
+  // On the hub the person who raised it comes to find you, announced (hub.ts); upstairs, a manager is sent.
+  if (g.hub !== null) {
+    g.hud.toast(`SLA BREACHED: "${title}". (Management -3, Staff -2)`, 'bad');
+    g.hub.breach(q);
+    return;
+  }
   g.hud.toast(`SLA BREACHED: "${title}". Escalated to a manager. (Management -3, Staff -2)`, 'bad');
   const ang = fx.range(0, Math.PI * 2);
   const m = g.spawn('manager', g.player.pos.x + Math.sin(ang) * 6, g.player.pos.z + Math.cos(ang) * 6, -1);
@@ -161,7 +167,7 @@ export function pullTickets(g: Game): number {
 
 export function newQuest(g: Game): Quest | null {
   const s = g.save;
-  if (s.location !== 'office') return null;
+  if (s.location === 'mokki') return null;
   if (s.quests.filter((q) => q.kind !== 'boss').length >= 3) return null;
   const f = s.floor;
   const kinds: Quest['kind'][] = ['resolve', 'users', 'peace'];

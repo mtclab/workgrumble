@@ -99,8 +99,8 @@ export function drink(g: Game, c: ConsumableDef): void {
   g.refreshDerived();
 }
 
-/** A manager close by, and you smell of lonkero. */
-export function caughtCheck(g: Game, m: Actor): void {
+/** A manager close by, and you smell of lonkero. True if they caught you. */
+export function caughtCheck(g: Game, m: Actor): boolean {
   const s = g.save;
   const d = g.derivedCache;
   const band = d.band;
@@ -109,10 +109,11 @@ export function caughtCheck(g: Game, m: Actor): void {
   const mask = d.caffeine.speed >= 0.18 ? 0.6 : 1;
   const chance = Math.min(1, band.caughtChance * mask + evidence) * (1 - skill(s, 'drinking') / 250);
   g.caughtCd = 15;
-  if (chance <= 0 || !fx.chance(chance)) return;
+  if (chance <= 0 || !fx.chance(chance)) return false;
   say(m, s.bac >= 14 ? 'Have you been DRINKING? At WORK?' : 'Is that a bag of empties? In the office?', 3);
   adjustStanding(s, 'management', -8);
   g.warn(s.bac >= 14 ? 'Caught under the influence by a manager' : 'Caught with a bag of empties');
+  return true;
 }
 
 const INCIDENTS = [
@@ -135,7 +136,7 @@ export function blackout(g: Game): void {
   s.stomach = 0;
   const what = fx.pick(INCIDENTS);
   g.journal(`Blackout. ${what}`);
-  if (s.location === 'office') g.warn('Blackout at work');
+  if (s.location !== 'mokki') g.warn('Blackout at work');
   // On call, the pager went off into the void.
   if (s.location === 'mokki') abandonPage(g, 'I was face-down on the laituri');
   g.achieve('blackout');

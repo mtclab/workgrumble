@@ -26,7 +26,7 @@ function host(): { g: Game; finish: () => void } {
     input: { requestLock: noop, releaseLock: noop },
     os: { hide: noop, open: noop }, hud: { toast: noop },
     dialogue: { close: noop, show: (_node: unknown, cb: () => void) => { finish = cb; } },
-    loadFloor: noop, loadWorld: noop, journal: noop, tip: noop, saveIn: 10,
+    loadFloor: noop, loadHub: noop, loadWorld: noop, journal: noop, tip: noop, saveIn: 10,
   });
   return { g, finish: () => finish() };
 }

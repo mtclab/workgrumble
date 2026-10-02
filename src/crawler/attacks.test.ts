@@ -85,6 +85,8 @@ class Arena implements GameCtx {
   readonly rng = new Rng(7);
 
   constructor() {
+    // An ordinary floor (a week's P1), not the hub a new career starts on.
+    this.save.location = 'office';
     this.field = flowField(this.level, this.playerPos.x, this.playerPos.z, 40);
   }
 

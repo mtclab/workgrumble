@@ -4,6 +4,7 @@ import type { CompassMarker } from './compass';
 import { type DialogueNode, type DialogueOption, said } from './dialogue';
 import { type Actor, say, setMarker } from './entities';
 import type { Game } from './game';
+import { p1Resolved } from './hub';
 import { freeSpotIn, type Room } from './level';
 import {
   advance,
@@ -109,6 +110,8 @@ function spawnHunt(g: Game, st: QuestState, target: HuntTarget): void {
 /** Make sure there are enough of a kind on the floor for a staffed count. */
 function ensureKind(g: Game, obj: Objective, st: QuestState): void {
   if (obj.ensure === undefined) return;
+  // On the hub only the Kitchen Cabinet can be sent for: the trouble a count wants is on the P1 floor.
+  if (g.save.location === 'hub' && obj.ensure.kind !== 'healer') return;
   const need = (obj.count ?? 1) - st.progress;
   // An office lady who has already signed cannot sign twice.
   const have = g.actors.filter((a) => a.kind === obj.ensure?.kind && !a.resolved && a.memo.questTalk !== true).length;
@@ -120,12 +123,13 @@ function ensureKind(g: Game, obj: Objective, st: QuestState): void {
 
 /** Whatever a stage needs in the world when it becomes the current one. */
 export function startStage(g: Game, st: QuestState): void {
-  if (g.mission || g.save.location !== 'office' || !isActive(st)) return;
+  if (g.mission || g.save.location === 'mokki' || !isActive(st)) return;
   const obj = currentObjective(st);
   if (obj === undefined) return;
   if (obj.kind === 'item' && obj.item !== undefined && obj.place !== undefined) placeItem(g, obj.item, obj.place);
   if (obj.kind === 'collect' && obj.item !== undefined) placeCopies(g, obj.item, (obj.count ?? 1) - st.progress, obj.place);
-  if (obj.kind === 'hunt' && obj.hunt !== undefined) spawnHunt(g, st, obj.hunt);
+  // A hunt's target waits on the P1 floor: nobody on the hub is after you without a reason of yours.
+  if (obj.kind === 'hunt' && obj.hunt !== undefined && g.save.location === 'office') spawnHunt(g, st, obj.hunt);
   if (obj.kind === 'count') ensureKind(g, obj, st);
   if (obj.kind === 'escort') recruitIntern(g);
 }
@@ -166,9 +170,9 @@ export function placeQuestContent(g: Game): void {
   if (g.mission) return;
   const s = g.save;
   const f = g.floor;
-  // Main story evidence on this floor.
+  // Main story evidence on this floor (the P1's; the hub is not where the story hides it).
   const ch = mainChapter(f);
-  if (ch?.evidence !== undefined) placeItem(g, ch.evidence.item, ch.evidence.place);
+  if (ch?.evidence !== undefined && s.location === 'office') placeItem(g, ch.evidence.item, ch.evidence.place);
   // Active quests follow you from floor to floor; so do their givers.
   for (const st of s.questLog) {
     if (!isActive(st)) continue;
@@ -229,6 +233,11 @@ export function turnHostile(g: Game, npc: string, name: string): void {
   a.resolved = true;
   a.calm = true;
   a.removeIn = 0.5;
+  // On the hub the new enemy is announced, like anyone there who turns.
+  if (g.hub !== null) {
+    g.hub.arrive('user', a.pos.x, a.pos.z, name, 'I could set the building on fire.');
+    return;
+  }
   const h = g.spawnAt('user', a.pos.x, a.pos.z, a.room, true, { elite: 'escalating' });
   if (h !== null) {
     h.name = name;
@@ -370,9 +379,15 @@ export function scheduleStaffing(g: Game, first: boolean): void {
   g.staffFirst = first;
 }
 
+/** Is the week's major incident dealt with? Upstairs, its boss; on the hub, the P1's floor state. */
+export function incidentResolved(g: Game): boolean {
+  if (g.save.location === 'hub') return p1Resolved(g.save);
+  return g.save.floorState.bossDone || g.boss === null || g.boss.resolved;
+}
+
 export function tickQuests(g: Game, dt: number): void {
   const s = g.save;
-  if (s.location !== 'office') return;
+  if (s.location === 'mokki') return;
   if (g.screen !== 'play' && g.screen !== 'os') return;
   for (const st of s.questLog) {
     if (st.deadline === undefined || !isActive(st)) continue;
@@ -381,7 +396,7 @@ export function tickQuests(g: Game, dt: number): void {
   }
   if (g.screen !== 'play') return;
   // New work arrives. Nobody asks.
-  const bossDone = s.floorState.bossDone || g.boss === null || g.boss.resolved;
+  const bossDone = incidentResolved(g);
   // Nobody rings a new starter mid-induction: the clock starts once the floor is open.
   if (g.pendingStaff === null && !bossDone && s.induction === null) {
     g.staffIn -= dt;
@@ -423,7 +438,7 @@ export function offerStaffing(g: Game, by: string, id?: string): boolean {
 export function maybeStaff(g: Game, by: string, chance: number): void {
   // Not mid-induction, in person any more than by phone (tickQuests holds those).
   if (g.save.induction !== null) return;
-  if (g.save.location !== 'office' || g.pendingStaff !== null || staffedThisFloor(g) >= 3 || !fx.chance(chance)) return;
+  if (g.save.location === 'mokki' || g.pendingStaff !== null || staffedThisFloor(g) >= 3 || !fx.chance(chance)) return;
   const pool = staffable(g);
   if (pool.length === 0) return;
   const def = fx.pick(pool);
@@ -604,7 +619,7 @@ export function questLines(g: Game): string[] {
   if (g.mission) return [];
   const s = g.save;
   const out: string[] = [];
-  if (s.location === 'office') {
+  if (s.location !== 'mokki') {
     const load = workload(s);
     out.push(`${load.over > 0 ? '⚠ OVERALLOCATED' : 'Workload'} ${load.active}/${load.capacity}`);
     out.push(...teamLines(g));
@@ -673,6 +688,8 @@ export function questMarkers(g: Game): CompassMarker[] {
   }
   const lift = g.level.interactables.find((i) => i.kind === 'elevator');
   if (lift !== undefined && g.elevatorOpen) out.push({ x: lift.x, z: lift.z, icon: '▲', color: '#ffffff', label: 'The lift (Friday!)' });
+  // On the hub the lift is always going somewhere: up to the major incident.
+  else if (lift !== undefined && s.location === 'hub') out.push({ x: lift.x, z: lift.z, icon: '▲', color: '#ffffff', label: 'The lift (major incident)' });
   if (g.boss !== null && g.boss.bossActive && !g.boss.resolved) out.push({ x: g.boss.pos.x, z: g.boss.pos.z, icon: '☠', color: '#ff5050', label: g.boss.name });
   if (s.location === 'mokki') {
     const board = g.level.interactables.find((i) => i.kind === 'board');

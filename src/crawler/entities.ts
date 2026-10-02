@@ -117,7 +117,14 @@ export interface Actor {
   readonly id: number;
   readonly kind: ActorKind;
   name: string;
-  readonly hostile: boolean;
+  /** After you (or out to make trouble). Fixed by kind, except a hub colleague, who turns only for a reason (hub.ts). */
+  hostile: boolean;
+  /**
+   * A colleague on the hub: a user, caller or manager who is not after you
+   * until you give them a reason. You can still hit one (a crime: D4); it
+   * stays true once they have turned, so the hub knows its own people.
+   */
+  readonly colleague: boolean;
   readonly root: THREE.Group;
   readonly rig: Rig | null;
   readonly dog: DogParts | null;
@@ -261,6 +268,11 @@ export interface WatchCtx {
   look(a: Actor, dt: number, sees: boolean, dist: number): WatchAct;
 }
 
+/** The hub, as the AI sees it: whether a colleague is walking up to you with a problem. */
+export interface HubCtx {
+  seeks(a: Actor): boolean;
+}
+
 /** What the AI needs from the game. The Game implements it. */
 export interface GameCtx {
   readonly level: Level;
@@ -286,6 +298,10 @@ export interface GameCtx {
   readonly floorAwake: boolean;
   /** A mission's stealth (the 0.3.0 spike), or none: then everyone is as they always were. */
   readonly watch?: WatchCtx | null;
+  /** The hub, while you are on it (hub.ts). */
+  readonly hub?: HubCtx | null;
+  /** The player has hit a colleague on the hub: the crime (D4), and everything it brings, before the hit lands. */
+  assault?(a: Actor): void;
   field: Int16Array;
   hurtPlayer(amount: number, from: Actor | null, kind: 'melee' | 'ticket' | 'meeting' | 'boss' | 'aura' | 'bite'): void;
   enqueueTicket(from: Actor, gold: boolean): void;
@@ -572,6 +588,15 @@ export interface SpawnOpts {
   readonly spawnIndex?: number;
   /** A particular person's clothes (Morag's cardigan), instead of the kind's usual roll. */
   readonly outfit?: Outfit;
+  /** A colleague on the hub: spawned neutral (see `Actor.colleague`). */
+  readonly colleague?: boolean;
+}
+
+/** This floor's boss's name, Overtime and all: on the floor, and in Monday's announcement. */
+export function bossName(floor: number): string {
+  const boss = BOSSES[floor % BOSSES.length];
+  if (boss === undefined) throw new Error('no boss');
+  return floor >= BOSSES.length ? `${boss.name} (Overtime)` : boss.name;
 }
 
 /** Roll the same person even when a saved resolution means no mesh is needed. */
@@ -583,7 +608,7 @@ export function rollActor(kind: ActorKind, floor: number, r: Rng, ticketCount: n
   else if (kind === 'boss') {
     const boss = BOSSES[floor % BOSSES.length];
     if (boss === undefined) throw new Error('no boss');
-    name = floor >= BOSSES.length ? `${boss.name} (Overtime)` : boss.name;
+    name = bossName(floor);
     outfit = boss.outfit;
   } else if (kind === 'reply') name = 'RE: RE: RE: FW: All Staff';
   else if (kind === 'jam') name = 'Paper Jam (Tray 2)';
@@ -652,7 +677,8 @@ export function createActor(
   let boss: BossDef | null = null;
   const role = rolled.role;
   let glowBase = 0;
-  const hostile = kind !== 'healer' && kind !== 'helper' && kind !== 'npc' && kind !== 'tonttu';
+  const colleague = opts.colleague === true;
+  const hostile = !colleague && kind !== 'healer' && kind !== 'helper' && kind !== 'npc' && kind !== 'tonttu';
 
   if (kind === 'reply') {
     root.add(envelopeMesh());
@@ -751,7 +777,7 @@ export function createActor(
 
   const a: Actor = {
     id: nextActorId++,
-    kind, name, hostile, root, rig, dog,
+    kind, name, hostile, colleague, root, rig, dog,
     pos: root.position,
     push: new THREE.Vector3(),
     yaw: rolled.yaw,
@@ -1110,6 +1136,7 @@ export function updateActor(ctx: GameCtx, a: Actor, dt: number): void {
 
   if (a.kind === 'dummy') updateDummy(ctx, a, dt);
   else if (a.hostile) updateHostile(ctx, a, dt);
+  else if (a.colleague) updateColleague(ctx, a, dt);
   else updateFriendly(ctx, a, dt);
 
   a.root.rotation.y = a.yaw;
@@ -1199,6 +1226,11 @@ const SILENT: readonly ActorKind[] = ['reply', 'jam', 'mosquito', 'turret'];
  */
 export function isFoe(a: Actor): boolean {
   return a.hostile && a.kind !== 'dummy';
+}
+
+/** Somebody the player's own swings and shots land on: anyone hostile, and a hub colleague (which is a crime). */
+export function hittable(a: Actor): boolean {
+  return a.hostile || a.colleague;
 }
 
 /**
@@ -1978,6 +2010,29 @@ function updateDummy(ctx: GameCtx, a: Actor, dt: number): void {
   }
 }
 
+/**
+ * A colleague on the hub who is not after you: at their desk most of the
+ * time, a few steps away and back now and then, and - walking up to you with
+ * a problem - coming over and waiting to be talked to.
+ */
+function updateColleague(ctx: GameCtx, a: Actor, dt: number): void {
+  const dx = ctx.playerPos.x - a.pos.x;
+  const dz = ctx.playerPos.z - a.pos.z;
+  const dist = Math.hypot(dx, dz);
+  cancelWindup(a);
+  if (ctx.hub?.seeks(a) === true) {
+    if (dist > 1.8 && approach(ctx, a, dx, dz, tmp2)) moveActor(ctx, a, tmp2.x, tmp2.z, a.speed * 0.8, dt);
+    else moveActor(ctx, a, 0, 0, 0, dt);
+    if (dist < 12) a.yaw = Math.atan2(dx, dz);
+    return;
+  }
+  if (a.wanderTarget === null || fx.chance(dt * 0.05)) {
+    a.wanderTarget = fx.chance(0.6) ? a.home.clone() : new THREE.Vector3(a.home.x + fx.range(-3, 3), 0, a.home.z + fx.range(-3, 3));
+  }
+  tmp.subVectors(a.wanderTarget, a.pos);
+  moveActor(ctx, a, tmp.x, tmp.z, tmp.length() > 0.3 ? a.speed * 0.35 : 0, dt);
+}
+
 function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   const dx = ctx.playerPos.x - a.pos.x;
   const dz = ctx.playerPos.z - a.pos.z;
@@ -2170,7 +2225,14 @@ function rewind(ctx: GameCtx, a: Actor): void {
 }
 
 export function hurtActor(ctx: GameCtx, a: Actor, dmg: number, knock: THREE.Vector3 | null, player = true): void {
-  if (a.resolved || !a.hostile) return;
+  if (a.resolved) return;
+  if (!a.hostile) {
+    // A colleague on the hub, hit by the player: the hub hears of it first
+    // (they and whoever saw it turn), then the hit lands. Nobody else's hits count.
+    if (!player || !a.colleague) return;
+    ctx.assault?.(a);
+    if (!a.hostile) return;
+  }
   // The corner office does not open for a new starter mid-induction: a hit is
   // shrugged off (no damage, no fight) until the floor is awake. Otherwise a
   // stapler at step 3 was a back door into the whole boss fight.

@@ -149,16 +149,16 @@ export function propLive(prop: PropId, step: StepId | 'done'): boolean {
 }
 
 /**
- * What loading a world does to an induction. On the lobby floor it runs.
- * Finished (the map step done; a reload may have come before Morag's last
- * words) it ends as a finished one. Anywhere else - the lift taken early once
- * the floor was awake, the mökki - it is abandoned: it ends without counting
- * as done, so the next career's form still offers it.
+ * What loading a world does to an induction. In the hub's lobby, in week
+ * one, it runs. Finished (the map step done; a reload may have come before
+ * Morag's last words) it ends as a finished one. Anywhere else - a floor up
+ * the lift, the mökki, a later week - it is abandoned: it ends without
+ * counting as done, so the next career's form still offers it.
  */
-export function inductionOnLoad(st: InductionState | null, location: 'office' | 'mokki', floor: number): 'none' | 'run' | 'finish' | 'abandon' {
+export function inductionOnLoad(st: InductionState | null, location: 'hub' | 'office' | 'mokki', week: number): 'none' | 'run' | 'finish' | 'abandon' {
   if (st === null) return 'none';
   if (st.step === 'done') return 'finish';
-  return location === 'office' && floor === 0 ? 'run' : 'abandon';
+  return location === 'hub' && week === 1 ? 'run' : 'abandon';
 }
 
 /** Practice swings never take Sanity below this: an Ironman cannot burn out on the dummy. */
@@ -332,7 +332,7 @@ export function welcomeLine(name: string): string {
 
 /** Morag once it is over. Sanity is told here if no practice hit ever got through. */
 export function closingLines(st: InductionState): string {
-  const base = 'That is your induction: the floor is open, and the lift goes up once the major incident is dealt with. Fridays are the mökki.';
+  const base = 'That is your induction: this floor is yours now. The lift here in the lobby goes up to this week\'s major incident when you are ready, and Friday opens once it is dealt with. Fridays are the mökki.';
   return st.sanityTold ? base : `${base} ${SANITY_LINE}`;
 }
 

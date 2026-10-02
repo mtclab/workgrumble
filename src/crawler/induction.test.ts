@@ -341,13 +341,15 @@ describe('E at each step: only the step\'s own prop answers', () => {
 
 describe('loading a world with an induction running', () => {
   const st = (step: StepId | 'done'): InductionState => ({ step, looked: 0, sanityTold: false });
-  it('runs on the lobby floor, finishes once the map step is done, and is abandoned anywhere else', () => {
-    expect(inductionOnLoad(null, 'office', 0)).toBe('none');
-    expect(inductionOnLoad(st('swing'), 'office', 0)).toBe('run');
-    expect(inductionOnLoad(st('done'), 'office', 0)).toBe('finish');
-    // The lift taken early (once the floor woke), or the mökki: abandoned, never counted as done.
-    expect(inductionOnLoad(st('map'), 'office', 1)).toBe('abandon');
-    expect(inductionOnLoad(st('ticket'), 'mokki', 0)).toBe('abandon');
+  it('runs in the hub\'s lobby in week one, finishes once the map step is done, and is abandoned anywhere else', () => {
+    expect(inductionOnLoad(null, 'hub', 1)).toBe('none');
+    expect(inductionOnLoad(st('swing'), 'hub', 1)).toBe('run');
+    expect(inductionOnLoad(st('done'), 'hub', 1)).toBe('finish');
+    expect(inductionOnLoad(st('done'), 'office', 1)).toBe('finish');
+    // Up the lift to the P1 floor, a later week, or the mökki: abandoned, never counted as done.
+    expect(inductionOnLoad(st('swing'), 'office', 1)).toBe('abandon');
+    expect(inductionOnLoad(st('map'), 'hub', 2)).toBe('abandon');
+    expect(inductionOnLoad(st('ticket'), 'mokki', 1)).toBe('abandon');
   });
 });
 

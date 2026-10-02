@@ -3,6 +3,7 @@ import type { CompassMarker } from './compass';
 import { type DialogueNode, type DialogueOption, said } from './dialogue';
 import { type Actor, onTeam, say, setMarker } from './entities';
 import type { Game } from './game';
+import { p1Resolved } from './hub';
 import { itemById } from './items';
 import { treePerk } from './perks';
 import { currentObjective, isActive, MENTOR_PITCH, MENTORING, type QuestDef, type QuestState } from './quests';
@@ -175,7 +176,7 @@ const CRASH_LINES = ['...and that is the crash. Need a nap. Under the desk.', 'W
 export function tickTeam(g: Game, dt: number): void {
   const s = g.save;
   const mentor = perk(s, 'mentor');
-  const over = s.location === 'office' ? workload(s).over : 0;
+  const over = s.location !== 'mokki' ? workload(s).over : 0;
   for (const a of g.actors) {
     if (!onTeam(a) || a.resolved) continue;
     if (a.boostT > 0) {
@@ -235,7 +236,7 @@ function mentoringThisFloor(g: Game): number {
 
 function tickMentoring(g: Game, dt: number): void {
   const s = g.save;
-  if (s.location !== 'office' || !isSenior(s.rung)) return;
+  if (s.location === 'mokki' || !isSenior(s.rung)) return;
   const ask = g.mentorAsk;
   if (ask !== null) {
     ask.wait += dt;
@@ -249,7 +250,8 @@ function tickMentoring(g: Game, dt: number): void {
     }
     return;
   }
-  if (s.floorState.bossDone || g.boss === null || g.boss.resolved) return;
+  // Asks come while the week's major incident is open (on the hub, its floor's state says).
+  if (s.location === 'hub' ? p1Resolved(s) : s.floorState.bossDone || g.boss === null || g.boss.resolved) return;
   // Not during an induction: the team can wait until the floor is open.
   if (s.induction !== null) return;
   g.mentorIn -= dt;

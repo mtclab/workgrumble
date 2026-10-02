@@ -17,6 +17,8 @@ vi.mock('./textures', async (orig) => ({
 function floor(seed: number, n: number, resolved: number[] = [], storyDone = false): Game {
   const g = Object.create(Game.prototype) as Game;
   const save = newSave(seed);
+  // An ordinary floor (a week's P1), not the hub a new career starts on.
+  save.location = 'office';
   save.floor = n;
   save.rung = 11;
   save.standing.staff = 50;

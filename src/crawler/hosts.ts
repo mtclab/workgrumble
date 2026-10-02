@@ -8,7 +8,7 @@ import { ALL_ITEMS, AMMO, CONSUMABLES, itemById, LINING_FOODS } from './items';
 import { type GearInstance, plainInstance, RARITY_INFO, rollGear, sellValue, slotOf, uniqueInstance } from './loot';
 import { bookById } from './books';
 import { fx } from './rng';
-import { adjustStanding, canTakePerk, levelUpReady } from './state';
+import { adjustStanding, canTakePerk, levelUpReady, noteResolved } from './state';
 import { levelUpNode, talkAuditor } from './story';
 import { caffeinate, drink } from './vices';
 import { treePerk } from './perks';
@@ -148,7 +148,7 @@ export function resolvePeacefully(g: Game, a: Actor, how: 'fix' | 'ticket' | 'sc
   const rep = how === 'fix' ? Math.round(a.rep * 0.9) : how === 'ticket' || how === 'bribe' ? Math.round(a.rep * 0.3) : 0;
   if (rep > 0) g.addRep(rep);
   if (a.stolen > 0) s.rep += a.stolen;
-  if (a.spawnIndex >= 0 && s.location === 'office' && !s.floorState.resolved.includes(a.spawnIndex)) s.floorState.resolved.push(a.spawnIndex);
+  noteResolved(s, a.spawnIndex);
   s.stats.resolvedPeace++;
   if (how === 'fix' || how === 'charmed' || how === 'bribe') adjustStanding(s, 'staff', how === 'fix' ? 2 : 1);
   if (how !== 'ticket') s.queue = s.queue.filter((q) => q.from !== a.name);
@@ -193,6 +193,11 @@ export function dismiss(_g: Game, a: Actor): void {
 
 export function spawnHostile(g: Game, kind: 'user' | 'manager' | 'reply' | 'customer', n: number, name?: string): void {
   for (let i = 0; i < n; i++) {
+    // On the hub a story's new enemy turns up announced, like anyone there who turns.
+    if (g.hub !== null) {
+      g.hub.arrive(kind, g.player.pos.x + fx.range(-3, 3), g.player.pos.z + fx.range(-3, 3), name ?? 'Somebody you upset', 'Right. RIGHT.');
+      continue;
+    }
     const a = g.spawn(kind, g.player.pos.x + fx.range(-3, 3), g.player.pos.z + fx.range(-3, 3), -1);
     if (a === null) continue;
     if (name !== undefined) {
@@ -396,7 +401,10 @@ export function rest(g: Game, safe: boolean): void {
     g.tip('rest');
     if (fx.chance(0.25)) {
       const ang = fx.range(0, Math.PI * 2);
-      const m = g.spawn('manager', g.player.pos.x + Math.sin(ang) * 3, g.player.pos.z + Math.cos(ang) * 3, -1);
+      const x = g.player.pos.x + Math.sin(ang) * 3;
+      const z = g.player.pos.z + Math.cos(ang) * 3;
+      // On the hub it is a colleague with words, not a fight.
+      const m = g.hub !== null ? g.hub.visit('manager', x, z) : g.spawn('manager', x, z, -1);
       if (m !== null) {
         say(m, 'Are you ASLEEP? Under a DESK?', 3);
         adjustStanding(s, 'management', -4);
@@ -592,7 +600,7 @@ export function slackOff(g: Game): string {
   if (g.currentTerminal === null) return 'You cannot look at cats from your backpack.';
   g.slackedTerminals.add(g.currentTerminal.id);
   healPlayer(g, 30, '');
-  if (g.save.location === 'office' && fx.chance(0.35 - g.stealth * 0.2)) {
+  if (g.save.location !== 'mokki' && fx.chance(0.35 - g.stealth * 0.2)) {
     g.caughtPending = true;
     return 'Ahh. That is better. (+30 sanity) ...was that footsteps behind you?';
   }

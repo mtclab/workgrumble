@@ -3,6 +3,7 @@ import { TICKETS } from './content/tickets';
 import type { ActorKind } from './entities';
 import { Game } from './game';
 import { rest } from './hosts';
+import type { HubDebug } from './hub';
 import { findPrompt, interact, standAt } from './interact';
 import { CARDS_SHOWN, INDUCTION_TERMINAL_ID } from './inductionday';
 import type { InteractKind } from './level';
@@ -87,6 +88,9 @@ try {
     mission: (): MissionDebug | null => game.mission?.debug() ?? null,
     missionStandInView: (id: number, dist: number): boolean => game.mission?.standInView(id, dist) ?? false,
     missionToSpine: (): boolean => game.mission?.toSpine() ?? false,
+    // The hub (0.3.0 S1a, e2e/helldesk-hub.spec.ts and the bot's hub-only week): read-only state, and one that only skips the wait for a walk-up.
+    hub: (): HubDebug | null => game.hub?.debug() ?? null,
+    hubWalkUpNow: (): void => game.hub?.walkUpNow(),
   };
   // `crawler.html?mission=stapler` (or vendor): a fresh trainee straight into
   // that card, no induction, nothing saved. `&seed=N` pins its map. With no

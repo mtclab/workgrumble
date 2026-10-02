@@ -1,0 +1,331 @@
+{
+ "version": 3,
+ "careerId": "fixture-midfloor",
+ "name": "Pat Pending",
+ "background": "grad",
+ "sign": "patch",
+ "workplace": "standard",
+ "ironman": false,
+ "floor": 2,
+ "week": 3,
+ "location": "office",
+ "rep": 734,
+ "level": 4,
+ "attrs": {
+  "grit": 35,
+  "reflex": 40,
+  "tech": 55,
+  "charm": 35,
+  "patience": 35,
+  "liver": 30
+ },
+ "skills": {
+  "hardware": {
+   "value": 5,
+   "progress": 0
+  },
+  "scripting": {
+   "value": 21,
+   "progress": 0
+  },
+  "troubleshooting": {
+   "value": 23,
+   "progress": 0
+  },
+  "soft": {
+   "value": 5,
+   "progress": 0
+  },
+  "sisu": {
+   "value": 5,
+   "progress": 0
+  },
+  "stealth": {
+   "value": 6,
+   "progress": 0
+  },
+  "security": {
+   "value": 8,
+   "progress": 0
+  },
+  "drinking": {
+   "value": 5,
+   "progress": 0
+  },
+  "runecraft": {
+   "value": 20,
+   "progress": 0
+  },
+  "athletics": {
+   "value": 5,
+   "progress": 0
+  }
+ },
+ "major": [
+  "troubleshooting",
+  "scripting",
+  "runecraft"
+ ],
+ "skillUps": 3,
+ "attrUps": {
+  "grit": 0,
+  "reflex": 0,
+  "tech": 0,
+  "charm": 0,
+  "patience": 0,
+  "liver": 0
+ },
+ "perkPoints": 0,
+ "perks": {},
+ "rung": 0,
+ "domain": null,
+ "track": null,
+ "arch": null,
+ "standing": {
+  "staff": 12,
+  "management": -7,
+  "kitchen": 14,
+  "itcrowd": 0
+ },
+ "warnings": 1,
+ "gear": [
+  {
+   "uid": "muqlufet-3-8xs6",
+   "base": "stapler",
+   "rarity": "common",
+   "affixes": [],
+   "name": "Swingline Stapler"
+  },
+  {
+   "uid": "muqlufet-4-8l6j",
+   "base": "labelmaker",
+   "rarity": "common",
+   "affixes": [],
+   "name": "Label Maker"
+  },
+  {
+   "uid": "muqlufet-5-49c8",
+   "base": "keyboard",
+   "rarity": "common",
+   "affixes": [],
+   "name": "Model M Keyboard"
+  },
+  {
+   "uid": "muqlufet-6-i8sq",
+   "base": "cardigan",
+   "rarity": "common",
+   "affixes": [],
+   "name": "Kevlar Cardigan"
+  }
+ ],
+ "equipped": {
+  "weapon": "muqlufet-5-49c8",
+  "head": null,
+  "body": "muqlufet-6-i8sq",
+  "feet": null,
+  "trinket": null
+ },
+ "consumables": {
+  "coffee": 2,
+  "biscuits": 1,
+  "paperclip": 3,
+  "lonkero": 1,
+  "redbull": 2
+ },
+ "stash": {},
+ "ammo": {
+  "labels": 31,
+  "air": 0,
+  "ducks": 0,
+  "toner": 0
+ },
+ "sanity": 96,
+ "energy": 100,
+ "loyly": 64,
+ "bac": 0,
+ "stomach": 0,
+ "peakBac": 0,
+ "dependency": 0,
+ "hangover": 0,
+ "empties": 0,
+ "caffeine": 0,
+ "caffeinePeak": 0,
+ "caffeineTol": 0,
+ "crash": 0,
+ "actionItems": 0,
+ "spells": [
+  "steam"
+ ],
+ "spell": "steam",
+ "queue": [
+  {
+   "t": 4,
+   "sla": 61.5,
+   "from": "Gary from Legal",
+   "struck": [
+    "Reboot the router"
+   ],
+   "gold": false
+  }
+ ],
+ "quests": [
+  {
+   "id": 7,
+   "kind": "boss",
+   "title": "MAJOR INCIDENT: Tristan",
+   "body": "x",
+   "from": "The Service Desk",
+   "goal": 1,
+   "progress": 0,
+   "reward": 0,
+   "done": false
+  },
+  {
+   "id": 8,
+   "kind": "resolve",
+   "title": "Resolve 5 users",
+   "body": "y",
+   "from": "Derek",
+   "goal": 5,
+   "progress": 2,
+   "reward": 60,
+   "done": false
+  }
+ ],
+ "nextQuestId": 9,
+ "questLog": [
+  {
+   "id": "descaler",
+   "stage": 1,
+   "progress": 0,
+   "done": false,
+   "floor": 2
+  },
+  {
+   "id": "intern",
+   "stage": 0,
+   "progress": 0,
+   "done": true,
+   "floor": 1
+  }
+ ],
+ "questItems": [
+  "schedule",
+  "memo"
+ ],
+ "journal": [],
+ "flags": {
+  "story_marcus": true,
+  "reportedMarcus": true,
+  "marcusRevenge": true
+ },
+ "findings": 0,
+ "makkara": false,
+ "hauki": false,
+ "palju": false,
+ "saunaBuff": false,
+ "suoBlessing": false,
+ "buffs": {},
+ "floorState": {
+  "floor": 2,
+  "bossDone": false,
+  "used": [
+   3,
+   7
+  ],
+  "picked": [
+   "memo"
+  ],
+  "resolved": [
+   4,
+   8,
+   12,
+   100000
+  ],
+  "gearDrops": [
+   {
+    "gear": {
+     "uid": "muqlufet-7-31dy",
+     "base": "mug",
+     "rarity": "common",
+     "affixes": [],
+     "name": "Mug: World's Okayest Sysadmin"
+    },
+    "x": 31,
+    "z": 47
+   }
+  ],
+  "extras": [
+   {
+    "kind": "customer",
+    "x": 22,
+    "z": 9,
+    "name": "Marcus (holding a grudge)"
+   }
+  ],
+  "unbreakableUsed": false,
+  "nokiaUsed": false,
+  "drinksHere": 1,
+  "suo": false,
+  "coldSteam": false,
+  "boss": {
+   "hp": 211.5,
+   "phase": 2
+  }
+ },
+ "weekend": {
+  "saunas": 0,
+  "grill": false,
+  "lake": false,
+  "palju": false,
+  "fish": 0,
+  "visitorDone": false,
+  "book": false,
+  "potatoes": false,
+  "suo": false
+ },
+ "oncall": {
+  "week": 0,
+  "active": false,
+  "lastWeek": -1,
+  "clock": 0,
+  "pages": [],
+  "missed": 0
+ },
+ "upgrades": [],
+ "achievements": [],
+ "tipsShown": [],
+ "booksRead": [],
+ "stats": {
+  "resolvedField": 23,
+  "resolvedDesk": 0,
+  "resolvedPeace": 6,
+  "breaches": 0,
+  "burnouts": 0,
+  "bosses": 2,
+  "wrongFixes": 0,
+  "drinks": 0,
+  "blackouts": 0,
+  "locks": 0,
+  "spellsCast": 0,
+  "cans": 0,
+  "fish": 0,
+  "elites": 0,
+  "staffedDone": 0,
+  "staffedMissed": 0,
+  "mentored": 0,
+  "treats": 0,
+  "pagesAnswered": 0,
+  "pagesMissed": 0
+ },
+ "team": {
+  "Dave (Senior Sysadmin)": {
+   "morale": 58,
+   "mentored": 0
+  }
+ },
+ "induction": null,
+ "hudHidden": [],
+ "seed": 1700000001,
+ "won": false
+}

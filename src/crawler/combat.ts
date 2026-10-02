@@ -9,6 +9,7 @@ import {
   type ActorKind,
   type HazardKind,
   allyIgnores,
+  hittable,
   hurtActor,
   type ProjectileKind,
   shrugsOff,
@@ -25,7 +26,7 @@ import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, RARITY_SHAPE, rollGear, u
 import { questItemMesh } from './meshes';
 import { MAIN, TRANSIENT_ITEMS } from './quests';
 import { fx } from './rng';
-import { adjustStanding, perk, skill } from './state';
+import { adjustStanding, gearDropsHere, noteResolved, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
 import { questEvent } from './questing';
 import { questProgress } from './desk';
@@ -175,7 +176,7 @@ export function aimPoint(g: Game): THREE.Vector3 {
     const i = cz * g.level.w + cx;
     if (g.level.floor[i] !== 1 || g.level.opaque[i] === 1) return p;
     for (const a of g.actors) {
-      if (!a.hostile || a.resolved) continue;
+      if (!hittable(a) || a.resolved) continue;
       const h = a.kind === 'boss' ? 3.8 : 2;
       if (Math.hypot(a.pos.x - p.x, a.pos.z - p.z) < a.radius + 0.2 && p.y < h) return p;
     }
@@ -200,7 +201,8 @@ export function muzzle(g: Game): THREE.Vector3 {
  * buffs, auras, and the legendary specials.
  */
 export function strike(g: Game, a: Actor, base: number, knock: THREE.Vector3 | null, kind: 'melee' | 'ranged' | 'spell', power = false): void {
-  if (a.resolved || !a.hostile || shrugsOff(g, a)) return;
+  // A colleague on the hub can be hit too: `hurtActor` makes it the crime it is.
+  if (a.resolved || !hittable(a) || shrugsOff(g, a)) return;
   const s = g.save;
   const d = g.derivedCache;
   let dmg = base * (kind === 'melee' ? d.meleeMult : kind === 'ranged' ? d.rangedMult : d.spellMult);
@@ -278,7 +280,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
       const arc = (w.arc ?? 1) * (power ? 1.4 : 1);
       const hit: Actor[] = [];
       for (const a of g.actors) {
-        if (!a.hostile || a.resolved) continue;
+        if (!hittable(a) || a.resolved) continue;
         const dx = a.pos.x - pp.x;
         const dz = a.pos.z - pp.z;
         const dist = Math.hypot(dx, dz);
@@ -301,7 +303,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
       // Milton's stapler goes through: the person behind gets stapled too.
       if (d.specials.has('redstapler')) {
         for (const a of hit) {
-          const behind = g.actors.find((o) => o.hostile && !o.resolved && !hit.includes(o)
+          const behind = g.actors.find((o) => hittable(o) && !o.resolved && !hit.includes(o)
             && Math.hypot(o.pos.x - a.pos.x, o.pos.z - a.pos.z) < 2.2
             && ((o.pos.x - pp.x) * yawFwd.x + (o.pos.z - pp.z) * yawFwd.z) > ((a.pos.x - pp.x) * yawFwd.x + (a.pos.z - pp.z) * yawFwd.z));
           if (behind !== undefined) strike(g, behind, w.damage * 0.5, null, 'melee');
@@ -311,7 +313,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
       if (power && d.specials.has('ballmerChair')) {
         fxRing(g, pp.clone().setY(1), 0xb04bff, 4.5);
         for (const a of g.actors) {
-          if (!a.hostile || a.resolved || hit.includes(a)) continue;
+          if (!hittable(a) || a.resolved || hit.includes(a)) continue;
           const dx = a.pos.x - pp.x;
           const dz = a.pos.z - pp.z;
           if (Math.hypot(dx, dz) > 4.5) continue;
@@ -358,7 +360,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
       fwd.y = 0;
       fwd.normalize();
       for (const a of g.actors) {
-        if (!a.hostile || a.resolved) continue;
+        if (!hittable(a) || a.resolved) continue;
         const dx = a.pos.x - pp.x;
         const dz = a.pos.z - pp.z;
         const dist = Math.hypot(dx, dz);
@@ -377,7 +379,7 @@ export function attack(g: Game, w: WeaponDef, rate: number, power: boolean): voi
       g.shake(0.4);
       fxRing(g, pp.clone().setY(1), w.color, w.range);
       for (const a of g.actors) {
-        if (!a.hostile || a.resolved) continue;
+        if (!hittable(a) || a.resolved) continue;
         const dx = a.pos.x - pp.x;
         const dz = a.pos.z - pp.z;
         const dist = Math.hypot(dx, dz);
@@ -399,12 +401,15 @@ export function shove(g: Game): void {
   // A small ring pushed out in front: the reach of the shove.
   fxRing(g, pp.clone().addScaledVector(fwd, 1.1).setY(1), 0xdfe8ff, 1.5);
   for (const a of g.actors) {
-    if (!a.hostile || a.resolved || a.kind === 'boss' || a.kind === 'turret') continue;
+    if (!hittable(a) || a.resolved || a.kind === 'boss' || a.kind === 'turret') continue;
     const dx = a.pos.x - pp.x;
     const dz = a.pos.z - pp.z;
     const dist = Math.hypot(dx, dz);
     if (dist > 2.6) continue;
     if ((dx * fwd.x + dz * fwd.z) / Math.max(dist, 1e-4) < 0.3) continue;
+    // Shoving a colleague is laying hands on them: the same crime as a swing.
+    if (!a.hostile) g.assault(a);
+    if (!a.hostile) continue;
     a.push.add(new THREE.Vector3(dx, 0, dz).normalize().multiplyScalar(11));
     if (a.shoveImmune <= 0) {
       stun(a, 0.5);
@@ -418,7 +423,8 @@ export function shove(g: Game): void {
 
 export function splash(g: Game, at: THREE.Vector3, radius: number, dmg: number, skip = -1, ally = false): void {
   for (const a of g.actors) {
-    if (!a.hostile || a.resolved || a.id === skip || (ally && allyIgnores(g, a))) continue;
+    // The player's own splash reaches colleagues too (`hurtActor` makes it a crime); an ally's never does.
+    if (!(a.hostile || (a.colleague && !ally)) || a.resolved || a.id === skip || (ally && allyIgnores(g, a))) continue;
     const dist = Math.hypot(a.pos.x - at.x, a.pos.z - at.z);
     if (dist > radius) continue;
     hurtActor(g, a, dmg * (1 - dist / (radius * 1.5)) * (a.shielded ? 0.5 : 1), new THREE.Vector3(a.pos.x - at.x, 0, a.pos.z - at.z).normalize().multiplyScalar(5), !ally);
@@ -504,7 +510,8 @@ export function updateProjectiles(g: Game, dt: number): void {
       }
     } else if (!dead) {
       for (const a of g.actors) {
-        if (!a.hostile || a.resolved || p.hitIds.has(a.id)) continue;
+        // The player's own shots land on colleagues too; an ally's never do.
+        if (!(a.hostile || (a.colleague && p.owner === null)) || a.resolved || p.hitIds.has(a.id)) continue;
         // An ally's shot goes past whoever the ally may not touch (the dummy; the calm, while the floor sleeps).
         if (p.owner !== null && allyIgnores(g, a)) continue;
         const h = a.kind === 'boss' ? 3.8 : a.kind === 'reply' || a.kind === 'mosquito' ? 1.8 : 2;
@@ -708,7 +715,7 @@ export const EXTRA_BASE = 100000;
 
 /** Remember that a level spawn is dealt with, so a reload does not bring it back. */
 export function markResolved(g: Game, a: Actor): void {
-  if (a.spawnIndex >= 0 && g.save.location === 'office' && !g.save.floorState.resolved.includes(a.spawnIndex)) g.save.floorState.resolved.push(a.spawnIndex);
+  noteResolved(g.save, a.spawnIndex);
 }
 
 /**
@@ -837,8 +844,9 @@ function placeDrop(g: Game, at: THREE.Vector3, mesh: THREE.Object3D, pickup: Omi
   mesh.position.set(at.x + (scatter ? fx.range(-0.8, 0.8) : 0), 0.4, at.z + (scatter ? fx.range(-0.8, 0.8) : 0));
   g.scene.add(mesh);
   g.pickups.push({ ...pickup, mesh, t: 0 });
-  if (pickup.gear !== null && !g.save.floorState.gearDrops.some((p) => p.gear.uid === pickup.gear?.uid)) {
-    g.save.floorState.gearDrops.push({ gear: pickup.gear, x: mesh.position.x, z: mesh.position.z });
+  const drops = gearDropsHere(g.save);
+  if (pickup.gear !== null && !drops.some((p) => p.gear.uid === pickup.gear?.uid)) {
+    drops.push({ gear: pickup.gear, x: mesh.position.x, z: mesh.position.z });
   }
 }
 
@@ -913,7 +921,7 @@ export function dropGear(g: Game, at: THREE.Vector3, inst: GearInstance, scatter
 
 /** Rebuild saved drops without scattering them or rolling another item. */
 export function restoreGearDrops(g: Game): void {
-  for (const p of g.save.floorState.gearDrops) dropGear(g, new THREE.Vector3(p.x, 0, p.z), p.gear, false);
+  for (const p of [...gearDropsHere(g.save)]) dropGear(g, new THREE.Vector3(p.x, 0, p.z), p.gear, false);
 }
 
 /** A random piece of kit, scaled to the floor; elites and closets roll better. */
@@ -962,14 +970,18 @@ export function updatePickups(g: Game, dt: number): void {
       p.mesh.position.z += (pp.z - p.mesh.position.z) * dt * 6;
     }
     if (p.gear !== null) {
-      const record = s.floorState.gearDrops.find((r) => r.gear.uid === p.gear?.uid);
+      const record = gearDropsHere(s).find((r) => r.gear.uid === p.gear?.uid);
       if (record !== undefined) {
         record.x = p.mesh.position.x;
         record.z = p.mesh.position.z;
       }
     }
     const remove = (): false => {
-      if (p.gear !== null) s.floorState.gearDrops = s.floorState.gearDrops.filter((r) => r.gear.uid !== p.gear?.uid);
+      if (p.gear !== null) {
+        const drops = gearDropsHere(s);
+        const i = drops.findIndex((r) => r.gear.uid === p.gear?.uid);
+        if (i >= 0) drops.splice(i, 1);
+      }
       g.scene.remove(p.mesh);
       disposeTree(p.mesh, true);
       return false;
