@@ -3,10 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { markResolved } from './combat';
 import { type Actor, type ActorKind, createActor, type GameCtx, updateActor } from './entities';
 import type { Game } from './game';
-import { flowField, type Level } from './level';
+import { coverBetween, flowField, generateLevel, type Level, toCell } from './level';
 import { MissionRun, payout, QUIET_BONUS, type Outcome } from './mission';
 import { STAPLER, VENDOR_DAY } from './missions';
 import { Rng } from './rng';
+import { THEMES } from './textures';
 import { ALERT, CONE, INVESTIGATE, inCone, NOISE, type NoiseKind, sightRange, type Sort, type Tier, Watch, type WatchView } from './stealth';
 
 // Speech bubbles and markers are canvas text; the rules do not need to see them.
@@ -44,6 +45,7 @@ function room(wallAt: number | null = null): Level {
     rooms: [{ x: 1, y: 1, w: N - 2, h: N - 2, kind: 'office', id: 0 }],
     interactables: [], spawns: [], start: { x: N, z: N }, bossSpawn: { x: N, z: N },
     lightSpots: [], group: new THREE.Group(), seen: new Uint8Array(N * N),
+    low: new Uint8Array(N * N), hum: new Uint8Array(N * N),
   };
 }
 
@@ -355,5 +357,104 @@ describe('a mission run pays', () => {
     run.tier(1);
     expect(run.maxTier).toBe(2);
     expect(ALERT).toBeGreaterThan(INVESTIGATE);
+  });
+});
+
+describe('the partition rule (S2a gate 3)', () => {
+  /** A row of desk partitions (solid, see-over, chest-high) across the room, one cell north of the player. */
+  function partitioned(wallAt: number | null = null): Floor {
+    const ctx = new Floor(wallAt);
+    const z = toCell(N) - 1;
+    for (let x = 3; x < N - 3; x++) {
+      ctx.level.solid[z * N + x] = 1;
+      ctx.level.low![z * N + x] = 1;
+    }
+    return ctx;
+  }
+
+  it('crouched behind a partition you are unseen by a standing person across it; standing you are seen; a wall hides both', () => {
+    const watch = (ctx: Floor, crouch: boolean): number => {
+      ctx.crouching = crouch;
+      // A manager 7 m north, facing the player: well inside their 13 m.
+      const a = ctx.put('manager', N, N - 7, 0);
+      ctx.step(3);
+      return ctx.susp(a);
+    };
+    expect(watch(partitioned(), true), 'crouched behind the partition').toBe(0);
+    expect(watch(partitioned(), false), 'standing behind it').toBeGreaterThan(10);
+    // The control: crouched in the open, they do see you (the crouch only halves the rise).
+    expect(watch(new Floor(), true), 'crouched in the open').toBeGreaterThan(5);
+    // A wall (the row behind the partition) still hides you either way.
+    expect(watch(partitioned(toCell(N) - 2), true), 'crouched behind a wall').toBe(0);
+    expect(watch(partitioned(toCell(N) - 2), false), 'standing behind a wall').toBe(0);
+  });
+
+  it('the open plan\'s desks are partitions: a bullpen (T1) hides a crouched player behind a desk from across it', () => {
+    const level = generateLevel(1, THEMES[1]!, 4242, true, false, 'show-T1');
+    const t1 = level.recipe!.templates.find((t) => t.id === 'T1')!;
+    const room = level.rooms[t1.rooms[0]!]!;
+    const w = level.w;
+    const open = (c: number): boolean => level.floor[c] === 1 && level.solid[c] === 0;
+    let desks = 0;
+    let tried = 0;
+    for (let y = room.y; y < room.y + room.h; y++) {
+      for (let x = room.x; x < room.x + room.w; x++) {
+        const c = y * w + x;
+        if (level.low?.[c] !== 1) continue;
+        desks++;
+        expect(level.solid[c] === 1 && level.opaque[c] === 0, 'a desk: solid, see-over').toBe(true);
+        // Crouched just south of the desk; somebody standing three or four cells north, in the room.
+        const viewer = [3, 4].map((k) => c - k * w).find((v) => v >= room.y * w && open(v));
+        if (!open(c + w) || viewer === undefined) continue;
+        tried++;
+        const px = (x + 0.5) * 2;
+        const pz = (y + 1.5) * 2;
+        const vx = (viewer % w + 0.5) * 2;
+        const vz = (Math.floor(viewer / w) + 0.5) * 2;
+        expect(coverBetween(level, vx, vz, px, pz, true), `crouched behind the desk at ${x},${y}`).toBe(true);
+        expect(coverBetween(level, vx, vz, px, pz, false), `standing behind the desk at ${x},${y}`).toBe(false);
+      }
+    }
+    expect(desks, 'the bullpen has its desks').toBeGreaterThan(10);
+    expect(tried, 'desks with somebody across them').toBeGreaterThan(3);
+  });
+});
+
+describe('the server hall\'s hum (S2a gate 4)', () => {
+  it('inside a server hall a noise carries half as far; outside, as far as ever', () => {
+    const n = NOISE.sprint;
+    const hummed = (): Floor => {
+      const ctx = new Floor();
+      // The hum over the room's south half.
+      for (let z = toCell(N); z < N - 1; z++) for (let x = 1; x < N - 1; x++) ctx.level.hum![z * N + x] = 1;
+      return ctx;
+    };
+    // Inside: a listener 4 m from a sprint (radius 6) does not hear it; one 2.5 m away (inside 3) does.
+    const inside = hummed();
+    const far = inside.put('user', N, N + 6 - 4, Math.PI);
+    const near = inside.put('user', N + 2.5, N + 6, Math.PI);
+    inside.watch.noise('sprint', N, N + 6, inside.time);
+    expect(inside.susp(far), 'inside the hall, 4 m').toBe(0);
+    expect(inside.susp(near), 'inside the hall, 2.5 m').toBe(n.jump);
+    // Outside the hall (the same floor's north half): 4 m away hears it, as on any floor.
+    const outside = hummed();
+    const out = outside.put('user', N, N - 8 - 4, Math.PI);
+    outside.watch.noise('sprint', N, N - 8, outside.time);
+    expect(outside.susp(out), 'outside the hall, 4 m').toBe(n.jump);
+  });
+
+  it('only a server hall (T5) hums: its every cell, and no ordinary floor\'s server room', () => {
+    const hall = generateLevel(1, THEMES[1]!, 4242, true, false, 'show-T5');
+    const t5 = hall.recipe!.templates.find((t) => t.id === 'T5')!;
+    const rooms = new Set(t5.rooms);
+    let hums = 0;
+    for (let i = 0; i < hall.w * hall.h; i++) {
+      expect(hall.hum?.[i] === 1, `cell ${i}`).toBe(rooms.has(hall.roomOf[i] ?? -1));
+      if (hall.hum?.[i] === 1) hums++;
+    }
+    expect(hums).toBeGreaterThan(50);
+    const ordinary = generateLevel(2, THEMES[2]!, 777, true);
+    expect(ordinary.rooms.some((r) => r.kind === 'server'), 'today\'s floor has a server room').toBe(true);
+    expect(ordinary.hum, 'and no hum').toBeUndefined();
   });
 });

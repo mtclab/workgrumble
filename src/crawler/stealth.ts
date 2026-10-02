@@ -1,5 +1,5 @@
 import { type Actor, type ActorKind, say, setMarker, walkClear, type WatchAct, type WatchCtx } from './entities';
-import { flowField, type Level, lineOfSight, NEIGHBOURS8, TILE, toCell, wallBetween } from './level';
+import { coverBetween, flowField, inHum, type Level, lineOfSight, NEIGHBOURS8, TILE, toCell, wallBetween } from './level';
 import { fx } from './rng';
 import { cancelWindup } from './windup';
 import type { AlarmRule } from './mission';
@@ -264,7 +264,9 @@ export class Watch implements WatchCtx {
     if (w.mood === 'alert') return ALERTED;
     const v = this.host.view();
     const range = sightRange(a.kind);
-    w.seeing = sees && !v.invisible && dist <= range && inCone(a.yaw, a.pos.x, a.pos.z, v.x, v.z);
+    // Crouched behind a partition (or a counter), you are under their line of sight (S2a's partition rule).
+    w.seeing = sees && !v.invisible && dist <= range && inCone(a.yaw, a.pos.x, a.pos.z, v.x, v.z)
+      && !(v.crouching && coverBetween(this.level, a.pos.x, a.pos.z, v.x, v.z, true));
     w.lookedAt = v.time;
     // Searching and they find you: Alert again, at once (the pause before a swing still holds).
     if (w.mood === 'searching') {
@@ -300,10 +302,12 @@ export class Watch implements WatchCtx {
   noise(kind: NoiseKind, x: number, z: number, time: number): void {
     if (this.tier >= 3) return;
     const n = NOISE[kind];
+    // Inside a server hall the racks' hum masks it: half as far (S2a, T5).
+    const radius = inHum(this.level, x, z) ? n.radius / 2 : n.radius;
     for (const w of this.watchers.values()) {
       const a = w.actor;
       if (a.resolved || w.mood === 'alert') continue;
-      if (Math.hypot(a.pos.x - x, a.pos.z - z) > n.radius) continue;
+      if (Math.hypot(a.pos.x - x, a.pos.z - z) > radius) continue;
       w.suspicion = Math.min(100, w.suspicion + n.jump);
       const yaw = Math.atan2(x - a.pos.x, z - a.pos.z);
       a.yaw = yaw;
