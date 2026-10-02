@@ -11,7 +11,12 @@ import { POSTITS, STAPLER } from './missions';
 import { newSave } from './state';
 import { COOLDOWN, INVESTIGATE, SEARCH_AFTER, SEARCH_COUNTDOWN, type Watcher } from './stealth';
 
-vi.mock('./textures', async (orig) => ({ ...await orig<typeof import('./textures')>(), textSprite: () => new THREE.Sprite(), disposeSprite: () => undefined }));
+// A sprite that remembers the words it was drawn with: what is over somebody's head can be read back.
+vi.mock('./textures', async (orig) => ({
+  ...await orig<typeof import('./textures')>(),
+  textSprite: (text: string) => Object.assign(new THREE.Sprite(), { userData: { text } }),
+  disposeSprite: () => undefined,
+}));
 vi.mock('./level', async (orig) => {
   const mod = await orig<typeof import('./level')>();
   return { ...mod, generateLevel: (n: number, theme: Parameters<typeof generateLevel>[1], seed: number, _nt?: boolean, _decor?: boolean, recipe?: LevelRecipe) => mod.generateLevel(n, theme, seed, true, false, recipe) };
@@ -66,6 +71,14 @@ function alert(h: Headless, w: Watcher): void {
   holdAll(h)();
 }
 
+/** What is drawn over somebody's head (the marker sprite on their model, and its words), or null for nothing. */
+function overHead(a: Actor): string | null {
+  const m = a.marker;
+  if (m === null) return null;
+  expect(a.root.children, 'on their model').toContain(m);
+  return (m.userData as { text?: string }).text ?? '';
+}
+
 const freeAll = (h: Headless): void => { for (const a of h.g.mission!.crowd) a.stunned = 0; };
 
 describe('gate 3: the alarm rule per card', () => {
@@ -97,8 +110,7 @@ describe('gate 3: the alarm rule per card', () => {
     h.run(0.6, holdAll(h));
     expect(w.mood, 'searching after 8 s unseen').toBe('searching');
     expect(w.actor.aggro, 'looking, not chasing').toBe(false);
-    expect(w.shown, 'the countdown over their head').toBe(`? ${SEARCH_COUNTDOWN}`);
-    expect(m.hud().actors.find((a) => a.id === w.actor.id)?.mark ?? w.shown).toBe(`? ${SEARCH_COUNTDOWN}`);
+    expect(overHead(w.actor), 'the countdown over their head').toBe(`? ${SEARCH_COUNTDOWN}`);
     expect(m.watch.tier, 'still Alert while they search').toBe(2);
     // Let them go: they walk to where they last saw you, the countdown running.
     freeAll(h);
@@ -106,14 +118,14 @@ describe('gate 3: the alarm rule per card', () => {
     expect(w.spot, 'the spot they saw you at').toEqual(seenAt);
     h.run(5, () => { h.g.save.sanity = 100; });
     expect(Math.hypot(w.actor.pos.x - seenAt.x, w.actor.pos.z - seenAt.z), 'walking to the spot').toBeLessThan(Math.max(1.3, from - 0.5));
-    expect(w.shown).toBe(`? ${Math.ceil(SEARCH_COUNTDOWN - 5.3)}`);
+    expect(overHead(w.actor), 'counting down').toBe(`? ${Math.ceil(SEARCH_COUNTDOWN - 5.3)}`);
     h.run(SEARCH_COUNTDOWN - 5 - 0.6, () => { h.g.save.sanity = 100; });
     expect(w.mood, 'not before the countdown is out').toBe('searching');
     expect(m.watch.tier).toBe(2);
     h.run(0.8, () => { h.g.save.sanity = 100; });
     expect(w.mood, 'gave up: Noticed').toBe('wary');
     expect(w.suspicion).toBe(INVESTIGATE);
-    expect(w.shown).toBe('');
+    expect(overHead(w.actor), 'nothing over their head').toBeNull();
     expect(m.watch.tier, 'the tier follows the highest person').toBe(1);
     expect(h.toasts.some((t) => t.startsWith('STOOD DOWN to NOTICED'))).toBe(true);
     expect(m.run.maxTier, 'the run remembers it went Alert').toBe(2);
@@ -131,7 +143,7 @@ describe('gate 3: the alarm rule per card', () => {
     expect(m.standInView(w.actor.id, 3)).toBe(true);
     h.run(0.2, () => { h.g.save.sanity = 100; m.standInView(w.actor.id, 3); });
     expect(w.mood).toBe('alert');
-    expect(w.shown).toBe('!');
+    expect(overHead(w.actor), 'the "!" over their head').toBe('!');
   });
 
   it('search: Escalated (everyone) stays Escalated', () => {
