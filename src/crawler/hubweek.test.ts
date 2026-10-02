@@ -9,6 +9,7 @@ import { answering, DT, type Headless, headless, lift, newCareer, press } from '
 import { HUB_EXTRA_BASE } from './hub';
 import { interact, standAt } from './interact';
 import * as host from './hosts';
+import { isPracticeTicket } from './induction';
 import { generateLevel, type LevelRecipe } from './level';
 import { plainInstance, uniqueInstance } from './loot';
 import { generateMokki } from './mokki';
@@ -482,6 +483,38 @@ describe('S1a: the hub and the P1 floor each have their own once-a-floor saves a
     h.g.startWeek(1);
     h.g.loadHub(false, true);
     expect(h.g.save.hub.once).toEqual({ unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false });
+  });
+});
+
+describe('S1a: the induction\'s early exit', () => {
+  function inducted(step: 'look' | 'parry' | 'ticket'): Headless {
+    const h = headless(newSave(1));
+    h.g.beginCareer({ name: 'Pat Hub', background: 'grad', sign: 'patch', rung: 0, domain: null, track: null }, false);
+    h.pick(/./);
+    expect(h.g.inductionDay).not.toBeNull();
+    h.g.save.induction = { step, looked: 0, sanityTold: false };
+    return h;
+  }
+
+  it('before the floor is awake the lift stays shut; once it is, the lift goes up and the induction is abandoned (not finished)', () => {
+    const asleep = inducted('parry');
+    expect(asleep.g.floorAwake).toBe(false);
+    const before = asleep.dialogues.length;
+    asleep.g.promptTarget = { kind: 'interact', it: lift(asleep.g) };
+    interact(asleep.g);
+    expect(asleep.dialogues.length, 'no buttons yet').toBe(before);
+    expect(asleep.toasts.at(-1)).toContain('Finish the card first');
+
+    const h = inducted('ticket');
+    const g = h.g;
+    expect(g.floorAwake).toBe(true);
+    expect(press(h, lift(g)), 'the lift works once the floor is awake').toEqual(['Floor B1: the major incident', 'Not yet.']);
+    h.pick('Floor B1: the major incident');
+    expect(g.save.location).toBe('office');
+    expect(g.inductionDay, 'the morning is over').toBeNull();
+    expect(g.save.induction).toBeNull();
+    expect(g.save.queue.some((q) => isPracticeTicket(q)), 'the practice ticket went with it').toBe(false);
+    expect(g.settings.inductionDone, 'abandoned, not finished: the next career is still offered it').not.toBe(true);
   });
 });
 

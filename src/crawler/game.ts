@@ -1474,8 +1474,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       face: this.faceMood,
       ammoText: this.ammoText(),
       floorName: this.floorName(),
-      // The map's lift is white when E on it goes somewhere: always now (the hub, the P1, Friday), except mid-induction.
-      elevatorOpen: this.inductionDay === null,
+      // The map's lift is white when E on it goes somewhere: always now (the hub, the P1, Friday), except while the induction has the floor asleep.
+      elevatorOpen: this.inductionDay === null || this.floorAwake,
       title: this.title,
       spellText: sp === undefined ? 'No runes (find the Saunatonttu)' : spellLabel(this, sp),
       abilityText: domainReady ? `${s.domain ?? ''} (G): ${this.abilityCd > 0 ? `${Math.ceil(this.abilityCd)}s` : 'ready'}` : '',

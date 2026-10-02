@@ -324,8 +324,10 @@ function useThing(g: Game, it: Interactable): void {
         g.mission.lift();
         break;
       }
-      // Induction day: Morag has the new starter until the card is done.
-      if (g.inductionDay !== null) {
+      // Induction day: Morag has the new starter until the floor is awake
+      // (the block and parry done). After that the lift works, and taking it
+      // abandons the rest of the morning (`inductionOnLoad`).
+      if (g.inductionDay !== null && !g.floorAwake) {
         sfx.error();
         g.hud.toast('Morag: "The lift will still be there after your induction. Finish the card first."', 'info');
         break;
@@ -444,7 +446,7 @@ function useThing(g: Game, it: Interactable): void {
 
 /** What E on the lift says it will do. */
 function liftPrompt(g: Game): string {
-  if (g.inductionDay !== null) return 'The lift (after your induction)';
+  if (g.inductionDay !== null && !g.floorAwake) return 'The lift (after your induction)';
   const friday = g.elevatorOpen ? ', or Friday' : '';
   return g.save.location === 'hub' ? `E: Take the lift - floor ${floorLabel(g.save.floor)}, the major incident${friday}` : `E: Take the lift - back to the hub${friday}`;
 }
