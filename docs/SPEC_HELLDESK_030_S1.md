@@ -153,13 +153,25 @@ Bot (staging): every card in the pool completes with approach quiet (where the s
 Calls made where the spec left room or met the code, for review:
 
 - **Givers on the hub** are colleagues with indices of their own (`HUB_GIVER_BASE` plus the giver's place in `GIVERS`), at a seeded open-plan desk, the same person whenever their cards are dealt; they never walk up with a problem. Declining or failing their card moves a per-giver standing (`save.rapport`), shown on the cards; no faction moves.
-- **The pool by band:** a band deals from its own and the bands below it. With six non-P1 cards, a deal always leaves one out so next week can differ: an Architect week deals 5-6 cards, not 7, until the pool grows.
+- **The pool by band:** a band deals from its own and the bands below it. The band's minimum count comes first, from whatever the week's exclusions (side quests in hand, the story person) leave; past it, a deal leaves one card out so next week can differ, and the no-identical-week rule gives way only when the minimum leaves no other hand. With six non-P1 cards an Architect week deals 5-6 cards, not 7, until the pool grows.
+- **A deck dealt mid-week** (a save from before the deck, or one whose deck did not read back, on a week already under way) always has the floor as its P1, so a Friday already earned stays open.
 - **The Printer Uprising as P1** only stands in for the floor P1 in Overtime at Helpdesk band (one week in three): the story floors keep their bosses. Failing it (its 240 s clock) still opens Friday, at Management -6.
 - **The same story twice:** a card is not dealt while the side quest it retells is in hand, and that side quest is not offered on a week the card is dealt; Marcus's card is not dealt on a week Marcus is the hub's story person.
 - **Escort:** helpers take no damage in this engine, so Josh fails by nerve: it drains with anyone after you near him, and at zero he takes the lift (the card fails).
 - **A mission's people** keep their patrols when you are far away (they are the stealth clock). People called in by a card's going-loud (the Head of People) are after you but never a second alarm.
 - **Debug path:** `?mission=<id>` plays any card of the pool on a fresh trainee (`&alarm=` picks the rule); nothing saved.
 - **Not yet:** the team on missions (D3, S5), optional goals and new objective kinds beyond the pool's (S3), staffing as cards (S5).
+
+### Decided behaviour (S1b review, 2026-10-02)
+
+Decisions made on the three reviews of S1b, built and gated:
+
+- **An aborted card keeps its run** exactly as a P1 left at its lift does: taking it again resumes the same map with resolved people still resolved, used and picked things still used, conversations still spent, and Rep and standing already paid (a manager's meeting included) not to be had again. Its results card counts only what the card itself paid. A reload, an abort and a P1 left all keep the same run, people who joined the card in play (called in, summoned) included.
+- **Search rule, the only one after you resolved:** the tier does not drop at once. The mission holds it and the floor searches, on the same 8 s and 20 s from the last time anyone saw you, shown in the HUD as "the floor is searching" with its countdown; then it drops one step, announced. One-way never drops; cooldown follows its own rule.
+- **Cooldown from Escalated to Alert:** only the person who most recently saw you stays Alert; everyone else who was after you drops to Noticed and goes to search where they last saw you. The tier never says less than the people's moods mean (gated every frame of a long scripted fight under each rule).
+- **Givers:** a card a coworker was to hand over in person moves to your desk (Accept and Decline there, no "ask them") for the rest of the week once that coworker is after you, resolved or cold on you. A failed card's consequence is never dropped: each failure counts, a giver resolved earlier in the week comes back for it (announced), and while they are already after you it waits until they are not.
+- **Rapport is shown and matters:** each coworker's cards say how they feel about you in plain words (warm at +3 or more, cool at -4 or less, fine between; declining costs 2, failing 5, finishing gives 3). A coworker cool on you pays 10% less for their cards and hands over nothing in person the next week: their card is on your desk.
+- **Variety:** the S1b pool (6 non-P1 cards) is too small for random weeks; S2 grows it with templates to at least 18 cards and adds a gate that consecutive weeks share at most half their hand.
 
 ## S1c outline: decor, special items and buffs
 

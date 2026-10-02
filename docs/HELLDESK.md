@@ -680,11 +680,15 @@ against it. Being outside a balance target is reported (the targets are
 enforced in S6, not now).
 
 The quiet policy plays each objective the way the compass shows it (the
-nearest gold diamond): along the service spine where the map has one, then a
-closet or a computer used, somebody talked to (the debrief: the dialogue
-policy picks the best printed odds), a copy walked over, or, escorting Josh,
-the way to the counter that keeps 7 m clear of everybody the HUD has shown
-it. Loud fights whatever the compass marks. In a career the bot only takes
+nearest gold diamond, kept until it is done or gone): along the service
+spine where the map has one, then a closet or a computer used (from another
+side when somebody stands in the way), the person the compass names talked
+to (the debrief: the dialogue policy picks the best printed odds), a copy
+lying on the floor walked over, or, escorting Josh, the way into the
+counter's room that keeps 7 m clear of everybody the HUD has shown it. Loud
+fights whatever the compass marks, except the escort: on your feet the long
+way round, fighting only whoever is on you. Its snapshots' `target` says
+what it is going for on a card. In a career the bot only takes
 the week's P1 (the floor, or the Printer Uprising card), and a career card's
 results card goes back to the hub.
 
@@ -980,9 +984,17 @@ P1, the count by band, the style mix, never last week's hand, two alarm
 rules, in person only from coworkers, the floor P1 never after hours),
 `deckgame.test.ts` (your desk, Accept and Decline, capacity, a card handed
 over in person, the lift to a card and back, after hours, a failed card's
-giver on the hub, Friday, reloads mid-card and a P1 card left and resumed),
-`alarm.test.ts` (one-way, search and cooldown frame by frame) and
-`cards.test.ts` (each card of the pool to its objective, the stapler's
-tuning). `e2e/helldesk-deck.spec.ts` plays a card from the desk to its
+giver on the hub, Friday, reloads mid-card and a P1 card left and resumed,
+a deck dealt mid-week, givers who cannot hand a card over, failures always
+answered for, rapport), `missionsave.test.ts` (a card kept whole across
+saves, reloads and aborts: resolves counted as they happen, each person's
+talks, bills and rages, people who joined in play, the alarm's clocks and
+memory, nothing paid twice after an abort, broken saves landing on the
+hub), `alarm.test.ts` (one-way, search and cooldown frame by frame, the
+floor's own search, cooling out of Escalated, and the tier checked against
+the people's moods every frame of a long fight), `cards.test.ts` (each card
+of the pool to its objective, the stapler's tuning) and `botplay.test.ts`
+(the balance bot plays every card quiet and loud on the real game, and
+finishes each). `deckplay.ts` is their shared test support. `e2e/helldesk-deck.spec.ts` plays a card from the desk to its
 quiet finish and pay, a loud one aborted and still on the board, and a card
 handed over in person.
