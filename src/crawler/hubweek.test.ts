@@ -6,7 +6,7 @@ import { breach } from './desk';
 import type { Actor } from './entities';
 import { ARRIVAL_LIFT_ID, type Game } from './game';
 import { answering, DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
-import { HUB_EXTRA_BASE } from './hub';
+import { HUB_EXTRA_BASE, personKey } from './hub';
 import { interact, standAt } from './interact';
 import * as host from './hosts';
 import { isPracticeTicket } from './induction';
@@ -553,6 +553,49 @@ describe('S1a: a mentee comes with you', () => {
     expect(down.length, 'one of them on the hub').toBe(1);
     expect(down[0]?.recruited).toBe(true);
     expect(Math.hypot(down[0]!.pos.x - g.player.pos.x, down[0]!.pos.z - g.player.pos.z)).toBeLessThan(3);
+  });
+});
+
+describe('S1a: hub people remember the week', () => {
+  it('a healer who signed The Leaving Card and gave you cake does neither again this week: not after the lift, not after a reload', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    g.acceptQuest('leavingcard');
+    const st = g.save.questLog.find((q) => q.id === 'leavingcard')!;
+    const healer = g.actors.find((a) => a.kind === 'healer' && !a.resolved)!;
+    const key = personKey(healer);
+    /** E on the healer: what she offers. The signature counts as you talk to her. */
+    const visit = (x: Headless): string[] => {
+      const her = x.g.actors.find((a) => a.kind === 'healer' && personKey(a) === key);
+      if (her === undefined) throw new Error('she is not on the floor');
+      x.g.promptTarget = { kind: 'actor', a: her };
+      interact(x.g);
+      return x.dialogues.at(-1)?.options.map((o) => o.label) ?? [];
+    };
+    expect(visit(h)).toContain('Is there any cake going?');
+    expect(st.progress, 'her signature').toBe(1);
+    h.pick('Is there any cake going?');
+    h.pick(/./);
+    // Up and back down.
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    press(h, lift(g, ARRIVAL_LIFT_ID));
+    h.pick('Back to the hub');
+    expect(visit(h), 'no second cake').not.toContain('Is there any cake going?');
+    expect(st.progress, 'no second signature from her').toBe(1);
+    while (h.g.screen === 'dialogue') h.pick(/./);
+    // A save and a load.
+    expect(g.writeSlotFor('quick')).toBe(true);
+    const back = headless(normalizeSave(readSlot('quick')!.data)!);
+    back.g.loadWorld(true);
+    expect(visit(back), 'after a reload, still no second cake').not.toContain('Is there any cake going?');
+    expect(back.g.save.questLog.find((q) => q.id === 'leavingcard')?.progress, 'nor a second signature').toBe(1);
+    // Monday: she has forgotten.
+    back.g.save.week = 2;
+    back.g.startWeek(1);
+    back.g.loadHub(false, true);
+    expect(back.g.save.hub.people).toEqual({});
   });
 });
 

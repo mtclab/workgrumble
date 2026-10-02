@@ -195,6 +195,19 @@ export interface HubState {
   once: OncePerFloor;
   /** People (by `hub.ts personKey`) who saw a crime and are not ones to fight: cold on you for the week. */
   cold: string[];
+  /**
+   * What happened with each person this week that happens once (by
+   * `hub.ts personKey`): their one-off conversation beats (a leaving-card
+   * signature, the tea, the lecture), a gift given, a talk-down had.
+   */
+  people: Record<string, HubPerson>;
+}
+
+/** One person's once-a-week beats on the hub. */
+export interface HubPerson {
+  memo: string[];
+  gift?: true;
+  talked?: true;
 }
 
 /** The once-a-floor things of where you are at work: the hub's, or the P1 floor's. */
@@ -315,7 +328,7 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [] };
+  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [], people: {} };
 }
 
 /** Monday on the hub: the week's people and props start again; the gear on the floor is still there, and arrivals' indices go on counting. */
@@ -355,7 +368,16 @@ export function normalizeHub(raw: unknown, week: number): HubState {
     nextArrival: HUB_EXTRA_BASE,
     once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false },
     cold: Array.isArray(o.cold) ? (o.cold as unknown[]).filter((x): x is string => typeof x === 'string') : [],
+    people: {},
   };
+  if (typeof o.people === 'object' && o.people !== null) {
+    for (const [k, v] of Object.entries(o.people as Record<string, unknown>)) {
+      const p = v as { memo?: unknown; gift?: unknown; talked?: unknown } | null;
+      if (typeof p !== 'object' || p === null) continue;
+      const memo = Array.isArray(p.memo) ? p.memo.filter((x): x is string => typeof x === 'string') : [];
+      h.people[k] = { memo, ...(p.gift === true ? { gift: true as const } : {}), ...(p.talked === true ? { talked: true as const } : {}) };
+    }
+  }
   if (typeof o.once === 'object' && o.once !== null) {
     const once = o.once as Partial<Record<keyof OncePerFloor, unknown>>;
     for (const k of ['unbreakableUsed', 'nokiaUsed', 'suo', 'coldSteam'] as const) h.once[k] = once[k] === true;

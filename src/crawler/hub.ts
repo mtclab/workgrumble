@@ -94,6 +94,9 @@ function onlooker(a: Actor): boolean {
   return !a.hostile && !a.colleague && !a.resolved && !a.recruited && ONLOOKERS.includes(a.kind);
 }
 
+/** Memo flags that are the moment's, not the week's: a flinch, the red pen's mark, a mentoring ask on its way. */
+const TRANSIENT_MEMO: ReadonlySet<string> = new Set(['flinched', 'marked', 'seeking']);
+
 /** Who walks up with a problem. */
 const WALKERS: readonly ActorKind[] = ['user', 'caller'];
 
@@ -182,9 +185,14 @@ export class Hub implements HubCtx {
   private walkerT = 0;
   /** Seconds of hub time between the last walk-up and the next. */
   private gap: number;
+  /** The save, and the week, this hub was built for. */
+  private readonly save: SaveState;
+  private readonly week: number;
 
   constructor(g: Game) {
     this.g = g;
+    this.save = g.save;
+    this.week = g.save.hub.week;
     this.gap = this.nextGap();
   }
 
@@ -322,10 +330,40 @@ export class Hub implements HubCtx {
     }
   }
 
-  /** Put back what the hub remembers about its people this week (who has gone cold on you), once everyone is on the floor. */
+  /**
+   * Put back what the hub remembers about its people this week, once
+   * everyone is on the floor: who has gone cold on you, and each person's
+   * once-a-week beats (a signature, a gift, a talk-down).
+   */
   remember(): void {
-    const cold = new Set(this.g.save.hub.cold);
-    for (const a of this.g.actors) if (cold.has(personKey(a))) a.cold = true;
+    const h = this.g.save.hub;
+    const cold = new Set(h.cold);
+    for (const a of this.g.actors) {
+      const key = personKey(a);
+      if (cold.has(key)) a.cold = true;
+      const p = h.people[key];
+      if (p === undefined) continue;
+      for (const m of p.memo) a.memo[m] = true;
+      if (p.gift === true) a.giftGiven = true;
+      if (p.talked === true) a.talked = true;
+    }
+  }
+
+  /**
+   * Write each person's once-a-week beats into the save (`HubState.people`):
+   * before a save is written, and as you leave the hub. Only into the save
+   * and week this hub was built for (a load, or Monday, replaces them before
+   * the old floor goes).
+   */
+  note(): void {
+    const g = this.g;
+    if (g.save !== this.save || g.save.hub.week !== this.week) return;
+    const people = g.save.hub.people;
+    for (const a of g.actors) {
+      const memo = Object.keys(a.memo).filter((m) => a.memo[m] === true && !TRANSIENT_MEMO.has(m));
+      if (memo.length === 0 && !a.giftGiven && !a.talked) continue;
+      people[personKey(a)] = { memo, ...(a.giftGiven ? { gift: true as const } : {}), ...(a.talked ? { talked: true as const } : {}) };
+    }
   }
 
   /** A story choice that makes an enemy (somebody blamed, a promise broken): they come for you, announced, and stay for the week. */
@@ -370,8 +408,9 @@ export class Hub implements HubCtx {
     };
   }
 
-  /** Off the floor: nothing is left behind. */
+  /** Off the floor: what people remember goes into the save, and nothing is left behind. */
   dispose(): void {
+    this.note();
     this.walker = null;
   }
 

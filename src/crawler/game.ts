@@ -1031,7 +1031,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
     // A vision is never saved: whatever asks waits until you surface. Nor is a mission card's trainee.
     if (this.vision !== null || this.mission) return false;
-    if (s === this.save) this.recordBoss();
+    if (s === this.save) {
+      this.recordBoss();
+      this.hub?.note();
+    }
     return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
   }
 
