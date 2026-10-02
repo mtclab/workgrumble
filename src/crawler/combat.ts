@@ -759,7 +759,8 @@ export function resolveActor(g: Game, a: Actor): void {
   markResolved(g, a);
   if (a.expired) return;
   const rep = Math.round(a.rep * (1 + perk(s, 'listening') * 0.05));
-  g.addRep(rep);
+  // On a mission card the resolve counts the moment it happens, at what it really paid (missionplay.ts).
+  g.mission?.resolvedPerson(a, g.addRep(rep));
   sfx.resolved();
   g.faceMood = 'grin';
   g.faceT = 1.2;

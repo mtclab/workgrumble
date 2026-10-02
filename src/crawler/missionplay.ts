@@ -139,6 +139,8 @@ export class MissionPlay {
   private readonly observed = new Map<number, number>();
   /** Why the card failed (its own failure: the clock, the escort), shown on the results card. */
   private failedWhy = '';
+  /** "Back to the lift" has been said (once, whenever the objective got done: in a frame or between two). */
+  private doneSaid = false;
 
   constructor(private readonly g: Game, readonly card: MissionCard, readonly seed: number, readonly pinned: boolean, private readonly view: MissionView = domView(g, card), opts: PlayOptions = {}) {
     this.rng = new Rng(seed ^ 0x6d697373);
@@ -164,6 +166,7 @@ export class MissionPlay {
     if (card.objective.kind === 'take' && closet !== undefined) g.lockerItems.set(closet.id, card.objective.item);
     this.placeScatter();
     if (from !== null) this.resume(from);
+    this.doneSaid = this.run.objectiveDone;
     this.dropScatter();
     g.markers = this.markers();
     g.markersIn = 0;
@@ -283,6 +286,20 @@ export class MissionPlay {
     for (const c of this.scatter) if (!c.picked) placeQuestPickup(this.g, c.x, c.z, c.id);
   }
 
+  /**
+   * One of the card's people resolved, by any road (combat.ts
+   * `resolveActor`, hosts.ts `resolvePeacefully`), at the moment it happens:
+   * the objective counts it and the run keeps the Rep it really paid
+   * (`earned`, after the employer's rate and any talk-down's cut). Counted
+   * here and not by a look over the crowd each frame, so where the frame is
+   * when a save is written can never lose it.
+   */
+  resolvedPerson(a: Actor, earned: number): void {
+    const i = this.crowd.indexOf(a);
+    if (i < 0) return;
+    this.run.resolved(i, a.kind, earned, this.specs[i]?.tag ?? null);
+  }
+
   /** A copy picked up (`updatePickups`, for a pickup id of the card's). */
   picked(id: string): void {
     const c = this.scatter.find((x) => x.id === id);
@@ -381,10 +398,6 @@ export class MissionPlay {
     for (const w of this.watch.watchers.values()) {
       if (w.actor.aggro && !w.actor.resolved && w.mood !== 'alert') this.watch.aggroed(w.actor, g.time);
     }
-    const wasDone = this.run.objectiveDone;
-    this.crowd.forEach((a, i) => {
-      if (a.resolved && !a.expired) this.run.resolved(i, a.kind, a.rep, this.specs[i]?.tag ?? null);
-    });
     for (const w of this.watch.watchers.values()) if (w.peak >= INVESTIGATE) this.run.noticedBy(w.tag);
     const ob = this.card.objective;
     if (ob.kind === 'take' && g.save.questItems.includes(ob.item)) this.run.took(ob.item);
@@ -396,7 +409,8 @@ export class MissionPlay {
     }
     // Going loud on a card that says what it costs (the stapler): the closet bolted, somebody called in.
     if (!this.loudDone && this.card.onLoud !== undefined && this.watch.tier >= 2 && !this.run.objectiveDone) this.goLoud(false);
-    if (!wasDone && this.run.objectiveDone) {
+    if (!this.doneSaid && this.run.objectiveDone) {
+      this.doneSaid = true;
       sfx.chime();
       g.hud.toast(ob.kind === 'take' ? `${QUEST_ITEMS[ob.item]?.name ?? 'Got it'}. Now back to the lift.`
         : ob.kind === 'escort' ? `${this.escortee?.name ?? 'They'} made it to the counter. Back to the lift.`

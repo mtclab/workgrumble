@@ -137,6 +137,12 @@ class Host implements GameCtx {
     }
   }
 
+  /** Resolved, as the combat code and a talk-down do it: gone, and the card hears of it at once, at their Rep. */
+  resolve(a: Actor): void {
+    a.resolved = true;
+    this.mission.resolvedPerson(a, a.rep);
+  }
+
   hr(): Actor {
     const a = this.mission.crowd.find((x) => this.mission.watch.watchers.get(x.id)?.tag === 'hr');
     if (a === undefined) throw new Error('no HR');
@@ -214,7 +220,12 @@ function objectiveLabels(m: MissionPlay): string[] {
 function completeObjective(m: MissionPlay, g: Game): void {
   const ob = m.card.objective;
   if (ob.kind === 'take') g.save.questItems.push(ob.item);
-  if (ob.kind === 'resolve') for (const a of g.actors) a.resolved = true;
+  if (ob.kind === 'resolve') {
+    for (const a of g.actors) {
+      a.resolved = true;
+      m.resolvedPerson(a, a.rep);
+    }
+  }
   if (ob.kind === 'collect') for (const c of m.scatter.slice(0, ob.count)) m.picked(c.id);
   if (ob.kind === 'escort') {
     const desk = g.level.interactables.find((it) => it.kind === 'itdesk')!;
@@ -400,8 +411,8 @@ describe('the stapler (sneaky)', () => {
     // Hit one (they are Alert), resolve two: what the combat code does, by hand.
     h.noticed(first);
     expect(h.mission.watch.tier).toBe(2);
-    first.resolved = true;
-    second.resolved = true;
+    h.resolve(first);
+    h.resolve(second);
     h.save.questItems.push('redstapler');
     h.step(0.2);
     const rep = h.save.rep;
@@ -457,11 +468,11 @@ describe('vendor day (loud)', () => {
   it('is done when the four vendors are resolved, and pays loud', () => {
     const h = new Host(VENDOR_DAY, 77);
     const vendors = h.mission.crowd.filter((a) => a.kind === 'vendor');
-    for (const v of vendors.slice(0, 3)) v.resolved = true;
+    for (const v of vendors.slice(0, 3)) h.resolve(v);
     h.step(0.1);
     expect(h.mission.run.objectiveDone).toBe(false);
     expect(h.mission.liftPrompt()).toContain('not done');
-    vendors[3]!.resolved = true;
+    h.resolve(vendors[3]!);
     h.step(0.1);
     expect(h.mission.run.objectiveDone).toBe(true);
     h.mission.lift();

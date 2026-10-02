@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveActor, standBeforeActor } from './combat';
-import { type DealtCard, deal, deckCard, FLOOR_P1, handIds, payRate } from './deck';
+import { deal, deckCard, FLOOR_P1, handIds, payRate } from './deck';
+import { pickUp, withDeck } from './deckplay';
 import type { Actor } from './entities';
 import type { Game } from './game';
 import { DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
@@ -73,23 +74,6 @@ function dom(): { press(label: RegExp): void } {
   };
 }
 
-/**
- * This week's deck, as given (the deal is deck.test.ts's): the floor P1 and
- * these cards, each on offer in the day unless said otherwise. The hub is
- * built again so the week's givers are at their desks.
- */
-function withDeck(h: Headless, cards: readonly (Partial<DealtCard> & { id: string })[]): void {
-  const s = h.g.save;
-  s.deck = {
-    week: s.week,
-    cards: [
-      { id: FLOOR_P1, p1: true, alarm: null, afterHours: false, inPerson: false, seed: 1, state: 'accepted' },
-      ...cards.map((c, k): DealtCard => ({ p1: false, alarm: deckCard(c)?.alarm ?? 'one-way', afterHours: false, inPerson: false, seed: 4242 + k, state: 'offered', ...c })),
-    ],
-  };
-  h.g.loadHub(false);
-}
-
 const index = (h: Headless, id: string): number => h.g.save.deck.cards.findIndex((c) => c.id === id);
 
 /** E on the hub's lift, and the card's button; the briefing taken. */
@@ -102,15 +86,6 @@ function upTo(h: Headless, id: string): void {
   expect(h.g.mission?.card.id).toBe(id);
   expect(h.dialogues.at(-1)?.text, 'the briefing names the alarm rule').toContain('The alarm:');
   h.pick('Take the card');
-}
-
-/** Walk onto each of the first `n` scattered copies still lying there, and let the frame pick it up. */
-function pickUp(h: Headless, n: number): void {
-  const m = h.g.mission!;
-  for (const c of m.scatter.filter((x) => !x.picked).slice(0, n)) {
-    h.g.player.pos.set(c.x, 0, c.z);
-    h.run(DT * 3);
-  }
 }
 
 const giver = (h: Headless, name: string): Actor | undefined => h.g.actors.find((a) => a.name === name && !a.resolved);

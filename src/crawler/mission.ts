@@ -154,7 +154,7 @@ export interface Outcome {
   readonly maxTier: Tier;
   /** The card's `unseenBy` watcher noticed you. */
   readonly spoiled: boolean;
-  /** Rep the resolves on the card paid as they happened. */
+  /** Rep the resolves on the card really paid as they happened (the employer's rate and a talk-down's cut applied). */
   readonly resolvedRep: number;
   readonly seconds: number;
 }
@@ -290,7 +290,7 @@ export class MissionRun {
     if (t > this.maxTier) this.maxTier = t;
   }
 
-  /** Someone of the card's crowd (`key`: their place in it) was resolved; each counts once. */
+  /** Someone of the card's crowd (`key`: their place in it) was resolved, paying `rep` (what the balance really moved by); each counts once. */
   resolved(key: number, kind: ActorKind, rep: number, tag: string | null = null): void {
     if (this.over || this.counted.has(key)) return;
     this.counted.add(key);

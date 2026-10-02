@@ -146,9 +146,11 @@ export function resolvePeacefully(g: Game, a: Actor, how: 'fix' | 'ticket' | 'sc
   a.hpBar.visible = false;
   a.talked = true;
   const rep = how === 'fix' ? Math.round(a.rep * 0.9) : how === 'ticket' || how === 'bribe' ? Math.round(a.rep * 0.3) : 0;
-  if (rep > 0) g.addRep(rep);
+  const earned = rep > 0 ? g.addRep(rep) : 0;
   if (a.stolen > 0) s.rep += a.stolen;
   noteResolved(s, a.spawnIndex);
+  // On a mission card the resolve counts the moment it happens, at what it really paid (missionplay.ts).
+  g.mission?.resolvedPerson(a, earned);
   s.stats.resolvedPeace++;
   if (how === 'fix' || how === 'charmed' || how === 'bribe') adjustStanding(s, 'staff', how === 'fix' ? 2 : 1);
   if (how !== 'ticket') s.queue = s.queue.filter((q) => q.from !== a.name);

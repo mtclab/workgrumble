@@ -2302,10 +2302,13 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   /** Rep, scaled by the employer for what you earn (never for what you spend). */
-  addRep(n: number): void {
+  /** Pay (or charge) Rep at the employer's rate; what actually moved the balance comes back. */
+  addRep(n: number): number {
     const v = n > 0 ? Math.round(n * WORKPLACES[this.save.workplace].rep) : n;
+    const before = this.save.rep;
     this.save.rep = Math.max(0, this.save.rep + v);
     if (v !== 0) this.hud.toast(`${v > 0 ? '+' : ''}₡${v}`, v > 0 ? 'good' : 'bad');
+    return this.save.rep - before;
   }
 
   flag(key: string, value: boolean | number = true): void {
