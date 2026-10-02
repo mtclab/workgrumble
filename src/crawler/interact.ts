@@ -127,6 +127,7 @@ export function findPrompt(g: Game): void {
     patch: w.potatoes ? 'The potatoes are dug' : 'E: Dig new potatoes',
     palju: w.palju ? 'The palju is cooling' : 'E: Soak in the palju',
     bookshelf: w.book ? 'Nothing new on the shelf' : 'E: Browse the reading nook',
+    shredder: 'E: The shredder (CONFIDENTIAL WASTE ONLY)',
   };
   g.prompt = labels[it.kind];
 }
@@ -442,6 +443,10 @@ function useThing(g: Game, it: Interactable): void {
       sfx.splash();
       g.hud.toast('You soak in the palju under the white night until your fingers wrinkle. +15% max sanity for the week.', 'epic');
       g.refreshDerived();
+      break;
+    case 'shredder':
+      // The print room's shredder (S2a, T10): a card's plant or destroy objective uses it (S2b); until then it hums.
+      g.hud.toast('The shredder whirs hungrily. Nothing of yours needs to disappear. Yet.');
       break;
     case 'bookshelf': {
       if (s.weekend.book) {

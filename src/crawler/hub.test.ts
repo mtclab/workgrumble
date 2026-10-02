@@ -5,8 +5,8 @@ import { breach } from './desk';
 import type { Actor } from './entities';
 import { answering, DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
-import { COLD_LINE, FIGHT_MEMORY, ONLOOKERS, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, personKey, REACHED_DIST, WITNESS_RANGE } from './hub';
-import { interact, standAt } from './interact';
+import { COLD_LINE, FIGHT_MEMORY, ONLOOKERS, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, personKey, REACHED_DIST, WITNESS_RANGE, workstationOf } from './hub';
+import { interact, standAt, standBy } from './interact';
 import { HOSTILE_DOT, Hud, NEUTRAL_DOT } from './hud';
 import { itemById, type WeaponDef } from './items';
 import { flowField, generateLevel, type LevelRecipe, lineOfSight, NEIGHBOURS8, toCell } from './level';
@@ -199,8 +199,9 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     const p = viewSpots(h, 2, 8)[0];
     if (p === undefined) throw new Error('no spot by the fridge');
     healer.pos.set(p.x, 0, p.z);
-    // Nobody else near enough to see.
-    for (const a of neutral(h)) if (Math.hypot(a.pos.x - g.player.pos.x, a.pos.z - g.player.pos.z) < 14) a.pos.set(g.level.start.x, 0, g.level.start.z);
+    // Nobody else near enough to see: everyone else on the floor (colleagues and onlookers) off to its far side.
+    const far = farthestFrom(h, g.player.pos.x, g.player.pos.z);
+    for (const a of g.actors) if (a !== healer && Math.hypot(a.pos.x - g.player.pos.x, a.pos.z - g.player.pos.z) < 14) a.pos.set(far.x, 0, far.z);
     interact(g);
     h.pick('Take Jukka\'s drinks.');
     expect(healer.cold, `${healer.name} saw it, and has gone cold`).toBe(true);
@@ -503,6 +504,31 @@ function viewSpots(h: Headless, near: number, far: number): { x: number; z: numb
   return out.sort((a, b) => a.d - b.d);
 }
 
+/** The open cell of the floor farthest from a point (somewhere nobody there can see it). */
+function farthestFrom(h: Headless, x: number, z: number): { x: number; z: number } {
+  const lv = h.g.level;
+  let best = { x: lv.start.x, z: lv.start.z };
+  let bestD = -1;
+  for (let i = 0; i < lv.w * lv.h; i++) {
+    if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
+    const cx = (i % lv.w) * 2 + 1;
+    const cz = Math.floor(i / lv.w) * 2 + 1;
+    const d = Math.hypot(cx - x, cz - z);
+    if (d > bestD) {
+      bestD = d;
+      best = { x: cx, z: cz };
+    }
+  }
+  return best;
+}
+
+/** At your own desk (the open plan, among the workers who walk up), the floor's paths recomputed from there. */
+function atDesk(h: Headless): void {
+  const desk = workstationOf(h.g.level);
+  if (desk === undefined || !standBy(h.g, desk)) throw new Error('no desk');
+  h.run(DT, answering(h));
+}
+
 /** A spot the walker can walk to, 6 to 12 m away from them. */
 function awayFrom(h: Headless, a: Actor): { x: number; z: number } {
   const lv = h.g.level;
@@ -541,6 +567,7 @@ describe('gate 4: walk-ups', () => {
       expect(hub.debug().reached, 'the walk-up reaches you').toBe(true);
     };
 
+    atDesk(h);
     hub.walkUpNow();
     h.run(DT, answering(h, watch));
     const w = hub.walkingUp();

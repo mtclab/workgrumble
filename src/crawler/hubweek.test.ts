@@ -6,8 +6,8 @@ import { breach } from './desk';
 import type { Actor } from './entities';
 import { ARRIVAL_LIFT_ID, type Game } from './game';
 import { answering, DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
-import { HUB_EXTRA_BASE, p1Resolved, personKey } from './hub';
-import { interact, standAt } from './interact';
+import { HUB_EXTRA_BASE, p1Resolved, personKey, workstationOf } from './hub';
+import { interact, standAt, standBy } from './interact';
 import * as host from './hosts';
 import { isPracticeTicket } from './induction';
 import { requestMentoring } from './teamwork';
@@ -567,11 +567,19 @@ describe('S1a: arrivals keep who they are', () => {
   });
 });
 
+/** At your own desk (the open plan, among the workers who walk up), the floor's paths recomputed from there. */
+function atDesk(h: Headless): void {
+  const desk = workstationOf(h.g.level);
+  if (desk === undefined || !standBy(h.g, desk)) throw new Error('no desk');
+  h.run(DT, answering(h));
+}
+
 describe('S1a: hub tickets and breaches', () => {
   it('a ticket raised on the hub that breaches on the P1 floor is the hub\'s: nobody sent upstairs, the reporter after you on the hub when you are back, announced then', () => {
     const h = newCareer();
     const g = h.g;
     const hub = g.hub!;
+    atDesk(h);
     hub.walkUpNow();
     h.run(DT, answering(h));
     const w = hub.walkingUp();
@@ -733,7 +741,8 @@ describe('S1a: a mentee comes with you', () => {
     // And back down: still with you, not two of them.
     press(h, lift(g, ARRIVAL_LIFT_ID));
     h.pick('Back to the hub');
-    const down = g.actors.filter((a) => a.name === mentee.name && !a.resolved);
+    // (By name and kind: a card's giver this week can share the mentee's name.)
+    const down = g.actors.filter((a) => a.name === mentee.name && a.kind === mentee.kind && !a.resolved);
     expect(down.length, 'one of them on the hub').toBe(1);
     expect(down[0]?.recruited).toBe(true);
     expect(Math.hypot(down[0]!.pos.x - g.player.pos.x, down[0]!.pos.z - g.player.pos.z)).toBeLessThan(3);
@@ -854,6 +863,7 @@ describe('S1a: Monday wipes the hub\'s week', () => {
     const [after, beaten] = people;
     if (after === undefined || beaten === undefined) throw new Error('not enough people');
     // A walk-up, reached and walked off on: one ignore (first: nobody walks up mid-fight).
+    atDesk(h);
     hub.walkUpNow();
     h.run(DT, answering(h));
     const w = hub.walkingUp()!;

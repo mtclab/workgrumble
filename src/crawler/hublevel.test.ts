@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
+import { workstationOf } from './hub';
 import { flowField, generateLevel, type Level } from './level';
 import { THEMES } from './textures';
 
 /**
- * The hub's recipe (docs/SPEC_HELLDESK_030_S1.md, S1a "The hub floor"):
- * today's room generator made into the career's own floor. The ordinary
- * floors it must not move are pinned by `levelprint.test.ts`.
+ * The hub's recipe (docs/SPEC_HELLDESK_030_S1.md, S1a "The hub floor"; since
+ * S2a composed from templates, docs/SPEC_HELLDESK_030_S2.md): the career's
+ * own floor. The composition itself is held by `compose.test.ts`; the
+ * ordinary floors it must not move are pinned by `levelprint.test.ts`.
  */
 const SEEDS = Array.from({ length: 150 }, (_, i) => (i + 1) * 7919);
 
@@ -29,6 +31,10 @@ describe('the hub recipe', () => {
     expect(level.interactables.some((it) => it.kind === 'itdesk'), `seed ${seed}: the IT counter`).toBe(true);
     expect(kinds.filter((k) => k === 'cubicles').length, `seed ${seed}: two open-plan rooms`).toBeGreaterThanOrEqual(2);
     expect(kinds, `seed ${seed}: no corner office`).not.toContain('boss');
+    // Composed from the hub recipe, and your desk is in one of its bullpens.
+    expect(level.recipe?.id, `seed ${seed}: the hub recipe`).toBe('hub');
+    const bullpens = new Set(level.recipe?.templates.filter((t) => t.id === 'T1').flatMap((t) => t.rooms));
+    expect(bullpens.has(workstationOf(level)?.room ?? -1), `seed ${seed}: your desk in a bullpen`).toBe(true);
     // Nobody rolled to be trouble: only the room kinds' own people.
     for (const sp of level.spawns) expect(spawnKinds.has(sp.kind), `seed ${seed}: ${sp.kind}`).toBe(true);
     // One connected floor from the lift.

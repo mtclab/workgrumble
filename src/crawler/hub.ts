@@ -30,7 +30,7 @@ import { cancelWindup } from './windup';
  * (`Game.spawn`), and the quests' fights wait on the P1 floor.
  */
 
-/** The hub is today's floor 2 in size: 52 x 52 cells, thirteen rooms. */
+/** The floor index the hub is built as (its locks and dressing); its layout is the hub recipe's (templates.ts, compose.ts). */
 export const HUB_FLOOR = 2;
 
 /** Mixed into the career's seed for its hub: the same career, the same hub. */

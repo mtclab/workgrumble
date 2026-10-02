@@ -3,7 +3,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Rng } from './rng';
 import { normalMapFrom } from './graphics';
-import { layRecipe, type RecipeId, type RecipePlan, walkableCell } from './templates';
+import { composeRecipe } from './compose';
+import { type ComposedId, isComposed, layRecipe, type PlacedTemplate, type RecipeId, type RecipePlan, walkableCell } from './templates';
 import {
   woodTexture,
   carpetTexture,
@@ -67,7 +68,8 @@ export type InteractKind =
   | 'dock'
   | 'patch'
   | 'palju'
-  | 'bookshelf';
+  | 'bookshelf'
+  | 'shredder';
 
 export interface Interactable {
   readonly kind: InteractKind;
@@ -115,6 +117,14 @@ export interface Level {
   readonly seen: Uint8Array;
   /** Glass cells (solid, see-through): only a recipe's floors have any. */
   readonly glass?: Uint8Array;
+  /**
+   * Chest-high cover (a desk's partition, a counter): solid, see-over, and
+   * hiding somebody crouched behind it from a person standing on the far
+   * side (`coverBetween`).
+   */
+  readonly low?: Uint8Array;
+  /** Cells inside a server hall (T5), where the racks' hum halves how far a noise carries. */
+  readonly hum?: Uint8Array;
   /** A recipe's floor: what its mission needs to find in it (templates.ts). */
   readonly recipe?: RecipeLayout;
   /**
@@ -127,22 +137,15 @@ export interface Level {
 
 /**
  * What `generateLevel` builds besides the ordinary floor: a mission
- * template's footprint (templates.ts), or the hub (the career's own office
- * floor, docs/SPEC_HELLDESK_030_S1.md).
+ * template's footprint (templates.ts, the spike's), or a floor composed from
+ * templates (compose.ts): the hub (the career's own office floor,
+ * docs/SPEC_HELLDESK_030_S1.md and _S2.md) or a mission recipe.
  */
-export type LevelRecipe = RecipeId | 'hub';
-
-/**
- * The hub's rooms after the lobby, in the order they are handed out: the
- * kitchen, Internal IT and two open-plan rooms always (a hub has at least
- * five rooms), then the rest of the building's kinds. The sauna has today's
- * odds; whatever is left over is more open plan.
- */
-const HUB_ROOMS: readonly RoomKind[] = ['kitchen', 'it', 'cubicles', 'cubicles', 'server', 'meeting', 'print', 'office', 'sauna'];
+export type LevelRecipe = RecipeId | ComposedId;
 
 /** Where things are on a floor built from a recipe. */
 export interface RecipeLayout {
-  readonly id: RecipeId;
+  readonly id: RecipeId | ComposedId;
   /** Room ids by the footprint's tag ('lobby', 'hr', 'office', 'open', 'meeting'). */
   readonly rooms: Readonly<Record<string, readonly number[]>>;
   /** The service spine's cells, its doors included (empty when the recipe has none). */
@@ -153,6 +156,53 @@ export interface RecipeLayout {
   readonly spineNodes: readonly number[];
   /** The locked supply closet in HR's office (an interactable id), or -1. */
   readonly closet: number;
+  /** A composed floor's templates as placed (empty for the spike's footprints). */
+  readonly templates: readonly PlacedTemplate[];
+  /** The objective's template (an index into `templates`), or -1. */
+  readonly objective: number;
+  /** The supply closets off the spine (interactable ids). */
+  readonly spineClosets: readonly number[];
+}
+
+/** How high a partition (or a counter) stands, metres: a sight line lower than this through one is blocked. */
+export const PARTITION_H = 1.4;
+/** Eye height of a person standing, and of the player crouched (player.ts: EYE, less the crouch). */
+export const STAND_EYE = 1.62;
+export const CROUCH_EYE = STAND_EYE - 0.55;
+
+/**
+ * Whether chest-high cover hides the target from the viewer: the sight line
+ * from a standing viewer's eye to the target's (crouched or standing) runs
+ * through a partition or counter lower than its top. A standing target is
+ * over every partition; a crouched one is hidden by one in the nearer part
+ * of the line. Walls are `lineOfSight`'s business.
+ */
+export function coverBetween(level: Level, ax: number, az: number, bx: number, bz: number, crouched: boolean): boolean {
+  const low = level.low;
+  if (low === undefined) return false;
+  const eyeB = crouched ? CROUCH_EYE : STAND_EYE;
+  const dx = bx - ax;
+  const dz = bz - az;
+  const steps = Math.ceil(Math.hypot(dx, dz) / (TILE * 0.25));
+  const own = toCell(bz) * level.w + toCell(bx);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const cx = toCell(ax + dx * t);
+    const cz = toCell(az + dz * t);
+    if (cx < 0 || cz < 0 || cx >= level.w || cz >= level.h) continue;
+    const c = cz * level.w + cx;
+    if (low[c] !== 1 || c === own) continue;
+    if (STAND_EYE + (eyeB - STAND_EYE) * t < PARTITION_H) return true;
+  }
+  return false;
+}
+
+/** Is this point inside a server hall's hum (T5)? */
+export function inHum(level: Level, x: number, z: number): boolean {
+  const cx = toCell(x);
+  const cz = toCell(z);
+  if (cx < 0 || cz < 0 || cx >= level.w || cz >= level.h) return false;
+  return level.hum?.[cz * level.w + cx] === 1;
 }
 
 export function cellCenter(c: number): number {
@@ -544,16 +594,18 @@ export function repairFloorAccess(level: Pick<Level, 'w' | 'h' | 'floor' | 'soli
  * to that, seed for seed). With a template's, the rooms and corridors are a
  * hand-placed footprint instead (templates.ts, the 0.3.0 spike), furnished
  * by room kind the same way, with nobody in it: a mission brings its own
- * people. With 'hub' it is the ordinary generator again, made into the
- * career's own floor: the lobby and its lift, the kitchen, Internal IT and
- * open plan for certain, no corner office, and nobody rolled to be trouble.
+ * people. With a composed recipe (compose.ts, S2a) the footprint is a floor
+ * of templates joined by corridors, each template's structure (aisles,
+ * racks, counters, the atrium's planters) placed before the room's own
+ * furnishing. 'hub' is the composed recipe made into the career's own floor:
+ * its people stay (all of them neutral kinds), nobody rolled to be trouble.
  */
 export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures, recipe?: LevelRecipe): Level {
   headless = noTextures;
   decor = withDecor;
   const r = new Rng(seed);
   const hub = recipe === 'hub';
-  const plan: RecipePlan | null = recipe === undefined || recipe === 'hub' ? null : layRecipe(recipe, r);
+  const plan: RecipePlan | null = recipe === undefined ? null : isComposed(recipe) ? composeRecipe(recipe, r) : layRecipe(recipe, r);
   const w = plan?.w ?? 44 + Math.min(floorIndex, 4) * 4;
   const h = plan?.h ?? w;
   const floor = new Uint8Array(w * h);
@@ -670,16 +722,14 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       }
     }
     (rooms[0] as Room).kind = 'lobby';
-    // The hub has no corner office: its major incident is upstairs.
-    if (!hub) (rooms[bossIdx] as Room).kind = 'boss';
-    const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && (hub || rm.id !== bossIdx)));
+    (rooms[bossIdx] as Room).kind = 'boss';
+    const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && rm.id !== bossIdx));
     // A sauna on most floors: Finnish building regulations, probably.
     const plan: RoomKind[] = ['kitchen', 'it', 'server', 'meeting', 'print', 'office', 'sauna', 'kitchen', 'server', 'meeting'];
     const hasSauna = r.chance(0.7);
     others.forEach((rm, i) => {
-      const k = hub ? HUB_ROOMS[i] : plan[i];
+      const k = plan[i];
       if (k === 'sauna' && !hasSauna) rm.kind = 'cubicles';
-      else if (hub) rm.kind = k ?? 'cubicles';
       else rm.kind = k !== undefined && (i < 7 || r.chance(0.5)) ? k : 'cubicles';
     });
     // The story NPC for this floor waits in an office, meeting room or desk area.
@@ -702,7 +752,13 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       glassCells[i] = 1;
       opaque[i] = 0;
     }
+    // The hub's story person waits in an office, a meeting room or the open plan, as on any floor.
+    if (hub) npcRoom = rooms.find((rm) => rm.kind === 'office') ?? rooms.find((rm) => rm.kind === 'meeting') ?? rooms.find((rm) => rm.kind === 'cubicles');
   }
+  // Cells a template keeps clear of furniture (aisles), chest-high cover, and a server hall's hum.
+  const reserved = new Uint8Array(w * h);
+  const low = new Uint8Array(w * h);
+  const hum = new Uint8Array(w * h);
 
   const group = new THREE.Group();
   const builder: Builder = { boxes: new Map() };
@@ -718,7 +774,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   };
   const free = (x: number, y: number): boolean => {
     const i = y * w + x;
-    return floor[i] === 1 && solid[i] === 0;
+    return floor[i] === 1 && solid[i] === 0 && reserved[i] === 0;
   };
   const addInteract = (kind: InteractKind, x: number, y: number, room: number, mesh: THREE.Object3D | null): void => {
     interactables.push({ kind, x: cellCenter(x), z: cellCenter(y), id: nextId++, room, used: false, mesh, lock: 0 });
@@ -755,11 +811,12 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     }
     return null;
   };
-  const interiorSpot = (rm: Room): [number, number] | null => {
+  /** A free cell inside the room, off its walls: for a prop, or (`person`) somebody to stand, who may stand in an aisle. */
+  const interiorSpot = (rm: Room, person = false): [number, number] | null => {
     for (let t = 0; t < 40; t++) {
       const x = r.int(rm.x + 1, rm.x + rm.w - 2);
       const y = r.int(rm.y + 1, rm.y + rm.h - 2);
-      if (free(x, y)) return [x, y];
+      if (person ? floor[y * w + x] === 1 && solid[y * w + x] === 0 : free(x, y)) return [x, y];
     }
     return null;
   };
@@ -826,6 +883,73 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     group.add(mesh);
   };
 
+  // A composed floor's templates place their structure first (templates.ts
+  // features): the room's own furnishing then fits round it, and keeps out
+  // of the aisles.
+  const racked = new Set<number>();
+  for (const t of plan?.composed?.templates ?? []) {
+    if (t.id !== 'T5') continue;
+    for (const id of t.rooms) {
+      racked.add(id);
+      const rm = rooms[id] as Room;
+      for (let y = rm.y; y < rm.y + rm.h; y++) for (let x = rm.x; x < rm.x + rm.w; x++) hum[y * w + x] = 1;
+    }
+  }
+  for (const f of plan?.composed?.features ?? []) {
+    const x = f.cell % w;
+    const y = (f.cell - x) / w;
+    const cx = cellCenter(x);
+    const cz = cellCenter(y);
+    const rm = rooms[roomOf[f.cell] ?? -1];
+    switch (f.kind) {
+      case 'aisle':
+        reserved[f.cell] = 1;
+        break;
+      case 'counter':
+        addBox(builder, 'counter', cx, 0.5, cz, TILE, 1.0, TILE * 0.9);
+        block(x, y);
+        low[f.cell] = 1;
+        break;
+      case 'planter':
+        addBox(builder, 'plant', cx, 0.3, cz, TILE, 0.6, TILE);
+        if ((x + y) % 2 === 0) pottedPlant(builder, cx, cz, cellHash(x, y) % 97, 1.1);
+        block(x, y);
+        break;
+      case 'landmark':
+        // The atrium's tree: tall enough to be seen over the planters from anywhere round it.
+        addBox(builder, 'plant', cx, 0.3, cz, TILE, 0.6, TILE);
+        pottedPlant(builder, cx, cz, cellHash(x, y) % 97, 2.6);
+        block(x, y);
+        break;
+      case 'rack':
+        addBox(builder, 'rack', cx, 1.2, cz, TILE * 0.8, 2.4, TILE * 0.9);
+        block(x, y, true);
+        break;
+      case 'terminal':
+        if (rm !== undefined) addTerminal(x, y, rm, facingInto(x, y, rm));
+        break;
+      case 'crate': {
+        const m = crateMesh();
+        m.position.set(cx, 0, cz);
+        group.add(m);
+        block(x, y);
+        addInteract('crate', x, y, rm?.id ?? -1, m);
+        break;
+      }
+      case 'shredder': {
+        const m = shredderMesh();
+        m.position.set(cx, 0, cz);
+        if (rm !== undefined) m.rotation.y = facingInto(x, y, rm);
+        group.add(m);
+        block(x, y);
+        addInteract('shredder', x, y, rm?.id ?? -1, m);
+        break;
+      }
+      case 'node':
+        break;
+    }
+  }
+
   for (const rm of rooms) {
     const x0 = rm.x;
     const y0 = rm.y;
@@ -857,6 +981,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
             if ((hsh & 12) === 4) deskPlant(builder, cx - 0.7, 0.77, cz - 0.35);
             officeChair(builder, cx, cz + 0.85, Math.PI + ((hsh >> 4) % 7 - 3) * 0.12);
             block(x, y);
+            low[y * w + x] = 1;
             if (r.chance(0.35)) spawns.push({ kind: r.chance(0.3) ? 'caller' : 'user', x: cx, z: cz + TILE, room: rm.id });
           }
         }
@@ -882,7 +1007,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         }
         spawns.push({ kind: 'manager', x: cellCenter(x0 + 1), z: cellCenter(y0 + 1), room: rm.id });
         for (let i = 0; i < 2; i++) {
-          const s = interiorSpot(rm);
+          const s = interiorSpot(rm, true);
           if (s !== null) spawns.push({ kind: 'user', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
         }
         break;
@@ -936,7 +1061,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
           block(c5[0], c5[1]);
           addInteract('pantti', c5[0], c5[1], rm.id, m);
         }
-        const s = interiorSpot(rm);
+        const s = interiorSpot(rm, true);
         if (s !== null) spawns.push({ kind: 'healer', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
         break;
       }
@@ -963,12 +1088,13 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         planks.position.set(x0 * TILE + (rm.w * TILE) / 2, 0.01, y0 * TILE + (rm.h * TILE) / 2);
         planks.userData.suo = 'hide';
         group.add(planks);
-        const t = interiorSpot(rm);
+        const t = interiorSpot(rm, true);
         if (t !== null) spawns.push({ kind: 'tonttu', x: cellCenter(t[0]), z: cellCenter(t[1]), room: rm.id });
         break;
       }
       case 'server': {
-        for (let x = x0 + 1; x < x1; x += 2) {
+        // A server hall (T5) has its racks already, in its own aisles.
+        for (let x = x0 + 1; x < x1 && !racked.has(rm.id); x += 2) {
           for (let y = y0 + 1; y < y1; y++) {
             if (!free(x, y) || nearDoor(x, y, rm)) continue;
             addBox(builder, 'rack', cellCenter(x), 1.2, cellCenter(y), TILE * 0.8, 2.4, TILE * 0.9);
@@ -985,7 +1111,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         }
         const t = wallSpot(rm);
         if (t !== null) addTerminal(t[0], t[1], rm, facingInto(t[0], t[1], rm));
-        const a = interiorSpot(rm);
+        const a = interiorSpot(rm, true);
         if (a !== null) spawns.push({ kind: 'helper', x: cellCenter(a[0]), z: cellCenter(a[1]), room: rm.id });
         break;
       }
@@ -1020,7 +1146,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
         const t = wallSpot(rm);
         if (t !== null) addTerminal(t[0], t[1], rm, facingInto(t[0], t[1], rm));
         for (let i = 0; i < 2; i++) {
-          const s = interiorSpot(rm);
+          const s = interiorSpot(rm, true);
           if (s !== null) spawns.push({ kind: 'user', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
         }
         break;
@@ -1056,7 +1182,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
           block(x, y, true);
         }
         for (let i = 0; i < 2; i++) {
-          const s = interiorSpot(rm);
+          const s = interiorSpot(rm, true);
           if (s !== null) spawns.push({ kind: 'reply', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
         }
         break;
@@ -1077,7 +1203,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       }
     }
     if (rm === npcRoom) {
-      const s = interiorSpot(rm);
+      const s = interiorSpot(rm, true);
       if (s !== null) spawns.push({ kind: 'npc', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
     }
 
@@ -1087,18 +1213,20 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       // Crowds stop growing after the second floor; the people in them keep getting tougher.
       const extra = r.int(0, 1 + Math.min(floorIndex, 2));
       for (let i = 0; i < extra; i++) {
-        const s = interiorSpot(rm);
+        const s = interiorSpot(rm, true);
         if (s === null) continue;
         spawns.push({ kind: rollHostile(r, floorIndex), x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
       }
     }
   }
 
-  // A recipe's floor is furnished, but its people come with the mission; and
-  // HR's office always has its locked closet (the stapler card's objective).
+  // A recipe's floor is furnished, but its people come with the mission (the
+  // hub keeps its own); HR's office always has its locked closet (the stapler
+  // card's objective), and a spine its supply closet.
   let closet = -1;
+  const spineClosets: number[] = [];
   if (plan !== null) {
-    spawns.length = 0;
+    if (!hub) spawns.length = 0;
     const hr = rooms[plan.rooms.findIndex((pr) => pr.tag === 'hr')];
     if (hr !== undefined) {
       closet = interactables.find((it) => it.kind === 'locker' && it.room === hr.id)?.id ?? -1;
@@ -1123,7 +1251,23 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       if (t !== null) addTerminal(t[0], t[1], rm, facingInto(t[0], t[1], rm));
     });
     // The corridors' nodes hang lights of their own: the rooms' alone leave a ring in the dark.
+    // The spine has none (it is the dim way round).
     for (const i of plan.nodes) lightSpots.push(new THREE.Vector3(cellCenter(i % w), WALL_H - 0.3, cellCenter(Math.floor(i / w))));
+    for (const c of plan.composed?.closets ?? []) {
+      const x = c % w;
+      const y = (c - x) / w;
+      // Facing out of its alcove, onto the spine.
+      const out = NEIGHBOURS4.find(([ox, oy]) => floor[(y + oy) * w + x + ox] === 1) ?? [0, 1];
+      const m = lockerMesh();
+      m.position.set(cellCenter(x), 0, cellCenter(y));
+      m.rotation.y = Math.atan2(out[0], out[1]);
+      group.add(m);
+      block(x, y, true);
+      addInteract('locker', x, y, -1, m);
+      const it = interactables[interactables.length - 1];
+      if (it !== undefined) it.lock = Math.min(95, 15 + floorIndex * 12 + r.int(0, 25));
+      spineClosets.push(nextId - 1);
+    }
   }
 
   // Elevators: arrival in the lobby, exit in the boss room. The doors go on a
@@ -1470,13 +1614,17 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
 
   const level: Level = {
     w, h, floor, solid, opaque, roomOf, rooms, interactables, spawns, start, bossSpawn,
-    lightSpots, group, seen: new Uint8Array(w * h),
+    lightSpots, group, seen: new Uint8Array(w * h), low,
     ...(arrivalLift === undefined ? {} : { arrival: arrivalLift }),
   };
   if (plan === null) return level;
   const tagged: Record<string, number[]> = {};
   plan.rooms.forEach((pr, id) => (tagged[pr.tag] ??= []).push(id));
-  return { ...level, glass: glassCells, recipe: { id: plan.id, rooms: tagged, spine: plan.spine, nodes: plan.nodes, spineNodes: plan.spineNodes, closet } };
+  const recipeLayout: RecipeLayout = {
+    id: plan.id, rooms: tagged, spine: plan.spine, nodes: plan.nodes, spineNodes: plan.spineNodes, closet,
+    templates: plan.composed?.templates ?? [], objective: plan.composed?.objective ?? -1, spineClosets,
+  };
+  return { ...level, glass: glassCells, hum, recipe: recipeLayout };
 }
 
 // ---- Interactive prop meshes ----
@@ -1639,6 +1787,16 @@ function kiuasMesh(): THREE.Group {
   ladle.position.set(0.72, 0.4, 0.3);
   ladle.rotation.z = 0.5;
   g.add(ladle);
+  return g;
+}
+
+/** The print room's shredder (T10): a bin with a slot and a little green light. */
+function shredderMesh(): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box(0.6, 0.75, 0.45, metal(0x2b2e33, 0.5), 0, 0.375, 0));
+  g.add(box(0.62, 0.12, 0.47, metal(0x4a4e55, 0.4), 0, 0.81, 0));
+  g.add(box(0.42, 0.02, 0.04, lambert(0x0a0a0a), 0, 0.875, 0.05));
+  g.add(box(0.04, 0.04, 0.02, lambert(0x3cff6a, 0x3cff6a), 0.22, 0.82, 0.24));
   return g;
 }
 
