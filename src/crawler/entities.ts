@@ -171,6 +171,12 @@ export interface Actor {
   recruited: boolean;
   role: HelperRole | null;
   giftGiven: boolean;
+  /**
+   * Saw you commit a crime on the hub, and is not one to fight you (a
+   * healer, Internal IT, a quest giver, the story person): for the rest of
+   * the week they will not talk to you, heal you or give you quests.
+   */
+  cold: boolean;
   healIn: number;
   /** Seconds left for a temporary ally or a turret; -1 forever. */
   ttl: number;
@@ -811,6 +817,7 @@ export function createActor(
     recruited: role === 'clone' || role === 'spirit' || role === 'dog',
     role,
     giftGiven: false,
+    cold: false,
     healIn: 2,
     ttl: opts.ttl ?? (kind === 'turret' ? 30 : -1),
     talked: false,
@@ -2067,12 +2074,13 @@ function updateFriendly(ctx: GameCtx, a: Actor, dt: number): void {
   if (a.kind === 'healer') {
     a.healIn -= dt;
     const kitchen = ctx.kitchenStanding();
-    if (dist < 6 && a.healIn <= 0 && kitchen > -40 && lineOfSight(ctx.level, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z)) {
+    // Gone cold on you (a crime they saw on the hub): no tea, no coming over.
+    if (dist < 6 && a.healIn <= 0 && kitchen > -40 && !a.cold && lineOfSight(ctx.level, a.pos.x, a.pos.z, ctx.playerPos.x, ctx.playerPos.z)) {
       a.healIn = 6 / ctx.healerFrequency();
       say(a, fx.pick(HEALER_BARKS), 3, '#5a0040', 'rgba(255,230,245,0.95)');
       ctx.healPlayer(14 * (1 + kitchen / 150), a.name);
     }
-    if (dist < 10 && dist > 2.5 && kitchen > -40 && approach(ctx, a, dx, dz, tmp2)) {
+    if (dist < 10 && dist > 2.5 && kitchen > -40 && !a.cold && approach(ctx, a, dx, dz, tmp2)) {
       moveActor(ctx, a, tmp2.x, tmp2.z, a.speed, dt);
     } else {
       if (a.wanderTarget === null || fx.chance(dt * 0.25)) {

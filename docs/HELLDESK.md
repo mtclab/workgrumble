@@ -39,7 +39,9 @@ colleague on purpose (they, every colleague within 12 m who saw it, and an HR
 warning; shots, splash and area effects pass through colleagues, and a swing
 at an enemy does not catch the colleague beside them);
 a crime a colleague witnesses (the manager who smells the drink, whoever sees
-you at the fridge or a supply closet); Staff standing below -40 on a Monday;
+you at the fridge or a supply closet; a healer, Internal IT, a quest giver or
+the story person who sees a crime goes cold instead: no talk, tea or quests
+from them for the rest of the week); Staff standing below -40 on a Monday;
 and a story choice that makes an enemy. A failed talk-down still enrages.
 It lasts until they are resolved or Monday. Nobody on the hub summons
 anybody, and quest fights (hunts, counts of trouble) wait on the P1 floor.

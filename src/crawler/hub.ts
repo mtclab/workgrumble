@@ -74,6 +74,26 @@ export { HUB_EXTRA_BASE } from './state';
 /** Who on the hub can turn: the workers. */
 const WORKERS: readonly ActorKind[] = ['user', 'caller', 'manager'];
 
+/** Neutral people who are not ones to fight you: a crime they see turns them cold, not hostile. */
+export const ONLOOKERS: readonly ActorKind[] = ['healer', 'helper', 'npc', 'tonttu'];
+
+/** What somebody who has gone cold on you says, when you try to talk to them. */
+export const COLD_LINE = 'I saw what you did. I am not talking to you. Not this week.';
+
+/**
+ * Who somebody on the hub is, for what the hub remembers about them this
+ * week: their spawn or arrival index, a story or quest NPC's id, or (a
+ * companion) their name.
+ */
+export function personKey(a: Actor): string {
+  return a.spawnIndex >= 0 ? `#${a.spawnIndex}` : a.npcId !== null ? `npc:${a.npcId}` : `name:${a.name}`;
+}
+
+/** Neutral and not one to fight you (a healer, Internal IT, a quest giver, the story person, the Saunatonttu), and not on your team. */
+function onlooker(a: Actor): boolean {
+  return !a.hostile && !a.colleague && !a.resolved && !a.recruited && ONLOOKERS.includes(a.kind);
+}
+
 /** Who walks up with a problem. */
 const WALKERS: readonly ActorKind[] = ['user', 'caller'];
 
@@ -273,23 +293,39 @@ export class Hub implements HubCtx {
     if (a !== null) this.turn(a, 'breach', toast, bark);
   }
 
-  /** The player has hit a colleague: the victim, and every colleague within sight of it, turn; HR hears of it. */
+  /**
+   * The player has hit a colleague: the victim turns, and so does every
+   * colleague within WITNESS_RANGE who saw it; anyone else neutral who saw
+   * it goes cold on you. HR hears of it.
+   */
   assault(victim: Actor): void {
     const g = this.g;
     if (victim.hostile || victim.resolved || !victim.colleague) return;
     this.turn(victim, 'assault', `You hit ${victim.name}. HR will hear about it, and so will everyone who saw.`, 'You HIT me?!');
-    const pp = g.player.pos;
-    for (const w of g.actors) {
-      if (w === victim || !w.colleague || w.hostile || w.resolved) continue;
-      if (Math.hypot(w.pos.x - pp.x, w.pos.z - pp.z) > WITNESS_RANGE || !lineOfSight(g.level, w.pos.x, w.pos.z, pp.x, pp.z)) continue;
-      this.turn(w, 'witness', `${w.name} saw you hit ${victim.name}.`, 'I SAW that!');
+    for (const w of this.inSight(WITNESS_RANGE)) {
+      if (w === victim) continue;
+      if (w.colleague) this.turn(w, 'witness', `${w.name} saw you hit ${victim.name}.`, 'I SAW that!');
+      else this.goCold(w, `hit ${victim.name}`);
     }
     g.warn(`Hit ${victim.name}, a colleague, at work`);
   }
 
-  /** A crime somebody saw (the fridge, a supply closet): the colleagues among them are after you for the week. */
+  /**
+   * A crime somebody saw (the fridge, a supply closet): the colleagues among
+   * them are after you for the week, and the healers, Internal IT, quest
+   * givers and the story person who saw it go cold on you for the week.
+   */
   witnessed(seen: readonly Actor[], what: string): void {
-    for (const w of seen) this.turn(w, 'witness', `${w.name} saw you ${what}, and is not letting it go.`, 'I saw that. Everyone will know.');
+    for (const w of seen) {
+      if (w.colleague) this.turn(w, 'witness', `${w.name} saw you ${what}, and is not letting it go.`, 'I saw that. Everyone will know.');
+      else this.goCold(w, what);
+    }
+  }
+
+  /** Put back what the hub remembers about its people this week (who has gone cold on you), once everyone is on the floor. */
+  remember(): void {
+    const cold = new Set(this.g.save.hub.cold);
+    for (const a of this.g.actors) if (cold.has(personKey(a))) a.cold = true;
   }
 
   /** A story choice that makes an enemy (somebody blamed, a promise broken): they come for you, announced, and stay for the week. */
@@ -448,6 +484,25 @@ export class Hub implements HubCtx {
       return g.spawnAt(sp.kind, at.x, at.z, sp.room, false, { spawnIndex: idx, colleague: true }, personRng(s.seed, idx));
     }
     return null;
+  }
+
+  /** Neutral people within `range` metres who can see you: colleagues, and the onlookers who are not ones to fight. */
+  private inSight(range: number): Actor[] {
+    const g = this.g;
+    const pp = g.player.pos;
+    return g.actors.filter((w) => ((w.colleague && !w.hostile && !w.resolved) || onlooker(w))
+      && Math.hypot(w.pos.x - pp.x, w.pos.z - pp.z) <= range && lineOfSight(g.level, w.pos.x, w.pos.z, pp.x, pp.z));
+  }
+
+  /** Somebody who is not one to fight you saw a crime: no talk, no healing, no quests from them this week, and they say so. */
+  private goCold(a: Actor, what: string): void {
+    if (a.cold || !onlooker(a)) return;
+    a.cold = true;
+    const list = this.g.save.hub.cold;
+    const key = personKey(a);
+    if (!list.includes(key)) list.push(key);
+    say(a, 'I saw that. Do not talk to me.', 3);
+    this.g.hud.toast(`${a.name} saw you ${what}, and will not talk to you this week.`, 'bad');
   }
 
   /** A manager close by who is not after you can still smell the lonkero: caught, they are. */

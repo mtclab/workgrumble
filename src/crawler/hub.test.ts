@@ -5,7 +5,7 @@ import { breach } from './desk';
 import type { Actor } from './entities';
 import { answering, DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
-import { FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, REACHED_DIST, WITNESS_RANGE } from './hub';
+import { COLD_LINE, FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, personKey, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
 import { itemById, type WeaponDef } from './items';
 import { flowField, generateLevel, type LevelRecipe, lineOfSight, NEIGHBOURS8, toCell } from './level';
@@ -131,6 +131,75 @@ describe('gate 3: every source turns exactly the right person, announced, and no
       expect(victim.hp, 'and then the hit landed').toBeLessThan(victim.maxHp);
       graceThenFight(h, victim);
     }
+  });
+
+  it('witnesses: colleagues who see you hit somebody turn; a healer, Internal IT or a quest giver who sees it goes cold for the week instead (no talk, no tea, no quests), and stays cold after a reload', () => {
+    const h = hubFor();
+    const g = h.g;
+    const victim = neutral(h).find((a) => a.kind === 'user' && named(h, a))!;
+    expect(standBeforeActor(g, victim, 1.2)).toBe(true);
+    // Somebody of each kind, in plain view a few metres off.
+    const healer = g.actors.find((a) => a.kind === 'healer' && !a.resolved);
+    const npc = g.actors.find((a) => (a.kind === 'npc' || a.kind === 'helper') && !a.resolved && !a.recruited);
+    const colleague = neutral(h).find((a) => a !== victim && (a.kind === 'caller' || a.kind === 'user'))!;
+    if (healer === undefined || npc === undefined) throw new Error('no healer or quest giver on the hub');
+    const spots = viewSpots(h, 3, 9);
+    for (const [k, a] of [healer, npc, colleague].entries()) {
+      const p = spots[k * 3];
+      if (p === undefined) throw new Error('no spot in view');
+      a.pos.set(p.x, 0, p.z);
+    }
+    victim.stunned = 1e9;
+    ready(victim, colleague);
+    h.toasts.length = 0;
+    strike(g, victim, 1, null, 'melee');
+    // The fighter turns.
+    expect(colleague.hostile, 'a colleague who saw it turns').toBe(true);
+    announced(h, colleague, 'saw you hit');
+    // The others go cold, and say so.
+    for (const a of [healer, npc]) {
+      expect(a.hostile, `${a.name} does not fight`).toBe(false);
+      expect(a.cold, `${a.name} goes cold`).toBe(true);
+      expect(a.bubble, `${a.name} says so`).not.toBeNull();
+      expect(h.toasts.some((t) => t.includes(a.name) && t.includes('will not talk to you this week'))).toBe(true);
+      // Talking to them: a line, and nothing else (no healing, no quest, no story).
+      g.promptTarget = { kind: 'actor', a };
+      interact(g);
+      expect(h.dialogues.at(-1)?.text, `${a.name} will not talk`).toBe(COLD_LINE);
+      expect(h.dialogues.at(-1)?.options.map((o) => o.label)).toEqual(['Leave them be']);
+      h.pick('Leave them be');
+    }
+    // No tea either: hurt, with the healer right there and ready.
+    colleague.stunned = 1e9;
+    g.save.sanity = 40;
+    healer.healIn = 0;
+    healer.pos.set(g.player.pos.x + 1.5, 0, g.player.pos.z);
+    const heal = vi.spyOn(g, 'healPlayer');
+    h.run(3, answering(h, () => { healer.healIn = Math.min(healer.healIn, 0); }));
+    expect(heal, 'a cold healer heals nobody').not.toHaveBeenCalled();
+    // Remembered for the week: after a reload they are still cold.
+    const back = headless(normalizeSave(JSON.parse(JSON.stringify(g.save)))!);
+    back.g.loadWorld(true);
+    const again = back.g.actors.find((a) => personKey(a) === personKey(healer));
+    expect(again?.cold, 'still cold after a reload').toBe(true);
+    expect(back.g.actors.filter((a) => a.cold).map(personKey).sort()).toEqual([healer, npc].map(personKey).sort());
+  });
+
+  it('a witnessed crime turns colleagues and chills the rest the same way (the office fridge, a healer watching)', () => {
+    const h = hubFor();
+    const g = h.g;
+    expect(standAt(g, 'fridge')).toBe(true);
+    const healer = g.actors.find((a) => a.kind === 'helper' && !a.recruited && !a.resolved) ?? g.actors.find((a) => a.kind === 'healer')!;
+    const p = viewSpots(h, 2, 8)[0];
+    if (p === undefined) throw new Error('no spot by the fridge');
+    healer.pos.set(p.x, 0, p.z);
+    // Nobody else near enough to see.
+    for (const a of neutral(h)) if (Math.hypot(a.pos.x - g.player.pos.x, a.pos.z - g.player.pos.z) < 14) a.pos.set(g.level.start.x, 0, g.level.start.z);
+    interact(g);
+    h.pick('Take Jukka\'s drinks.');
+    expect(healer.cold, `${healer.name} saw it, and has gone cold`).toBe(true);
+    expect(healer.hostile).toBe(false);
+    expect(g.save.hub.cold).toEqual([personKey(healer)]);
   });
 
   it('a shove is laying hands on a colleague too', () => {
@@ -366,6 +435,21 @@ function openRun(h: Headless, cells: number): { x0: number; z0: number; dx: numb
     }
   }
   throw new Error('no open run');
+}
+
+/** Open spots the player can see, between `near` and `far` metres away, nearest first. */
+function viewSpots(h: Headless, near: number, far: number): { x: number; z: number }[] {
+  const lv = h.g.level;
+  const pp = h.g.player.pos;
+  const out: { x: number; z: number; d: number }[] = [];
+  for (let i = 0; i < lv.w * lv.h; i++) {
+    if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
+    const x = (i % lv.w) * 2 + 1;
+    const z = Math.floor(i / lv.w) * 2 + 1;
+    const d = Math.hypot(x - pp.x, z - pp.z);
+    if (d > near && d < far && lineOfSight(lv, pp.x, pp.z, x, z)) out.push({ x, z, d });
+  }
+  return out.sort((a, b) => a.d - b.d);
 }
 
 /** A spot the walker can walk to, 6 to 12 m away from them. */

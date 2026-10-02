@@ -193,6 +193,8 @@ export interface HubState {
   nextArrival: number;
   /** The hub's own once-a-floor things, this week. */
   once: OncePerFloor;
+  /** People (by `hub.ts personKey`) who saw a crime and are not ones to fight: cold on you for the week. */
+  cold: string[];
 }
 
 /** The once-a-floor things of where you are at work: the hub's, or the P1 floor's. */
@@ -313,7 +315,7 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false } };
+  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [] };
 }
 
 /** Monday on the hub: the week's people and props start again; the gear on the floor is still there, and arrivals' indices go on counting. */
@@ -352,6 +354,7 @@ export function normalizeHub(raw: unknown, week: number): HubState {
     }).map((r) => ({ index: r.index, kind: r.kind, name: r.name, why: r.why })) : [],
     nextArrival: HUB_EXTRA_BASE,
     once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false },
+    cold: Array.isArray(o.cold) ? (o.cold as unknown[]).filter((x): x is string => typeof x === 'string') : [],
   };
   if (typeof o.once === 'object' && o.once !== null) {
     const once = o.once as Partial<Record<keyof OncePerFloor, unknown>>;

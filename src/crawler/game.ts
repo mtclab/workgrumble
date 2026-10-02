@@ -709,6 +709,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     scheduleMentoring(this, monday);
     this.spawnCompanions();
     this.syncInduction();
+    // Everyone is on the floor now: what the hub remembers about them this week.
+    this.hub.remember();
     if (monday) this.hub.monday();
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();

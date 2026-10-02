@@ -5,7 +5,7 @@ import { type DialogueNode, type DialogueOption, said } from './dialogue';
 import { type Actor, setMarker, TALKERS } from './entities';
 import { FINAL_FLOOR, type Game, type PromptTarget } from './game';
 import * as host from './hosts';
-import { floorLabel, p1Resolved } from './hub';
+import { COLD_LINE, floorLabel, ONLOOKERS, p1Resolved } from './hub';
 import { BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES } from './items';
 import { type Interactable, lineOfSight, toCell } from './level';
 import { livePage } from './oncall';
@@ -176,6 +176,11 @@ function talkTo(g: Game, a: Actor): void {
   const s = g.save;
   // Morag and the practice colleague, on induction day.
   if (g.inductionDay?.talk(a) === true) return;
+  // Saw you commit a crime on the hub: not this week.
+  if (a.cold) {
+    g.openDialogue(said(a.name, COLD_LINE, 'bad', 'Leave them be'));
+    return;
+  }
   if (a.hostile) {
     if (a.kind === 'boss') g.openDialogue(talkAuditor(g, a));
     else g.openDialogue(a.kind === 'manager' ? talkManager(g, a) : talkHostile(g, a));
@@ -568,7 +573,9 @@ function witnesses(g: Game, range: number, kinds: readonly Actor['kind'][]): Act
   // On a mission only someone with you in their cone sees anything.
   if (g.mission) return g.mission.witnesses(range, kinds);
   const pp = g.player.pos;
-  return g.actors.filter((a) => !a.resolved && kinds.includes(a.kind)
+  // On the hub everyone neutral can see a crime: the ones who would not fight you go cold instead (hub.ts).
+  const who = g.hub !== null ? [...kinds, ...ONLOOKERS] : kinds;
+  return g.actors.filter((a) => !a.resolved && !a.recruited && who.includes(a.kind)
     && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < range
     && lineOfSight(g.level, a.pos.x, a.pos.z, pp.x, pp.z));
 }
