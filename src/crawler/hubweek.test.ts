@@ -661,6 +661,54 @@ describe('S1a: the way out is the lift that lights up', () => {
   });
 });
 
+describe('S1a: Monday wipes the hub\'s week', () => {
+  it('through the real weekend and goToWork: who was after you, who was resolved and the ignores all start again', () => {
+    const h = newCareer();
+    const g = h.g;
+    const hub = g.hub!;
+    const people = g.actors.filter((a) => a.colleague && a.kind === 'user' && g.actors.filter((x) => x.name === a.name).length === 1);
+    const [after, beaten] = people;
+    if (after === undefined || beaten === undefined) throw new Error('not enough people');
+    // A walk-up, reached and walked off on: one ignore (first: nobody walks up mid-fight).
+    hub.walkUpNow();
+    h.run(DT, answering(h));
+    const w = hub.walkingUp()!;
+    for (let t = 0; t < 40 && !hub.debug().reached; t += 0.5) h.run(0.5, answering(h));
+    expect(hub.debug().reached).toBe(true);
+    const off = g.level.interactables.map((it) => ({ x: it.x, z: it.z })).find((q) => Math.hypot(q.x - w.pos.x, q.z - w.pos.z) > 8) ?? g.level.start;
+    g.player.pos.set(off.x, 0, off.z);
+    h.run(DT, answering(h));
+    expect(g.save.hub.ignores[w.spawnIndex]?.length, 'an ignore on the books').toBe(1);
+    // One after you, one resolved (a breach, beaten).
+    breach(g, { t: after.ticket, sla: 0, from: after.name, struck: [], gold: false });
+    breach(g, { t: beaten.ticket, sla: 0, from: beaten.name, struck: [], gold: false });
+    beaten.hp = 0;
+    resolveActor(g, beaten);
+    expect(g.save.hub.hostile.map((e) => e.spawnIndex)).toContain(after.spawnIndex);
+    expect(g.save.hub.resolved).toContain(beaten.spawnIndex);
+    // The week: the P1 resolved, Friday, the weekend, Monday.
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    g.boss!.hp = 0;
+    resolveActor(g, g.boss!);
+    while (g.screen === 'dialogue') h.pick(/./);
+    press(h, lift(g, ARRIVAL_LIFT_ID));
+    h.pick('Friday: to the mökki');
+    while ((g.screen as string) === 'dialogue') h.pick(/./);
+    expect(g.save.location).toBe('mokki');
+    g.goToWork();
+    while ((g.screen as string) === 'dialogue') h.pick(/./);
+    expect(g.save).toMatchObject({ location: 'hub', week: 2 });
+    // Each of them, on the books and on the floor.
+    expect(g.save.hub.hostile, 'nobody after you').toEqual([]);
+    expect(g.save.hub.resolved, 'nobody resolved').toEqual([]);
+    expect(g.save.hub.ignores, 'no ignores').toEqual({});
+    expect(g.actors.find((a) => a.spawnIndex === after.spawnIndex)?.hostile, `${after.name} had the weekend`).toBe(false);
+    expect(g.actors.filter((a) => a.spawnIndex === beaten.spawnIndex && !a.resolved).length, `${beaten.name} is back`).toBe(1);
+    expect(g.hub?.debug().ignores, 'the walk-up is forgotten').toEqual([]);
+  });
+});
+
 describe('gate 7: burnout', () => {
   /** A DOM just big enough for the burnout screen: its buttons can be pressed. */
   function dom(): { press(label: RegExp): void } {
