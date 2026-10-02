@@ -425,7 +425,7 @@ export class Watch implements WatchCtx {
     let top: Tier = 0;
     for (const w of this.watchers.values()) {
       if (w.actor.resolved) continue;
-      const t: Tier = w.mood === 'alert' || w.mood === 'searching' ? 2 : tierOf(w.suspicion);
+      const t = moodTier(w);
       if (t > top) top = t;
     }
     this.held = false;
@@ -445,24 +445,66 @@ export class Watch implements WatchCtx {
     this.host.tierChanged(this.tier, from, null, 'the floor stopped searching');
   }
 
+  /**
+   * The least tier the people's moods call for right now: two after you
+   * (Alert or searching, nobody called in among them) is Escalated, anyone
+   * after you is Alert, anyone looking into something (or still wary, at
+   * Investigate) is Noticed. The tier is never below it; under 'search'
+   * (short of Escalated) it is exactly this unless the floor is holding it
+   * (`holding`), and under 'one-way' it only ever goes up.
+   */
+  required(): Tier {
+    let after = 0;
+    let top: Tier = 0;
+    for (const w of this.watchers.values()) {
+      if (w.actor.resolved) continue;
+      const t = moodTier(w);
+      if (t > top) top = t;
+      if (t === 2 && !w.called) after++;
+    }
+    return after >= 2 ? 3 : top;
+  }
+
+  /** The floor is holding the tier above what the people call for ('search', nobody left after you). */
+  holding(): boolean {
+    return this.held;
+  }
+
   /** The floor searching for you on its own (the 'search' rule, nobody left after you): seconds left on its countdown, or null. */
   floorSearch(): number | null {
     return this.held && this.unseenT >= SEARCH_AFTER ? Math.max(0, SEARCH_AFTER + SEARCH_COUNTDOWN - this.unseenT) : null;
   }
 
-  /** The 'cooldown' rule: everyone above the new tier comes down to it, and it is announced. */
+  /**
+   * The 'cooldown' rule: everyone above the new tier comes down to it, and
+   * it is announced. Out of Escalated, only the one who saw you last stays
+   * Alert; everyone else who was after you is Noticed, and goes to look
+   * where they last saw you.
+   */
   private coolOneStep(): void {
     const from = this.tier;
     const to = (from - 1) as Tier;
     this.tier = to;
+    const after = [...this.watchers.values()].filter((w) => !w.actor.resolved && (w.actor.aggro || w.mood === 'alert' || w.mood === 'searching'));
+    // The one who saw you most recently (one the card did not call in, if there is one).
+    const keeper = to === 2 ? [...after].sort((p, q) => Number(p.called) - Number(q.called) || p.lost - q.lost)[0] : undefined;
     for (const w of this.watchers.values()) {
       const a = w.actor;
       if (a.resolved) continue;
       if (to === 2) {
-        // Out of Escalated: whoever is after you is one person at Alert again; the rest go back to their day.
-        if (a.aggro) {
+        if (w === keeper) {
           w.mood = 'alert';
           w.lost = 0;
+          a.aggro = true;
+        } else if (after.includes(w)) {
+          a.aggro = false;
+          cancelWindup(a);
+          w.suspicion = INVESTIGATE;
+          w.peak = Math.max(w.peak, w.suspicion);
+          w.mood = 'investigating';
+          w.hold = 0;
+          this.lookAt(w, w.lastSeen ?? { x: a.pos.x, z: a.pos.z });
+          this.mark(w, '?', '#ffb020');
         }
       } else if (to === 1) {
         if (w.mood === 'alert' || w.mood === 'searching' || a.aggro) {
@@ -643,6 +685,12 @@ export class Watch implements WatchCtx {
     if (bx === cx && bz === cz) return { kind: 'move', dx: 0, dz: 0, speed: 0, yaw: null };
     return { kind: 'move', dx: bx * TILE + TILE / 2 - a.pos.x, dz: bz * TILE + TILE / 2 - a.pos.z, speed, yaw: null };
   }
+}
+
+/** The tier one person's mood calls for on its own: after you (Alert, searching) is Alert; looking into something, or wary at Investigate, is Noticed. */
+function moodTier(w: Watcher): Tier {
+  if (w.mood === 'alert' || w.mood === 'searching') return 2;
+  return w.mood === 'investigating' || w.suspicion >= INVESTIGATE ? 1 : 0;
 }
 
 /** The search's countdown as it shows over their head. */

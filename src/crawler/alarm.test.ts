@@ -245,7 +245,7 @@ describe('somebody who comes onto a card in play is one of its people', () => {
     h.run(COOLDOWN * 2 + 1, holdAll(h));
     expect(m.watch.tier, 'down to Noticed').toBe(1);
     expect(extra.aggro, 'they are not after you any more either').toBe(false);
-    expect(m.watch.watchers.get(extra.id)?.mood).toBe('wary');
+    expect(['investigating', 'wary'], 'Noticed: looking where they last saw you, or wary').toContain(m.watch.watchers.get(extra.id)?.mood);
   });
 
   it('search: somebody who turns up after you (a story\'s enemy) loses you, searches with the countdown over their head, and gives up', () => {
@@ -308,5 +308,90 @@ describe('search: the only one after you resolved', () => {
     h.run(SEARCH_AFTER + SEARCH_COUNTDOWN + 10, holdAll(h));
     expect(m.watch.tier).toBe(2);
     expect(h.toasts.some((t) => t.startsWith('STOOD DOWN'))).toBe(false);
+  });
+});
+
+describe('cooldown out of Escalated', () => {
+  it('only the one who saw you last stays Alert; everyone else who was after you is Noticed, and goes to look where they last saw you', () => {
+    const h = play('cooldown');
+    const m = h.g.mission!;
+    const a = deskWatcher(h);
+    alert(h, a);
+    const b = deskWatcher(h, [a.actor]);
+    strike(h.g, b.actor, 1, null, 'melee');
+    h.run(DT * 2, holdAll(h));
+    expect(m.watch.tier).toBe(3);
+    h.run(2.1, holdAll(h));
+    hide(h);
+    // Frame by frame up to the step down, remembering who had seen you last just before it.
+    let lost = new Map<number, number>();
+    for (let t = 0; t < COOLDOWN + 2 && m.watch.tier === 3; t += DT) {
+      lost = new Map([...m.watch.watchers.values()].map((w) => [w.actor.id, w.lost]));
+      h.run(DT, holdAll(h));
+    }
+    expect(m.watch.tier).toBe(2);
+    const after = [a, b].sort((p, q) => (lost.get(p.actor.id) ?? 0) - (lost.get(q.actor.id) ?? 0));
+    const [keeper, other] = after as [Watcher, Watcher];
+    expect(keeper.mood, 'the one who saw you last').toBe('alert');
+    expect(keeper.actor.aggro).toBe(true);
+    expect(other.mood, 'the other is Noticed').toBe('investigating');
+    expect(other.actor.aggro, 'and not after you').toBe(false);
+    expect(other.spot, 'looking where they last saw you').toEqual(other.lastSeen);
+    expect(other.shown).toBe('?');
+    expect([...m.watch.watchers.values()].filter((w) => w.mood === 'alert' && !w.called), 'one person after you').toHaveLength(1);
+    expect(m.watch.required(), 'which is what Alert means').toBe(2);
+  });
+});
+
+describe('the tier always says what the people\'s moods mean, under each rule', () => {
+  /**
+   * A long scripted fight, every frame checked: one person Alert, a second
+   * hit (Escalated), a brawl, hiding long enough for the rule to cool things
+   * (or not), back into somebody's view, another brawl, one of them resolved,
+   * hiding again.
+   */
+  it.each(['one-way', 'search', 'cooldown'] as const)('%s', (rule) => {
+    const h = play(rule);
+    const g = h.g;
+    const m = g.mission!;
+    let last = m.watch.tier;
+    let frames = 0;
+    const check = (): void => {
+      frames++;
+      const w = m.watch;
+      const at = `${rule} at ${g.time.toFixed(2)} s (tier ${w.tier}, moods ${[...w.watchers.values()].filter((x) => !x.actor.resolved).map((x) => x.mood).join(' ')})`;
+      expect(w.tier >= w.required(), `${at}: never below what the people call for`).toBe(true);
+      if (rule === 'one-way') expect(w.tier >= last, `${at}: one-way only goes up`).toBe(true);
+      if (rule === 'search' && w.tier < 3) expect(w.tier === w.required() || w.holding(), `${at}: search follows the people, or the floor holds it`).toBe(true);
+      last = w.tier;
+    };
+    const brawl = (seconds: number, near: Actor): void => {
+      freeAll(h);
+      h.run(seconds, () => {
+        g.save.sanity = 100;
+        if (Math.hypot(near.pos.x - g.player.pos.x, near.pos.z - g.player.pos.z) > 3) m.standInView(near.id, 2);
+        if (Math.round(g.time / DT) % 15 === 0 && !near.resolved) strike(g, near, 1, null, 'melee');
+        check();
+      });
+    };
+    const lie = (seconds: number): void => {
+      hide(h);
+      h.run(seconds, () => { holdAll(h)(); check(); });
+    };
+    const a = deskWatcher(h);
+    alert(h, a);
+    check();
+    const b = deskWatcher(h, [a.actor]);
+    strike(g, b.actor, 1, null, 'melee');
+    h.run(DT * 2, () => { holdAll(h)(); check(); });
+    brawl(4, b.actor);
+    lie(COOLDOWN + 5);
+    lie(COOLDOWN + 5);
+    const c = deskWatcher(h, [a.actor, b.actor]);
+    brawl(6, c.actor);
+    a.actor.hp = 0;
+    brawl(3, c.actor);
+    lie(COOLDOWN * 2 + SEARCH_AFTER + SEARCH_COUNTDOWN);
+    expect(frames, 'a long fight, every frame').toBeGreaterThan(5000);
   });
 });
