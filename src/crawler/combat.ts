@@ -1026,6 +1026,11 @@ export function updatePickups(g: Game, dt: number): void {
           }
           break;
         case 'quest':
+          // A card's scattered copies (S1b, a collect objective) are the card's to count, not yours to carry.
+          if (p.id.startsWith('card:')) {
+            g.mission?.picked(p.id);
+            break;
+          }
           // Paperwork is counted by the quest, not carried.
           if (!TRANSIENT_ITEMS.includes(p.id)) {
             if (!s.questItems.includes(p.id)) s.questItems.push(p.id);

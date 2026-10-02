@@ -57,6 +57,7 @@ class Host implements GameCtx {
   readonly camera = new THREE.PerspectiveCamera();
   readonly toasts: string[] = [];
   readonly hud = { toast: (t: string): void => { this.toasts.push(t); } };
+  readonly pickups: Game['pickups'] = [];
   readonly dialogues: DialogueNode[] = [];
   afterDialogue: (() => void) | null = null;
   readonly hits: string[] = [];
@@ -71,7 +72,7 @@ class Host implements GameCtx {
     this.markers = markers;
     const theme = THEMES[card.floor % THEMES.length];
     if (theme === undefined) throw new Error('theme');
-    this.level = generateLevel(card.floor, theme, seed, true, false, card.recipe);
+    this.level = generateLevel(card.floor, theme, seed, true, false, card.recipe === 'large' ? undefined : card.recipe);
     this.floor = card.floor;
     // A floor, as `loadMission` sets it (not the hub a new career starts on).
     this.save.location = 'office';
@@ -170,7 +171,7 @@ function hudGame(h: Host): Game {
   Object.assign(g, {
     save: h.save, level: h.level, scene: h.scene, actors: h.actors, player: h.player,
     mission: h.mission, derivedCache: h.derivedCache, lockerItems: h.lockerItems,
-    pickups: [], floaters: [], levelRng: h.rng, lootRng: new Rng(7), boss: null, mentorAsk: null,
+    pickups: h.pickups, floaters: [], levelRng: h.rng, lootRng: new Rng(7), boss: null, mentorAsk: null,
     markers: [], elevatorOpen: true, screen: 'play', input: { locked: true }, prompt: '',
     faceMood: 'normal', chargeT: 0, effects: () => [], ammoText: () => 'Melee',
     spawnAt: h.spawnAt.bind(h),
@@ -192,6 +193,36 @@ function drawHud(g: Game): { frame: HudFrame; quests: HudNode; floor: HudNode } 
   return { frame, quests: children.find((n) => n.className === 'hud-quests')!, floor: children.find((n) => n.className === 'hud-floor')! };
 }
 
+/**
+ * What the compass shows for a card's objective, worked out from the card
+ * and the map (not from the markers themselves): the closet, the people
+ * still to resolve, the copies still lying about, the counter and the
+ * escort, Marcus's computer.
+ */
+function objectiveLabels(m: MissionPlay): string[] {
+  const ob = m.card.objective;
+  switch (ob.kind) {
+    case 'take': return ["HR's closet"];
+    case 'resolve': return m.crowd.filter((a, i) => a.kind === ob.who && (ob.tag === undefined || m.specs[i]?.tag === ob.tag)).map((a) => a.name);
+    case 'collect': return m.scatter.map(() => 'Password Sticky Notes');
+    case 'escort': return ['Internal IT', m.escortee!.name];
+    case 'fix': return ["Marcus's computer"];
+  }
+}
+
+/** Whatever finishes the card's objective, done the way the game sees it done. */
+function completeObjective(m: MissionPlay, g: Game): void {
+  const ob = m.card.objective;
+  if (ob.kind === 'take') g.save.questItems.push(ob.item);
+  if (ob.kind === 'resolve') for (const a of g.actors) a.resolved = true;
+  if (ob.kind === 'collect') for (const c of m.scatter.slice(0, ob.count)) m.picked(c.id);
+  if (ob.kind === 'escort') {
+    const desk = g.level.interactables.find((it) => it.kind === 'itdesk')!;
+    m.escortee!.pos.set(desk.x, 0, desk.z + 1.5);
+  }
+  if (ob.kind === 'fix') m.run.reached();
+}
+
 describe.each(MISSIONS.map((m) => [m.id, m] as const))('mission HUD %s', (_id, card) => {
   afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
@@ -208,10 +239,12 @@ describe.each(MISSIONS.map((m) => [m.id, m] as const))('mission HUD %s', (_id, c
     const g = hudGame(new Host(card, 77));
     const crowd = g.actors.map((a) => a.name);
     const lockers = [...g.lockerItems];
+    const own = g.pickups.length;
     placeQuestContent(g);
     expect(g.actors.map((a) => a.name), 'mission has only its own crowd, no ordinary quest givers').toEqual(crowd);
     expect([...g.lockerItems], 'mission has only its own closet item').toEqual(lockers);
-    expect(g.pickups).toEqual([]);
+    expect(g.pickups, 'only the card\'s own scattered copies').toHaveLength(own);
+    expect(g.pickups.every((p) => p.kind === 'quest' && p.id.startsWith('card:'))).toBe(true);
     expect(g.actors.some((a) => questOf(a) !== undefined)).toBe(false);
   });
 
@@ -220,35 +253,33 @@ describe.each(MISSIONS.map((m) => [m.id, m] as const))('mission HUD %s', (_id, c
     const lockers = [...g.lockerItems];
     const st = { id: 'descaler', stage: 0, progress: 0, done: false, floor: card.floor };
     g.save.questLog.push(st);
+    const own = g.pickups.length;
     startStage(g, st);
     expect([...g.lockerItems], 'ordinary side-quest items stay off a mission').toEqual(lockers);
-    expect(g.pickups).toEqual([]);
+    expect(g.pickups).toHaveLength(own);
   });
 
   it('shows only card objectives on the compass and map', () => {
     const g = hudGame(new Host(card, 77));
-    const locker = g.level.interactables.find((it) => it.kind === 'locker' && !g.lockerItems.has(it.id))!;
-    g.lockerItems.set(locker.id, 'descaler');
+    // An ordinary quest item in a closet (where the map has a spare closet) shows nothing on a card.
+    const locker = g.level.interactables.find((it) => it.kind === 'locker' && !g.lockerItems.has(it.id));
+    if (locker !== undefined) g.lockerItems.set(locker.id, 'descaler');
     g.save.questLog.push({ id: 's-printers', stage: 0, progress: 0, done: false, floor: card.floor, staffed: true });
-    const expected = card.objective.kind === 'take' ? ["HR's closet"] : g.actors.filter((a) => a.kind === 'vendor').map((a) => a.name);
-    expect(questMarkers(g).map((m) => m.label), 'mission compass has only card objectives').toEqual(expected);
-    for (const a of g.actors) a.resolved = true;
-    g.save.questItems.push('redstapler');
+    expect(questMarkers(g).map((m) => m.label), 'mission compass has only card objectives').toEqual(objectiveLabels(g.mission!));
+    completeObjective(g.mission!, g);
     g.mission!.update(DT, false);
     expect(questMarkers(g).map((m) => m.label)).toEqual(['The lift']);
   });
 
   it('replaces cached ordinary compass targets as soon as the card loads', () => {
     const h = new Host(card, 77, [{ x: 0, z: 0, icon: '!', color: '#ffd54a', label: 'Ordinary floor objective' }]);
-    const expected = card.objective.kind === 'take' ? ["HR's closet"] : h.mission.crowd.filter((a) => a.kind === 'vendor').map((a) => a.name);
-    expect(h.markers.map((m) => m.label), 'mission immediately replaces ordinary compass targets').toEqual(expected);
+    expect(h.markers.map((m) => m.label), 'mission immediately replaces ordinary compass targets').toEqual(objectiveLabels(h.mission));
     expect(h.markersIn).toBe(0);
   });
 
   it('names the card place and title on the floor label', () => {
     const g = hudGame(new Host(card, 77));
-    const place = card.id === 'stapler' ? 'HR corridor' : 'Atrium loop';
-    expect(drawHud(g).floor.textContent, 'mission floor label names the card place').toBe(`${place} - ${card.title}`);
+    expect(drawHud(g).floor.textContent, 'mission floor label names the card place').toBe(`${card.place} - ${card.title}`);
     g.mission = { card: { ...card, place: 'Test corridor' }, hud: () => ({ tier: 0, actors: [], routes: [] }) } as unknown as MissionPlay;
     expect(drawHud(g).floor.textContent).toBe(`Test corridor - ${card.title}`);
   });
@@ -286,7 +317,8 @@ describe.each(MISSIONS.map((m) => [m.id, m] as const))('card %s', (_id, card) =>
       for (const a of h.mission.crowd) {
         // People stand on open floor the lift reaches (no squeezing a neighbour in, as for a desk).
         expect(field[toCell(a.pos.z) * h.level.w + toCell(a.pos.x)], `seed ${seed}: ${a.kind} on a reachable cell`).toBeGreaterThanOrEqual(0);
-        expect(a.hostile).toBe(true);
+        // Everyone on a card is one to fight, except the one you are escorting.
+        expect(a.hostile).toBe(a !== h.mission.escortee);
         expect(a.aggro, 'nobody arrives already after you').toBe(false);
         for (const p of h.mission.watch.watchers.get(a.id)?.route ?? []) expect(reachable(h.level, field, p.x, p.z), `seed ${seed}: patrol point`).toBe(true);
       }

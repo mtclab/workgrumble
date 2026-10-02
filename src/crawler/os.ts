@@ -55,6 +55,7 @@ import { releaseEntry } from './changelog';
 import { PACK_APPS, packKey, swallowsRepeat, type PackZone, rebindCode, refocusIndex, stepFocus } from './menus';
 import { focusables, isField } from './menukeys';
 import { HELLDESK_VERSION, helldeskReleasesNewestFirst } from './releases';
+import type { CardView } from './deck';
 
 /**
  * WorkgrumbleOS, as found on every desk in the building. The office sim's
@@ -92,6 +93,12 @@ export interface OsHost {
   /** Tell a mentee you do not have time after all. */
   dropMentoring(index: number): string;
   hasTerminal(): boolean;
+  /** At your own desk on the hub: the week's deck is on this computer (S1b). */
+  atWorkstation(): boolean;
+  /** The week's deck, card by card, as the Projects window shows it. */
+  deckViews(): CardView[];
+  acceptCard(index: number): { ok: boolean; text: string };
+  declineCard(index: number): { ok: boolean; text: string };
   close(): void;
   restart(): void;
   applySettings(): void;
@@ -100,7 +107,7 @@ export interface OsHost {
   coin(): void;
 }
 
-export type AppId = 'tickets' | 'mail' | 'kb' | 'store' | 'inventory' | 'character' | 'hr' | 'journal' | 'achievements' | 'slack' | 'settings' | 'help' | 'updates';
+export type AppId = 'projects' | 'tickets' | 'mail' | 'kb' | 'store' | 'inventory' | 'character' | 'hr' | 'journal' | 'achievements' | 'slack' | 'settings' | 'help' | 'updates';
 
 interface Win {
   readonly app: AppId;
@@ -131,6 +138,8 @@ function el<K extends keyof HTMLElementTagNameMap>(
 }
 
 const APPS: readonly { id: AppId; label: string; icon: string; desk: boolean; pack: boolean }[] = [
+  // Only on your own desk's computer (S1b): `open` adds it there.
+  { id: 'projects', label: 'Projects', icon: '🗂', desk: false, pack: false },
   { id: 'tickets', label: 'Tickets', icon: '🎫', desk: true, pack: false },
   { id: 'mail', label: 'Mail (Tasks)', icon: '✉️', desk: true, pack: false },
   { id: 'kb', label: 'KB Wiki', icon: '📘', desk: true, pack: false },
@@ -217,8 +226,9 @@ export class Os {
     this.wins = [];
     this.feedback = '';
     this.icons.replaceChildren();
+    const mine = mode === 'desk' && this.host.atWorkstation();
     for (const app of APPS) {
-      if (mode === 'desk' ? !app.desk : !app.pack) continue;
+      if (mode === 'desk' ? !(app.desk || (app.id === 'projects' && mine)) : !app.pack) continue;
       this.icons.append(el('button', { class: 'os-icon', onclick: () => this.openApp(app.id) },
         el('span', { class: 'os-icon-glyph' }, app.icon), el('span', { class: 'os-icon-label' }, app.label)));
     }
@@ -230,6 +240,10 @@ export class Os {
           el('span', { class: 'os-packbar-key' }, String(i + 1)), ` ${app?.label ?? id}`));
       });
       this.showPackApp(first ?? 'inventory');
+    } else if (first === 'projects') {
+      // Your desk: the queue as at any desk, and the week's deck over it.
+      this.openApp('tickets');
+      this.openApp('projects');
     } else if (first !== undefined) this.openApp(first);
     else if (mode === 'desk') {
       this.openApp('tickets');
@@ -426,6 +440,7 @@ export class Os {
     const was = active instanceof HTMLElement && w.body.contains(active) ? focusables(w.body).indexOf(active) : -1;
     w.body.replaceChildren();
     switch (w.app) {
+      case 'projects': this.renderProjects(w.body); break;
       case 'tickets': this.renderTickets(w.body); break;
       case 'mail': this.renderMail(w.body); break;
       case 'kb': this.renderKb(w.body); break;
@@ -532,6 +547,44 @@ export class Os {
   }
 
   // ---- Mail / tasks ----
+
+  // ---- Projects (your desk only) ----
+
+  /**
+   * This week's deck (S1b): every card with who it is from, its size, style
+   * and band, the pay, when it is due, after hours or not, and its alarm rule
+   * in plain words. Accept or Decline; a card handed over in person says who
+   * to ask instead. The P1 is always there, and always yours.
+   */
+  private renderProjects(body: HTMLElement): void {
+    const views = this.host.deckViews();
+    const held = views.filter((v) => !v.p1 && v.state === 'accepted').length;
+    body.append(el('p', { class: 'os-dim' }, `This week's work. Take on what you can carry: every card you accept counts against your workload (${held} taken). The lift goes to each card you accept.`));
+    for (const v of views) {
+      if (v.state === 'declined') continue;
+      const state = v.p1 ? (v.state === 'done' || v.state === 'failed' ? 'Resolved' : 'Mandatory') : { offered: 'On offer', accepted: 'Accepted', done: 'Done', failed: 'Failed', declined: 'Declined' }[v.state];
+      const card = el('div', { class: `os-card${v.p1 ? ' is-p1' : ''}${v.state === 'done' || v.state === 'failed' ? ' is-done' : ''}`, 'data-card': v.id },
+        el('div', { class: 'os-mail-head' }, el('b', {}, v.title), el('span', {}, ` - ${v.giver}${v.coworker ? ' (coworker)' : ''}`)),
+        el('p', { class: 'os-meta' }, `${v.size} · ${v.style} · ${v.band} · ${v.place}${v.afterHours ? ' · After hours' : ''}`),
+        el('p', {}, `Pay: ${v.pay}`),
+        el('p', {}, `Due: ${v.deadline}`),
+        el('p', { class: 'os-card-rule' }, `Alarm: ${v.rule}`),
+        el('p', { class: 'os-meta' }, state),
+      );
+      if (!v.p1 && v.state === 'offered') {
+        if (v.inPerson) {
+          card.append(el('p', { class: 'os-card-ask' }, `Ask ${v.giver}: they want to hand this one over in person (the "!" on the floor).`));
+        } else {
+          card.append(
+            el('button', { class: 'os-btn', 'data-act': 'accept', onclick: () => this.say(this.host.acceptCard(v.index).text) }, 'Accept'),
+            el('button', { class: 'os-btn', 'data-act': 'decline', onclick: () => this.say(this.host.declineCard(v.index).text) }, `Decline${v.coworker ? ' (costs a little with them)' : ''}`),
+          );
+        }
+      }
+      body.append(card);
+    }
+    if (this.feedback !== '') body.append(el('p', { class: 'os-feedback' }, this.feedback));
+  }
 
   private renderMail(body: HTMLElement): void {
     const s = this.host.save;

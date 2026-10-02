@@ -380,6 +380,24 @@ export function storyNpcFor(floor: number): StoryNpc {
   }
 }
 
+/**
+ * Marcus and the backup agent: the three-way choice (cover for him, log it,
+ * or make him fix it himself). The floor-0 story's beat, and card #9's end
+ * at his computer (missionplay.ts); `done` closes whichever it is.
+ */
+export function marcusBackups(h: StoryHost, name: string, done: (text: string, mood?: DialogueNode['mood']) => DialogueNode): DialogueNode {
+  return {
+    speaker: name, subtitle: 'A favour', text: 'Look. The backup light went red because I... may have stopped the backup agent. At 09:07. To make my spreadsheet faster. Can we keep this between us? I have a lonkero in my drawer with your name on it.',
+    options: [
+      { label: 'Your secret is safe with me.', pick: () => { h.standing('staff', 6); h.flag('coverup'); h.finding(1, 'You covered for Marcus stopping the backups.'); h.giveItem('lonkero', 1, name); h.journal('I covered for Marcus, who stopped the backups to speed up a spreadsheet. The Auditor will not see it that way.'); return done('Legend. Absolute legend. This never happened.', 'good'); } },
+      { label: 'I have to log it properly, Marcus.', pick: () => { h.standing('management', 6); h.standing('staff', -4); h.addRep(30); h.flag('reportedMarcus'); h.journal('I logged Marcus stopping the backup agent. Management were pleased. Marcus was not.'); return done('Wow. OK. Thanks for nothing.', 'bad'); } },
+      checkOption(h, 'Let us fix it together - and you write the incident note yourself.', 'soft', 'charm', 30,
+        () => { h.standing('staff', 4); h.standing('management', 3); h.addRep(20); h.flag('marcusLearned'); h.journal('Marcus fixed his own backup and wrote his own incident note. Growth.'); return done('...Fine. That is actually fair. Show me the button.', 'good'); },
+        () => { h.standing('staff', -2); return done('You sound like my mum. Forget I said anything.', 'bad'); }),
+    ],
+  };
+}
+
 export function storyBeatDone(flags: Readonly<Record<string, boolean | number>>, id: string): boolean {
   return flags[`story_${id}`] === true || Object.entries(flags).some(([key, value]) => value === true && key.startsWith(`story_${id}_`));
 }
@@ -395,16 +413,7 @@ export function talkStory(h: StoryHost, a: Actor): DialogueNode {
   if (a.talked || storyBeatDone(h.save.flags, a.npcId ?? '')) return said(a.name, 'We have said what needed saying.', 'neutral');
   switch (a.npcId) {
     case 'marcus':
-      return {
-        speaker: a.name, subtitle: 'A favour', text: 'Look. The backup light went red because I... may have stopped the backup agent. At 09:07. To make my spreadsheet faster. Can we keep this between us? I have a lonkero in my drawer with your name on it.',
-        options: [
-          { label: 'Your secret is safe with me.', pick: () => { h.standing('staff', 6); h.flag('coverup'); h.finding(1, 'You covered for Marcus stopping the backups.'); h.giveItem('lonkero', 1, a.name); h.journal('I covered for Marcus, who stopped the backups to speed up a spreadsheet. The Auditor will not see it that way.'); return done('Legend. Absolute legend. This never happened.', 'good'); } },
-          { label: 'I have to log it properly, Marcus.', pick: () => { h.standing('management', 6); h.standing('staff', -4); h.addRep(30); h.flag('reportedMarcus'); h.journal('I logged Marcus stopping the backup agent. Management were pleased. Marcus was not.'); return done('Wow. OK. Thanks for nothing.', 'bad'); } },
-          checkOption(h, 'Let us fix it together - and you write the incident note yourself.', 'soft', 'charm', 30,
-            () => { h.standing('staff', 4); h.standing('management', 3); h.addRep(20); h.flag('marcusLearned'); h.journal('Marcus fixed his own backup and wrote his own incident note. Growth.'); return done('...Fine. That is actually fair. Show me the button.', 'good'); },
-            () => { h.standing('staff', -2); return done('You sound like my mum. Forget I said anything.', 'bad'); }),
-        ],
-      };
+      return marcusBackups(h, a.name, done);
     case 'cfo':
       return {
         speaker: a.name, subtitle: 'Urgent call', text: 'This is the CFO. I have lost my phone, I am boarding in four minutes, enrol my new authenticator on my account NOW. Do you know who I am?',

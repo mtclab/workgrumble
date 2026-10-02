@@ -73,6 +73,8 @@ export interface MapMarker {
   readonly x: number;
   readonly z: number;
   readonly color: string;
+  /** Written beside it on the automap (your desk). */
+  readonly mapLabel?: string;
 }
 
 function div(cls: string, parent: HTMLElement, text = ''): HTMLDivElement {
@@ -647,6 +649,11 @@ export class Hud {
       g.fillRect(ox + cx * scale, oy + cz * scale, scale, scale);
     }
     for (const m of f.markers) diamond(g, ox + (m.x / TILE) * scale, oy + (m.z / TILE) * scale, 7, m.color);
+    for (const m of f.markers) {
+      if (m.mapLabel === undefined) continue;
+      g.fillStyle = m.color;
+      g.fillText(m.mapLabel, ox + (m.x / TILE) * scale + 6, oy + (m.z / TILE) * scale - 6);
+    }
     g.strokeStyle = '#ffb020';
     g.lineWidth = 2;
     for (const route of f.patrolRoutes ?? []) {

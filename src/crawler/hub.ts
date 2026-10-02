@@ -1,11 +1,14 @@
 import { TICKETS } from './content/tickets';
 import { ticketSla } from './desk';
 import { type DialogueNode, said } from './dialogue';
+import { coworkerCard, deckCard, FLOOR_P1 } from './deck';
 import { type Actor, type ActorKind, type HubCtx, rollActor, say, setMarker } from './entities';
 import { FINAL_FLOOR, type Game } from './game';
-import { cellCenter, generateLevel, type Interactable, type Level, lineOfSight, toCell } from './level';
+import { cellCenter, freeSpotIn, generateLevel, type Interactable, type Level, lineOfSight, toCell } from './level';
+import { ALARM_WORDS } from './mission';
 import { Rng } from './rng';
-import { type HubArrival, type HubArrivalKind, type HubReason, type QueuedTicket, type SaveState } from './state';
+import { GIVERS } from './missions';
+import { type HubArrival, type HubArrivalKind, HUB_GIVER_BASE, type HubReason, type QueuedTicket, type SaveState } from './state';
 import { storyBeatDone, storyNpcFor } from './story';
 import { THEMES, type Theme } from './textures';
 import { caughtCheck } from './vices';
@@ -103,6 +106,12 @@ const WALKERS: readonly ActorKind[] = ['user', 'caller'];
 /** A walk-up comes from within this many metres: somebody who can see you are about. */
 const WALKUP_FROM = 30;
 
+/** A card giver's index on the hub (HUB_GIVER_BASE and up, one per giver), or -1 for nobody. */
+export function giverIndex(giverId: string): number {
+  const k = Object.keys(GIVERS).indexOf(giverId);
+  return k < 0 ? -1 : HUB_GIVER_BASE + k;
+}
+
 export function hubSeed(careerSeed: number): number {
   return (careerSeed ^ HUB_SALT) >>> 0;
 }
@@ -128,9 +137,22 @@ export function personRng(careerSeed: number, spawnIndex: number): Rng {
   return new Rng((hubSeed(careerSeed) ^ Math.imul(spawnIndex + 1, 0x9e3779b1)) >>> 0);
 }
 
-/** Has this week's P1 been resolved (Friday is open)? */
+/** Has this week's P1 been resolved (Friday is open)? A week whose P1 is a card: that card done (or failed: the incident got resolved without you). */
 export function p1Resolved(s: SaveState): boolean {
+  const card = s.deck.week === s.week ? s.deck.cards.find((c) => c.p1 && c.id !== FLOOR_P1) : undefined;
+  if (card !== undefined) return card.state === 'done' || card.state === 'failed';
   return (s.floorState.floor === s.floor && s.floorState.bossDone) || (s.hub.week === s.week && s.hub.bossDone);
+}
+
+/**
+ * Your workstation (S1b): one desk of the hub is yours, the same one every
+ * week - the first computer in an open-plan room, as the career's hub was
+ * built. Its WorkgrumbleOS has the week's deck (the Projects window); every
+ * other computer works the queue as before.
+ */
+export function workstationOf(level: Level): Interactable | undefined {
+  const open = new Set(level.rooms.filter((rm) => rm.kind === 'cubicles').map((rm) => rm.id));
+  return level.interactables.find((it) => it.kind === 'terminal' && open.has(it.room));
 }
 
 /** A floor as the lift's buttons, the floor's name and the announcements say it. */
@@ -227,6 +249,19 @@ export class Hub implements HubCtx {
       g.spawnAt(sp.kind, at.x, at.z, sp.room, false, { spawnIndex: idx, ...(colleague ? { colleague: true } : {}) }, personRng(s.seed, idx));
     });
     for (const r of s.hub.arrivals) if (!gone.has(r.index)) this.spawnArrival(r, null);
+    // The coworkers who hand out this week's cards (S1b) are at their desks this week, the same people every week.
+    const givers = new Set<string>();
+    for (const c of s.deck.cards) {
+      const card = deckCard(c);
+      if (card === undefined || !coworkerCard(card) || givers.has(card.giver.id)) continue;
+      givers.add(card.giver.id);
+      const idx = giverIndex(card.giver.id);
+      const at = gone.has(idx) ? null : this.giverDesk(idx);
+      if (at === null) continue;
+      const a = g.spawnAt('user', at.x, at.z, -1, false, { colleague: true, spawnIndex: idx }, personRng(s.seed, idx));
+      if (a !== null) a.name = card.giver.name;
+    }
+    this.markGivers();
     let still = 0;
     for (const h of s.hub.hostile) {
       const a = g.actors.find((x) => x.colleague && x.spawnIndex === h.spawnIndex);
@@ -239,6 +274,39 @@ export class Hub implements HubCtx {
     const due = s.hub.breaches;
     s.hub.breaches = [];
     for (const q of due) this.breach(q);
+    // Cards you failed for a coworker (S1b): they heard, and they are waiting for you, announced.
+    const failed = s.hub.failed;
+    s.hub.failed = [];
+    for (const f of failed) {
+      const a = this.giverActor(f.giver);
+      if (a !== undefined) this.turn(a, 'failed', `${a.name} heard how "${f.card}" went, and has been waiting for you.`, 'You said you would DO it.');
+    }
+  }
+
+  /** The hub person who hands out a giver's cards (by giver id), if they are on the floor. */
+  giverActor(giverId: string): Actor | undefined {
+    const idx = giverIndex(giverId);
+    return this.g.actors.find((a) => a.spawnIndex === idx && !a.resolved);
+  }
+
+  /** Is this one of the week's card givers? */
+  isGiver(a: Actor): boolean {
+    return a.colleague && a.spawnIndex >= HUB_GIVER_BASE;
+  }
+
+  /** The deck's index of a card this person hands over in person and has not yet (or -1). */
+  offerOf(a: Actor): number {
+    const s = this.g.save;
+    if (!this.isGiver(a) || a.hostile || a.resolved) return -1;
+    return s.deck.cards.findIndex((c) => c.inPerson && c.state === 'offered' && giverIndex(deckCard(c)?.giver.id ?? '') === a.spawnIndex);
+  }
+
+  /** A "!" over every giver with a card to hand over in person. */
+  markGivers(): void {
+    for (const a of this.g.actors) {
+      if (!this.isGiver(a) || a.hostile) continue;
+      setMarker(a, this.offerOf(a) >= 0 ? '!' : null, '#ffd54a');
+    }
   }
 
   /** Monday, and Staff standing is low: somebody has been waiting all weekend for a word. */
@@ -378,9 +446,12 @@ export class Hub implements HubCtx {
     return this.spawnArrival(this.newArrival(kind, 'visit', null), { x, z });
   }
 
-  /** E on a colleague who is not after you: a walk-up's problem, or the time of day. */
+  /** E on a colleague who is not after you: a card they hand over in person, a walk-up's problem, or the time of day. */
   talk(a: Actor): DialogueNode {
     const g = this.g;
+    const offer = this.offerOf(a);
+    if (offer >= 0) return this.offerNode(a, offer);
+    if (this.isGiver(a)) return said(a.name, this.giverLine(a), 'neutral', 'Back to work');
     if (a !== this.walker) return said(a.name, SMALL_TALK[a.id % SMALL_TALK.length] ?? 'Morning.', 'neutral', 'Back to work');
     const t = TICKETS[a.ticket];
     const rep = 8 + g.save.floor * 2;
@@ -406,6 +477,38 @@ export class Hub implements HubCtx {
         },
       ],
     };
+  }
+
+  /** A card handed over in person (S1b): what it is, and take it, decline it, or think about it. */
+  private offerNode(a: Actor, index: number): DialogueNode {
+    const g = this.g;
+    const dealt = g.save.deck.cards[index];
+    const card = dealt === undefined ? undefined : deckCard(dealt);
+    if (dealt === undefined || card === undefined) return said(a.name, 'Never mind.', 'neutral');
+    const v = g.cardView(index);
+    return {
+      speaker: a.name,
+      subtitle: `${v.size}: #${card.number} ${card.title}`,
+      text: `"${card.voice}" ${card.objective.text} Pay ${v.pay}. Due ${v.deadline}.${dealt.afterHours ? ' After hours.' : ''} The alarm: ${ALARM_WORDS[dealt.alarm ?? card.alarm]}`,
+      options: [
+        { label: 'Leave it with me.', tag: 'Accept', pick: () => { const m = g.acceptCard(index, true); this.markGivers(); return said(a.name, m.ok ? 'Brilliant. It is on your board.' : m.text, m.ok ? 'good' : 'neutral'); } },
+        { label: 'Not this week, sorry.', tag: 'Decline', pick: () => { g.declineCard(index, true); this.markGivers(); return said(a.name, 'Right. Fine. I will ask someone who cares.', 'bad'); } },
+        { label: 'Let me think about it.', leave: true, pick: () => null },
+      ],
+    };
+  }
+
+  /** What a giver says once there is nothing to hand over. */
+  private giverLine(a: Actor): string {
+    const s = this.g.save;
+    const c = s.deck.cards.find((x) => giverIndex(deckCard(x)?.giver.id ?? '') === a.spawnIndex);
+    switch (c?.state) {
+      case 'accepted': return 'Any news? No pressure. Some pressure.';
+      case 'done': return 'You did it. I owe you a biscuit. A good one.';
+      case 'failed': return 'I do not want to talk about it.';
+      case 'declined': return 'I found somebody else. They are worse.';
+      default: return 'It is on your board, at your desk. When you get a minute.';
+    }
   }
 
   /** Off the floor: what people remember goes into the save, and nothing is left behind. */
@@ -495,6 +598,17 @@ export class Hub implements HubCtx {
     return a;
   }
 
+  /** Where a card's giver works this week: a free spot in an open-plan room, seeded by their index (the same every load). */
+  private giverDesk(index: number): { x: number; z: number } | null {
+    const lv = this.g.level;
+    const rooms = lv.rooms.filter((rm) => rm.kind === 'cubicles');
+    const r = personRng(this.g.save.seed, index);
+    const rm = rooms.length === 0 ? undefined : r.pick(rooms);
+    // Not on top of anybody already there.
+    const taken = new Set(this.g.actors.map((a) => toCell(a.pos.z) * lv.w + toCell(a.pos.x)));
+    return rm === undefined ? null : freeSpotIn(lv, rm, r, taken);
+  }
+
   /**
    * Somebody of this name resolved earlier this week (one of the hub's own
    * people, or an arrival): the same person, back for more, at their desk or
@@ -569,7 +683,7 @@ export class Hub implements HubCtx {
     const h = g.save.hub;
     const lv = g.level;
     const pp = g.player.pos;
-    const pool = g.actors.filter((a) => a.colleague && !a.hostile && !a.resolved && WALKERS.includes(a.kind)
+    const pool = g.actors.filter((a) => a.colleague && !a.hostile && !a.resolved && WALKERS.includes(a.kind) && !this.isGiver(a)
       && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) < WALKUP_FROM && (g.field[toCell(a.pos.z) * lv.w + toCell(a.pos.x)] ?? -1) >= 0);
     if (pool.length === 0) {
       // Nobody in walking distance: look again in ten seconds.

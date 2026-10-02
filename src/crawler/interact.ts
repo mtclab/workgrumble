@@ -15,7 +15,8 @@ import { questOf } from './questing';
 import { mentorRequestNode } from './teamwork';
 import { fx } from './rng';
 import * as screens from './screens';
-import { activityHere, adjustStanding, perk, skill } from './state';
+import { activityHere, adjustStanding, perk, skill, usedHere } from './state';
+import { deckCard, FLOOR_P1 } from './deck';
 import {
   disciplinary,
   talkAuditor,
@@ -33,9 +34,8 @@ import { caffeinate } from './vices';
 
 function markUsed(g: Game, it: Interactable): void {
   it.used = true;
-  const s = g.save;
-  // Kept by the floor (the P1) or by the hub's week, so a reload and the lift keep it used.
-  const used = s.location === 'office' ? s.floorState.used : s.location === 'hub' ? s.hub.used : null;
+  // Kept by the floor (the P1), the hub's week or the card being played, so a reload and the lift keep it used.
+  const used = usedHere(g.save);
   if (used !== null && !used.includes(it.id)) used.push(it.id);
 }
 
@@ -139,25 +139,30 @@ export function findPrompt(g: Game): void {
  * E does there is the game's. False if there is no such spot.
  */
 export function standAt(g: Game, kind: Interactable['kind']): boolean {
+  for (const it of g.level.interactables) {
+    if (it.kind === kind && !it.used && standBy(g, it)) return true;
+  }
+  return false;
+}
+
+/** Stand the player beside this one thing (your desk's computer, say), as `standAt` does. */
+export function standBy(g: Game, it: Interactable): boolean {
   const lv = g.level;
-  for (const it of lv.interactables) {
-    if (it.kind !== kind || it.used) continue;
-    const cx = toCell(it.x);
-    const cz = toCell(it.z);
-    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
-      if (cx + ox < 0 || cz + oz < 0 || cx + ox >= lv.w || cz + oz >= lv.h) continue;
-      const i = (cz + oz) * lv.w + cx + ox;
-      if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
-      // Just inside the neighbouring cell, on the side towards it.
-      const x = it.x + ox * 1.4;
-      const z = it.z + oz * 1.4;
-      g.player.pos.set(x, 0, z);
-      g.player.yaw = Math.atan2(ox, oz);
-      g.player.pitch = 0;
-      findPrompt(g);
-      const t = g.promptTarget;
-      if (t !== null && t.kind === 'interact' && t.it === it) return true;
-    }
+  const cx = toCell(it.x);
+  const cz = toCell(it.z);
+  for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [-1, 1], [1, -1], [-1, -1]] as const) {
+    if (cx + ox < 0 || cz + oz < 0 || cx + ox >= lv.w || cz + oz >= lv.h) continue;
+    const i = (cz + oz) * lv.w + cx + ox;
+    if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
+    // Just inside the neighbouring cell, on the side towards it.
+    const x = it.x + ox * 1.4;
+    const z = it.z + oz * 1.4;
+    g.player.pos.set(x, 0, z);
+    g.player.yaw = Math.atan2(ox, oz);
+    g.player.pitch = 0;
+    findPrompt(g);
+    const t = g.promptTarget;
+    if (t !== null && t.kind === 'interact' && t.it === it) return true;
   }
   return false;
 }
@@ -176,6 +181,12 @@ function talkTo(g: Game, a: Actor): void {
   const s = g.save;
   // Morag and the practice colleague, on induction day.
   if (g.inductionDay?.talk(a) === true) return;
+  // One of a card's own people with something to say (the escort, Marcus).
+  const card = g.mission?.talk(a) ?? null;
+  if (card !== null) {
+    g.openDialogue(card);
+    return;
+  }
   // Saw you commit a crime on the hub: not this week.
   if (a.cold) {
     g.openDialogue(said(a.name, COLD_LINE, 'bad', 'Leave them be'));
@@ -237,6 +248,8 @@ function useThing(g: Game, it: Interactable): void {
     case 'terminal':
       // On call at the mökki: the page comes first.
       if (answerAtTerminal(g)) break;
+      // A card's own computer (Marcus's backup agent) is the card's.
+      if (g.mission?.use(it) === true) break;
       g.currentTerminal = it;
       if (s.warnings >= 3) {
         g.openDialogue(disciplinary(g));
@@ -246,7 +259,8 @@ function useThing(g: Game, it: Interactable): void {
         g.loggedOn.add(it.id);
         g.questEvent({ type: 'use', what: 'terminal', terminal: it.id });
       }
-      g.openOs('desk');
+      // Your own desk has the week's deck on it (S1b): the Projects window, over the queue.
+      g.openOs('desk', g.atWorkstation() ? 'projects' : undefined);
       break;
     case 'itdesk':
       g.openOs('itdesk');
@@ -448,7 +462,12 @@ function useThing(g: Game, it: Interactable): void {
 function liftPrompt(g: Game): string {
   if (g.inductionDay !== null && !g.floorAwake) return 'The lift (after your induction)';
   const friday = g.elevatorOpen ? ', or Friday' : '';
-  return g.save.location === 'hub' ? `E: Take the lift - floor ${floorLabel(g.save.floor)}, the major incident${friday}` : `E: Take the lift - back to the hub${friday}`;
+  if (g.save.location !== 'hub') return `E: Take the lift - back to the hub${friday}`;
+  const held = g.save.deck.cards.filter((c) => !c.p1 && c.state === 'accepted').length;
+  const cards = held > 0 ? `, ${held} card${held > 1 ? 's' : ''}` : '';
+  const p1 = g.save.deck.cards.find((c) => c.p1);
+  const incident = p1 !== undefined && p1.id !== FLOOR_P1 ? deckCard(p1)?.title ?? 'the major incident' : `floor ${floorLabel(g.save.floor)}, the major incident`;
+  return `E: Take the lift - ${incident}${cards}${friday}`;
 }
 
 /**
@@ -465,11 +484,23 @@ export function liftNode(g: Game): DialogueNode {
     g.afterDialogue = then;
     return null;
   };
-  const options: DialogueOption[] = [
-    hub
-      ? { label: `Floor ${floorLabel(s.floor)}: the major incident`, pick: go(() => g.liftToP1()) }
-      : { label: 'Back to the hub', pick: go(() => g.liftToHub()) },
-  ];
+  const options: DialogueOption[] = [];
+  if (hub) {
+    // The lift as mission select (S1b): the week's P1, then each card you took on.
+    s.deck.cards.forEach((c, i) => {
+      const card = deckCard(c);
+      if (c.p1 && c.id === FLOOR_P1) options.push({ label: `Floor ${floorLabel(s.floor)}: the major incident`, pick: go(() => g.liftToP1()) });
+      else if (card !== undefined && c.p1 && c.state === 'accepted') options.push({ label: `${card.title} (${card.place})`, pick: go(() => g.liftToCard(i)) });
+    });
+    // A deck from before the P1 was a card on it (never the case once dealt): the floor, as always.
+    if (!s.deck.cards.some((c) => c.p1)) options.push({ label: `Floor ${floorLabel(s.floor)}: the major incident`, pick: go(() => g.liftToP1()) });
+    s.deck.cards.forEach((c, i) => {
+      const card = deckCard(c);
+      if (card !== undefined && !c.p1 && c.state === 'accepted') options.push({ label: `${card.title} (${card.place})`, pick: go(() => g.liftToCard(i)) });
+    });
+  } else {
+    options.push({ label: 'Back to the hub', pick: go(() => g.liftToHub()) });
+  }
   if (friday) {
     options.push({ label: 'Friday: to the mökki', pick: go(() => {
       g.autosave();

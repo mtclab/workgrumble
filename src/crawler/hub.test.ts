@@ -5,7 +5,7 @@ import { breach } from './desk';
 import type { Actor } from './entities';
 import { answering, DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
-import { COLD_LINE, FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, personKey, REACHED_DIST, WITNESS_RANGE } from './hub';
+import { COLD_LINE, FIGHT_MEMORY, ONLOOKERS, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, personKey, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
 import { HOSTILE_DOT, Hud, NEUTRAL_DOT } from './hud';
 import { itemById, type WeaponDef } from './items';
@@ -153,6 +153,11 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     victim.stunned = 1e9;
     ready(victim, colleague);
     h.toasts.length = 0;
+    // Whoever else is not one to fight and stands in sight (a quest giver at their spot, say) sees it too.
+    const pp = g.player.pos;
+    const onlookers = g.actors.filter((a) => !a.colleague && !a.hostile && !a.resolved && !a.recruited && ONLOOKERS.includes(a.kind)
+      && Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z) <= WITNESS_RANGE && lineOfSight(g.level, a.pos.x, a.pos.z, pp.x, pp.z));
+    expect(onlookers).toEqual(expect.arrayContaining([healer, npc]));
     strike(g, victim, 1, null, 'melee');
     // The fighter turns.
     expect(colleague.hostile, 'a colleague who saw it turns').toBe(true);
@@ -183,7 +188,7 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     back.g.loadWorld(true);
     const again = back.g.actors.find((a) => personKey(a) === personKey(healer));
     expect(again?.cold, 'still cold after a reload').toBe(true);
-    expect(back.g.actors.filter((a) => a.cold).map(personKey).sort()).toEqual([healer, npc].map(personKey).sort());
+    expect(back.g.actors.filter((a) => a.cold).map(personKey).sort()).toEqual(onlookers.map(personKey).sort());
   });
 
   it('a witnessed crime turns colleagues and chills the rest the same way (the office fridge, a healer watching)', () => {

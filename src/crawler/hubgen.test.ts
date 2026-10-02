@@ -6,7 +6,8 @@ import { buildHub, hubSeed } from './hub';
 import { startInduction } from './induction';
 import { generateLevel, type LevelRecipe } from './level';
 import { levelPrint } from './levelprint';
-import { newSave, normalizeSave, type SaveState } from './state';
+import { HUB_GIVER_BASE, newSave, normalizeSave, type SaveState } from './state';
+import { coworkerCard, deckCard } from './deck';
 
 vi.mock('./textures', async (orig) => ({ ...await orig<typeof import('./textures')>(), textSprite: () => new THREE.Sprite(), disposeSprite: () => undefined }));
 vi.mock('./level', async (orig) => {
@@ -85,7 +86,15 @@ describe('gate 2: the same career builds the same hub', () => {
       week.g.startWeek(1);
       week.g.loadHub(false, true);
       expect(levelPrint(week.g.level)).toBe(levelPrint(first.g.level));
-      expect(people(week.g.actors), `seed ${seed}: the same people next week`).toEqual(people(first.g.actors));
+      // The hub's own people are the same; the week's card givers (S1b) come with the week's deck, each the same person whenever they come.
+      const own = (p: Record<number, unknown>): Record<number, unknown> => Object.fromEntries(Object.entries(p).filter(([k]) => Number(k) < HUB_GIVER_BASE));
+      expect(own(people(week.g.actors)), `seed ${seed}: the same people next week`).toEqual(own(people(first.g.actors)));
+      const givers = (g: typeof week.g): string[] => [...new Set(g.save.deck.cards.map(deckCard).filter((c) => c !== undefined && coworkerCard(c)).map((c) => c!.giver.name))].sort();
+      for (const h of [first, week]) {
+        expect(h.g.actors.filter((a) => a.spawnIndex >= HUB_GIVER_BASE).map((a) => a.name).sort(), `seed ${seed}: the week's givers at their desks`).toEqual(givers(h.g));
+      }
+      const both = people(first.g.actors);
+      for (const [k, v] of Object.entries(people(week.g.actors))) if (Number(k) >= HUB_GIVER_BASE && both[Number(k)] !== undefined) expect(v, `seed ${seed}: a giver both weeks is the same person`).toEqual(both[Number(k)]);
     }
   });
 

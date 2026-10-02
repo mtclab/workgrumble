@@ -1,6 +1,8 @@
 import { type Actor, type ActorKind, say, setMarker, walkClear, type WatchAct, type WatchCtx } from './entities';
-import { flowField, type Level, NEIGHBOURS8, TILE, toCell, wallBetween } from './level';
+import { flowField, type Level, lineOfSight, NEIGHBOURS8, TILE, toCell, wallBetween } from './level';
 import { fx } from './rng';
+import { cancelWindup } from './windup';
+import type { AlarmRule } from './mission';
 
 /**
  * The 0.3.0 spike's minimum stealth (docs/SPEC_HELLDESK_030.md 4.1, 2.3):
@@ -51,6 +53,18 @@ export const SPRINT_NOISE_EVERY = 1;
 export type Tier = 0 | 1 | 2 | 3;
 export const TIER_NAMES: Readonly<Record<Tier, string>> = { 0: 'Quiet', 1: 'Noticed', 2: 'Alert', 3: 'Escalated' };
 
+export type { AlarmRule } from './mission';
+export { ALARM_RULES } from './mission';
+
+/** Seconds an Alert person goes without seeing you before they start searching. */
+export const SEARCH_AFTER = 8;
+/** The search's countdown, seconds: at zero they give up, to Noticed. */
+export const SEARCH_COUNTDOWN = 20;
+/** Seconds of nobody seeing you and no fighting before the tier drops a step. */
+export const COOLDOWN = 45;
+/** How far a person at Alert keeps track of you, given a line of sight (the hostile AI's own reach). */
+export const CHASE_SIGHT = 30;
+
 /** How far a person sees (spec 4.1: user 9, manager 13; the rest as users). */
 export function sightRange(kind: ActorKind): number {
   return kind === 'boss' ? 16 : kind === 'manager' || kind === 'consultant' ? 13 : 9;
@@ -82,7 +96,8 @@ export function tierOf(suspicion: number): Tier {
 
 /** How a person spends a calm day. Desk-bound sit and sweep a 90 degree look; wanderers mill; patrollers walk a route. */
 export type Sort = 'desk' | 'wander' | 'patrol';
-export type Mood = 'calm' | 'investigating' | 'wary' | 'alert';
+/** 'searching': was Alert, lost you, and is looking (the search rule). */
+export type Mood = 'calm' | 'investigating' | 'wary' | 'alert' | 'searching';
 
 export interface Point {
   readonly x: number;
@@ -115,11 +130,25 @@ export interface Watcher {
   readonly pauses: readonly number[];
   leg: number;
   pauseT: number;
-  /** Has you in their cone, in range, in sight, this frame. */
+  /** Has you in their cone, in range, in sight, this frame (as of `lookedAt`, the game time they last looked). */
   seeing: boolean;
+  lookedAt: number;
   /** The last thing they said about you, and when (game time). */
   bark: string;
   barkAt: number;
+  /** Expecting you (D7 social cards): seeing you raises nothing. */
+  readonly expected: boolean;
+  /** How much quicker than anyone else they see you (a pocket of vendors looking for somebody to pitch at). */
+  readonly keen: number;
+  /** Called in by the card's going-loud (the Head of People): after you, but not a second alarm of their own. */
+  readonly called: boolean;
+  /** At Alert: seconds since they last saw you, and where that was. */
+  lost: number;
+  lastSeen: Point | null;
+  /** Searching: seconds left on the countdown over their head. */
+  countdown: number;
+  /** What is over their head ('?', '!', the countdown), or '' for nothing. */
+  shown: string;
 }
 
 /** What the watchers can know about the player. */
@@ -135,10 +164,13 @@ export interface WatchView {
 
 export interface WatchHost {
   view(): WatchView;
-  /** The mission's tier went up: announce it. */
+  /** The mission's tier went up (or, by the card's alarm rule, down): announce it. */
   tierChanged(to: Tier, from: Tier, by: Actor | null, why: string): void;
+  /** Damage dealt or taken just now: a fight keeps the cooldown rule from cooling anything. */
+  fighting?(): boolean;
 }
 
+const SEARCH_BARKS = ['Where did they go?', 'I KNOW you are still here.', 'Come out. I just want a word.'];
 const SIGHT_BARKS = ['Can I help you?', 'Sorry, are you meant to be in here?', 'Hello? Who is that?'];
 const NOISE_BARKS = ['What was that?', 'Hello? Anyone there?', 'Did somebody drop something?'];
 const ALERT_BARKS = ['Right! Security! SECURITY!', 'I KNEW it. Stay right there.', 'Excuse me! EXCUSE me!'];
@@ -154,27 +186,54 @@ const SEARCH_PACE = 0.6;
 export class Watch implements WatchCtx {
   tier: Tier;
   readonly watchers = new Map<number, Watcher>();
-  /** Everyone who has been Alert, by actor id: two of them and it is Escalated. */
+  /** Everyone who has been Alert, by actor id: under 'one-way', two of them and it is Escalated. */
   readonly alerted = new Set<number>();
+  /** Seconds with nobody seeing you and no fighting (the cooldown rule's clock). */
+  quietT = 0;
   /** Flow fields toward a cell, for walking somewhere that is not the player. */
   private readonly fields = new Map<number, Int16Array>();
 
-  constructor(readonly level: Level, private readonly host: WatchHost, start: Tier = 0) {
+  constructor(readonly level: Level, private readonly host: WatchHost, start: Tier = 0, readonly rule: AlarmRule = 'one-way') {
     this.tier = start;
   }
 
   /** Watch somebody: the crowd of a mission, as the card places them. */
-  add(a: Actor, sort: Sort, opts: { tag?: string | null; route?: readonly Point[]; pauses?: readonly number[] } = {}): Watcher {
+  add(a: Actor, sort: Sort, opts: { tag?: string | null; route?: readonly Point[]; pauses?: readonly number[]; expected?: boolean; keen?: number; called?: boolean } = {}): Watcher {
     const route = opts.route ?? [];
     const w: Watcher = {
       actor: a, sort, tag: opts.tag ?? null,
       suspicion: 0, peak: 0, mood: 'calm', hold: 0, spot: null, searching: false, searchT: 0, glanceT: 0, glanceYaw: 0,
       post: { x: a.pos.x, z: a.pos.z }, baseYaw: a.yaw,
       route, pauses: opts.pauses ?? route.map(() => 3), leg: 0, pauseT: 0,
-      seeing: false, bark: '', barkAt: -1,
+      seeing: false, lookedAt: -Infinity, bark: '', barkAt: -1,
+      expected: opts.expected === true, keen: opts.keen ?? 1, called: opts.called === true, lost: 0, lastSeen: null, countdown: 0, shown: '',
     };
     this.watchers.set(a.id, w);
     return w;
+  }
+
+  /**
+   * Put back a person as a save kept them: suspicion and mood. Alert comes
+   * back after you (the caller makes them so); searching comes back with its
+   * countdown; investigating comes back where they were going.
+   */
+  restore(w: Watcher, st: { suspicion: number; peak: number; mood: Mood; countdown: number; spot: Point | null }): void {
+    w.suspicion = st.suspicion;
+    w.peak = st.peak;
+    w.mood = st.mood;
+    w.countdown = st.countdown;
+    w.spot = st.spot;
+    w.searchT = SEARCH_TIME;
+    if (st.mood === 'alert') {
+      if (!w.called) this.alerted.add(w.actor.id);
+      this.mark(w, '!', '#ff4030');
+    } else if (st.mood === 'searching') {
+      if (!w.called) this.alerted.add(w.actor.id);
+      w.lastSeen = st.spot;
+      this.mark(w, countdownText(w.countdown), '#ffb020');
+    } else if (st.mood === 'investigating') {
+      this.mark(w, '?', '#ffb020');
+    }
   }
 
   watches(a: Actor): boolean {
@@ -184,21 +243,34 @@ export class Watch implements WatchCtx {
   /** One frame of a calm person's attention, from the enemy AI. */
   look(a: Actor, dt: number, sees: boolean, dist: number): WatchAct {
     const w = this.watchers.get(a.id);
-    // Escalated: everyone hostile on sight, which is today's game.
-    if (w === undefined || this.tier >= 3) return LEGACY;
+    if (w === undefined) return LEGACY;
+    // Escalated: everyone hostile on sight, which is today's game (who sees you then is the hostile AI's business).
+    if (this.tier >= 3) {
+      w.seeing = false;
+      return LEGACY;
+    }
     if (w.mood === 'alert') return ALERTED;
     const v = this.host.view();
     const range = sightRange(a.kind);
     w.seeing = sees && !v.invisible && dist <= range && inCone(a.yaw, a.pos.x, a.pos.z, v.x, v.z);
-    // Unseen (invisible) freezes it: no rise, no decay.
-    if (!v.invisible) {
+    w.lookedAt = v.time;
+    // Searching and they find you: Alert again, at once (the pause before a swing still holds).
+    if (w.mood === 'searching') {
       if (w.seeing) {
-        w.suspicion = Math.min(100, w.suspicion + sightRise(dist, range, v.crouching, v.stealth) * dt);
+        this.alert(w, v.time);
+        return ALERTED;
+      }
+      return this.routine(w, dt, v.time);
+    }
+    // Unseen (invisible) freezes it: no rise, no decay. Somebody expecting you sees nothing odd in you.
+    if (!v.invisible) {
+      if (w.seeing && !w.expected) {
+        w.suspicion = Math.min(100, w.suspicion + sightRise(dist, range, v.crouching, v.stealth) * w.keen * dt);
       } else if (w.suspicion < INVESTIGATE) {
         w.suspicion = Math.max(0, w.suspicion - DECAY * dt);
       }
     }
-    if (w.seeing && w.suspicion >= INVESTIGATE && w.mood !== 'investigating') this.investigate(w, { x: v.x, z: v.z }, 'sight', v.time);
+    if (w.seeing && !w.expected && w.suspicion >= INVESTIGATE && w.mood !== 'investigating') this.investigate(w, { x: v.x, z: v.z }, 'sight', v.time);
     if (w.seeing && w.mood === 'investigating') this.lookAt(w, { x: v.x, z: v.z });
     this.holdBack(w, dt);
     w.peak = Math.max(w.peak, w.suspicion);
@@ -240,10 +312,146 @@ export class Watch implements WatchCtx {
     if (w === undefined || w.mood === 'alert') return;
     if (this.tier >= 3) {
       w.mood = 'alert';
-      this.alerted.add(a.id);
+      w.lost = 0;
+      if (!w.called) this.alerted.add(a.id);
       return;
     }
     this.alert(w, time);
+  }
+
+  /**
+   * Once a frame, from the mission: the alarm rule's clocks. Under 'search',
+   * an Alert person who has lost you for SEARCH_AFTER seconds searches, and
+   * a search that runs out drops them to Noticed; the tier follows. Under
+   * 'cooldown', COOLDOWN quiet seconds take the tier down a step.
+   */
+  tick(dt: number): void {
+    if (this.rule === 'one-way') return;
+    const v = this.host.view();
+    let seen = false;
+    for (const w of this.watchers.values()) {
+      const a = w.actor;
+      if (a.resolved) continue;
+      // Somebody who looked this frame or the last (the people move after the mission's frame) and had you in view.
+      if (w.seeing && v.time - w.lookedAt <= 0.1) seen = true;
+      if (w.mood === 'alert') {
+        const chasing = !v.invisible && Math.hypot(v.x - a.pos.x, v.z - a.pos.z) <= CHASE_SIGHT && lineOfSight(this.level, a.pos.x, a.pos.z, v.x, v.z);
+        if (chasing) {
+          seen = true;
+          w.lost = 0;
+          w.lastSeen = { x: v.x, z: v.z };
+        } else {
+          w.lost += dt;
+        }
+        if (this.rule === 'search' && this.tier < 3 && !chasing && w.lost >= SEARCH_AFTER) this.search(w, v.time);
+      } else if (w.mood === 'searching') {
+        w.countdown = Math.max(0, w.countdown - dt);
+        if (w.countdown <= 0) this.giveUp(w);
+        else if (countdownText(w.countdown) !== w.shown) this.mark(w, countdownText(w.countdown), '#ffb020');
+      }
+    }
+    if (this.rule === 'search') {
+      if (this.tier < 3) this.follow();
+      return;
+    }
+    // Cooldown: nobody seeing you, and no fight, for long enough.
+    const fight = this.host.fighting?.() ?? false;
+    if (seen || fight || this.tier === 0) {
+      this.quietT = 0;
+      return;
+    }
+    this.quietT += dt;
+    if (this.quietT >= COOLDOWN) {
+      this.quietT = 0;
+      this.coolOneStep();
+    }
+  }
+
+  /** How many are after you right now (Alert, or searching for you). */
+  alertNow(): number {
+    let n = 0;
+    for (const w of this.watchers.values()) if (!w.called && !w.actor.resolved && (w.mood === 'alert' || w.mood === 'searching')) n++;
+    return n;
+  }
+
+  /** The 'search' rule: lost you long enough, they go looking where they last saw you, with the countdown over their head. */
+  private search(w: Watcher, time: number): void {
+    const a = w.actor;
+    w.mood = 'searching';
+    w.countdown = SEARCH_COUNTDOWN;
+    a.aggro = false;
+    cancelWindup(a);
+    w.spot = w.lastSeen ?? { x: a.pos.x, z: a.pos.z };
+    w.searching = false;
+    w.searchT = SEARCH_TIME;
+    this.mark(w, countdownText(w.countdown), '#ffb020');
+    this.say(w, fx.pick(SEARCH_BARKS), time);
+  }
+
+  /** The search ran out: they give up, back to Noticed (wary, the bar at Investigate). */
+  private giveUp(w: Watcher): void {
+    w.mood = 'wary';
+    w.suspicion = INVESTIGATE;
+    w.spot = null;
+    w.searching = false;
+    this.mark(w, null);
+  }
+
+  /** The 'search' rule's tier: the highest person's (Escalated is not touched here: it stays). */
+  private follow(): void {
+    let top: Tier = 0;
+    for (const w of this.watchers.values()) {
+      if (w.actor.resolved) continue;
+      const t: Tier = w.mood === 'alert' || w.mood === 'searching' ? 2 : tierOf(w.suspicion);
+      if (t > top) top = t;
+    }
+    if (top < this.tier) {
+      const from = this.tier;
+      this.tier = top;
+      this.host.tierChanged(top, from, null, top === 1 ? 'they gave up looking' : 'nobody is looking any more');
+    }
+  }
+
+  /** The 'cooldown' rule: everyone above the new tier comes down to it, and it is announced. */
+  private coolOneStep(): void {
+    const from = this.tier;
+    const to = (from - 1) as Tier;
+    this.tier = to;
+    for (const w of this.watchers.values()) {
+      const a = w.actor;
+      if (a.resolved) continue;
+      if (to === 2) {
+        // Out of Escalated: whoever is after you is one person at Alert again; the rest go back to their day.
+        if (a.aggro) {
+          w.mood = 'alert';
+          w.lost = 0;
+        }
+      } else if (to === 1) {
+        if (w.mood === 'alert' || w.mood === 'searching' || a.aggro) {
+          a.aggro = false;
+          cancelWindup(a);
+          w.mood = 'wary';
+          w.suspicion = INVESTIGATE;
+          w.spot = null;
+          this.mark(w, null);
+        }
+      } else if (w.suspicion >= INVESTIGATE || w.mood === 'investigating') {
+        w.suspicion = INVESTIGATE - 1;
+        w.mood = 'calm';
+        w.spot = null;
+        w.hold = 0;
+        this.mark(w, null);
+      }
+    }
+    this.alerted.clear();
+    for (const w of this.watchers.values()) if (!w.called && !w.actor.resolved && (w.mood === 'alert' || w.mood === 'searching')) this.alerted.add(w.actor.id);
+    this.host.tierChanged(to, from, null, 'it blew over');
+  }
+
+  /** What is over their head: remembered, so the HUD and the tests can read it. */
+  private mark(w: Watcher, text: string | null, color = '#ffb020'): void {
+    w.shown = text ?? '';
+    setMarker(w.actor, text, color);
   }
 
   /** Whoever is calm and has you in view right now (a crime's witnesses). */
@@ -270,7 +478,7 @@ export class Watch implements WatchCtx {
     this.lookAt(w, spot);
     w.hold = INVESTIGATE_HOLD;
     w.suspicion = Math.max(w.suspicion, INVESTIGATE);
-    setMarker(w.actor, '?', '#ffb020');
+    this.mark(w, '?', '#ffb020');
     if (fresh || time - w.barkAt > 6) this.say(w, fx.pick(why === 'sight' ? SIGHT_BARKS : NOISE_BARKS), time);
     this.raise(1, w.actor, why === 'sight' ? `${w.actor.name} saw something` : `${w.actor.name} heard something`);
   }
@@ -294,8 +502,12 @@ export class Watch implements WatchCtx {
     w.mood = 'alert';
     w.suspicion = 100;
     w.peak = 100;
-    this.alerted.add(a.id);
-    setMarker(a, '!', '#ff4030');
+    w.lost = 0;
+    // Where they saw you raise the alarm: a search starts from there, even if they never see you again.
+    const v = this.host.view();
+    w.lastSeen = { x: v.x, z: v.z };
+    if (!w.called) this.alerted.add(a.id);
+    this.mark(w, '!', '#ff4030');
     this.say(w, fx.pick(ALERT_BARKS), time);
     this.raise(2, a, `${a.name} raised the alarm`);
     // Everyone in earshot is Noticed, and comes to where the shout was.
@@ -303,31 +515,33 @@ export class Watch implements WatchCtx {
       if (o === w || o.mood === 'alert' || o.actor.resolved) continue;
       const d = Math.hypot(o.actor.pos.x - a.pos.x, o.actor.pos.z - a.pos.z);
       const reach = wallBetween(this.level, a.pos.x, a.pos.z, o.actor.pos.x, o.actor.pos.z) ? EARSHOT / 2 : EARSHOT;
-      if (d > reach) continue;
+      if (d > reach || o.mood === 'searching') continue;
       o.suspicion = Math.max(o.suspicion, INVESTIGATE);
       o.peak = Math.max(o.peak, o.suspicion);
       if (o.mood === 'investigating') this.lookAt(o, { x: a.pos.x, z: a.pos.z });
       else this.investigate(o, { x: a.pos.x, z: a.pos.z }, 'shout', time);
     }
-    if (this.alerted.size >= 2) this.raise(3, a, 'a second person raised the alarm');
+    // One-way: anyone who has ever been Alert counts. Under a rule that cools, only who is after you now.
+    if ((this.rule === 'one-way' ? this.alerted.size : this.alertNow()) >= 2) this.raise(3, a, 'a second person raised the alarm');
   }
 
   /** What a person who is not Alert does: investigate, glance, or their day. */
   private routine(w: Watcher, dt: number, time: number): WatchAct {
     const a = w.actor;
-    if (w.mood === 'investigating' && w.spot !== null) {
+    if ((w.mood === 'investigating' || w.mood === 'searching') && w.spot !== null) {
       if (!w.searching && Math.hypot(w.spot.x - a.pos.x, w.spot.z - a.pos.z) > 1.2) {
         const step = this.walkTo(a, w.spot, a.speed * SEARCH_PACE);
         // No way nearer (behind glass, say): search from here.
         if (step.kind !== 'move' || step.speed > 0) return step;
       }
       // At the spot (or as near as it goes): look round, then back to work, wary.
+      // A search (the alarm rule) looks round until its countdown says otherwise.
       w.searching = true;
       w.searchT -= dt;
-      if (w.searchT <= 0 && w.hold <= 0) {
+      if (w.mood === 'investigating' && w.searchT <= 0 && w.hold <= 0) {
         w.mood = 'wary';
         w.spot = null;
-        setMarker(a, null);
+        this.mark(w, null);
       }
       return { kind: 'move', dx: 0, dz: 0, speed: 0, yaw: a.yaw + dt * 2.2 };
     }
@@ -391,4 +605,9 @@ export class Watch implements WatchCtx {
     if (bx === cx && bz === cz) return { kind: 'move', dx: 0, dz: 0, speed: 0, yaw: null };
     return { kind: 'move', dx: bx * TILE + TILE / 2 - a.pos.x, dz: bz * TILE + TILE / 2 - a.pos.z, speed, yaw: null };
   }
+}
+
+/** The search's countdown as it shows over their head. */
+export function countdownText(left: number): string {
+  return `? ${Math.ceil(left)}`;
 }

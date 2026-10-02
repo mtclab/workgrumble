@@ -20,6 +20,9 @@ import {
 } from './loot';
 import { HUD_METERS, type HudMeter, type InductionState, normalizeInduction } from './induction';
 import { freshOnCall, normalizeOnCall, type OnCallState } from './oncall';
+import { type Deck, emptyDeck, heldCards, normalizeDeck } from './deck';
+import type { PlaySave } from './mission';
+import { ALARM_RULES, type AlarmRule } from './mission';
 import { canTake, treePerk } from './perks';
 import type { TeamMember } from './team';
 import { isActive, type QuestState } from './quests';
@@ -135,7 +138,7 @@ export interface FloorState extends OncePerFloor {
 }
 
 /** Why somebody on the hub turned on you (docs/SPEC_HELLDESK_030_S1.md, "Hostility is earned"). */
-export type HubReason = 'breach' | 'ignored' | 'assault' | 'witness' | 'caught' | 'grudge' | 'story';
+export type HubReason = 'breach' | 'ignored' | 'assault' | 'witness' | 'caught' | 'grudge' | 'story' | 'failed';
 
 /** Somebody on the hub who is after you, until they are resolved or Monday comes. */
 export interface HubHostile {
@@ -146,6 +149,13 @@ export interface HubHostile {
 
 /** Arrivals' indices start here, above every level spawn's. */
 export const HUB_EXTRA_BASE = 200000;
+
+/**
+ * The week's card givers on the hub (S1b) have indices of their own from
+ * here, one per giver (missions.ts GIVERS), the same every week: the same
+ * person whenever their cards are dealt. Never an arrival's.
+ */
+export const HUB_GIVER_BASE = 900000;
 
 /** What somebody new on the hub can be. */
 export type HubArrivalKind = 'user' | 'manager' | 'reply' | 'customer';
@@ -192,6 +202,8 @@ export interface HubState {
   gearDrops: { gear: GearInstance; x: number; z: number }[];
   /** Hub tickets that breached while you were upstairs: their reporters come for you when you are back (announced then). */
   breaches: { t: number; from: string }[];
+  /** Coworkers whose card you failed (S1b): after you when you are next on the hub (announced then), by giver id. */
+  failed: { giver: string; card: string }[];
   /** This week's arrivals (resolved ones too: `resolved` says who is gone). */
   arrivals: HubArrival[];
   /** The next arrival's index: it only ever counts up, across weeks. */
@@ -215,14 +227,63 @@ export interface HubPerson {
   talked?: true;
 }
 
-/** The once-a-floor things of where you are at work: the hub's, or the P1 floor's. */
+/**
+ * A card being played (S1b): which card of the week's deck, its map's seed
+ * and its dealt rules, what has been used and picked up on its map, and the
+ * run as last saved, so a reload mid-mission lands at its lift with
+ * everything as it was.
+ */
+export interface MissionSave extends OncePerFloor {
+  readonly card: string;
+  /** Its place in this week's deck. */
+  readonly index: number;
+  readonly seed: number;
+  readonly alarm: AlarmRule;
+  readonly afterHours: boolean;
+  used: number[];
+  picked: string[];
+  drinksHere: number;
+  gearDrops: { gear: GearInstance; x: number; z: number }[];
+  /** Written by the game before every save (`MissionPlay.note`); null before the first. */
+  run: PlaySave | null;
+}
+
+export function freshMission(card: string, index: number, seed: number, alarm: AlarmRule, afterHours: boolean): MissionSave {
+  return { card, index, seed, alarm, afterHours, used: [], picked: [], drinksHere: 0, gearDrops: [], run: null, unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false };
+}
+
+/** A saved mission, checked: anything broken and it is dropped (the card stays on the board). */
+export function normalizeMission(raw: unknown): MissionSave | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const o = raw as Partial<Record<keyof MissionSave, unknown>>;
+  if (typeof o.card !== 'string' || typeof o.index !== 'number' || typeof o.seed !== 'number' || !ALARM_RULES.includes(o.alarm as AlarmRule)) return null;
+  const nums = (v: unknown): number[] => (Array.isArray(v) ? v.filter((x): x is number => typeof x === 'number') : []);
+  const m = freshMission(o.card, o.index, o.seed >>> 0, o.alarm as AlarmRule, o.afterHours === true);
+  m.used = nums(o.used);
+  m.picked = Array.isArray(o.picked) ? o.picked.filter((x): x is string => typeof x === 'string') : [];
+  m.drinksHere = typeof o.drinksHere === 'number' ? o.drinksHere : 0;
+  m.gearDrops = Array.isArray(o.gearDrops) ? o.gearDrops as MissionSave['gearDrops'] : [];
+  m.run = typeof o.run === 'object' && o.run !== null ? o.run as PlaySave : null;
+  for (const k of ['unbreakableUsed', 'nokiaUsed', 'suo', 'coldSteam'] as const) m[k] = o[k] === true;
+  return m;
+}
+
+/** The once-a-floor things of where you are at work: the hub's, a mission map's, or the P1 floor's. */
 export function onceHere(s: SaveState): OncePerFloor {
+  if (s.location === 'mission' && s.mission !== null) return s.mission;
   return s.location === 'hub' ? s.hub.once : s.floorState;
 }
 
-/** Pickups and drinks on the hub this week, or on the P1 floor. */
+/** Pickups and drinks on the hub this week, on a mission map, or on the P1 floor. */
 export function activityHere(s: SaveState): Pick<FloorState, 'picked' | 'drinksHere'> {
+  if (s.location === 'mission' && s.mission !== null) return s.mission;
   return s.location === 'hub' ? s.hub : s.floorState;
+}
+
+/** Interactables used where you are (kept by the floor, the hub's week, or the mission), or null at the mökki. */
+export function usedHere(s: SaveState): number[] | null {
+  if (s.location === 'mission') return s.mission?.used ?? null;
+  return s.location === 'office' ? s.floorState.used : s.location === 'hub' ? s.hub.used : null;
 }
 
 export interface WeekendState {
@@ -249,8 +310,8 @@ export interface SaveState {
   floor: number;
   /** The week number: the hub all week, that week's P1 floor up the lift, the weekend at the mökki. */
   week: number;
-  /** The hub, the week's P1 floor ('office': `floor` and `floorState`), or the mökki. */
-  location: 'hub' | 'office' | 'mokki';
+  /** The hub, the week's P1 floor ('office': `floor` and `floorState`), a card's map ('mission': `mission`), or the mökki. */
+  location: 'hub' | 'office' | 'mission' | 'mokki';
   rep: number;
   level: number;
   attrs: Record<Attribute, number>;
@@ -308,6 +369,14 @@ export interface SaveState {
   buffs: Record<string, number>;
   floorState: FloorState;
   hub: HubState;
+  /** This week's deck of cards (S1b, D2): dealt on Monday, the workstation shows it. */
+  deck: Deck;
+  /** The card being played, while on its map (and kept across a reload). */
+  mission: MissionSave | null;
+  /** A P1 card's map as you left it (a P1 is never aborted, only left): the lift goes back to it. */
+  p1Run: MissionSave | null;
+  /** How each coworker who hands out cards feels about you (by giver id): a declined card costs a little. */
+  rapport: Record<string, number>;
   weekend: WeekendState;
   /** The on-call rota: whether the pager comes to the mökki this weekend, and its pages. */
   oncall: OnCallState;
@@ -338,7 +407,7 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, bossDone: false, hostile: [], resolved: [], ignores: {}, used: [], picked: [], drinksHere: 0, clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [], people: {} };
+  return { week, bossDone: false, hostile: [], resolved: [], ignores: {}, used: [], picked: [], drinksHere: 0, clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], failed: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [], people: {} };
 }
 
 /** Monday on the hub: the week's people and props start again; the gear on the floor is still there, and arrivals' indices go on counting. */
@@ -348,7 +417,7 @@ export function hubWeek(h: HubState, week: number): HubState {
 
 const ARRIVAL_KINDS: readonly HubArrivalKind[] = ['user', 'manager', 'reply', 'customer'];
 
-const HUB_REASONS: readonly HubReason[] = ['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story'];
+const HUB_REASONS: readonly HubReason[] = ['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story', 'failed'];
 
 /** A saved hub, checked field by field (a field from an older build, or a broken one, is fresh). */
 export function normalizeHub(raw: unknown, week: number): HubState {
@@ -373,6 +442,10 @@ export function normalizeHub(raw: unknown, week: number): HubState {
       const b = x as { t?: unknown; from?: unknown } | null;
       return typeof b === 'object' && b !== null && typeof b.t === 'number' && typeof b.from === 'string';
     }).map((b) => ({ t: b.t, from: b.from })) : [],
+    failed: Array.isArray(o.failed) ? (o.failed as unknown[]).filter((x): x is { giver: string; card: string } => {
+      const f = x as { giver?: unknown; card?: unknown } | null;
+      return typeof f === 'object' && f !== null && typeof f.giver === 'string' && typeof f.card === 'string';
+    }).map((f) => ({ giver: f.giver, card: f.card })) : [],
     arrivals: Array.isArray(o.arrivals) ? (o.arrivals as unknown[]).filter((x): x is HubArrival => {
       const r = x as Partial<HubArrival> | null;
       return typeof r === 'object' && r !== null && typeof r.index === 'number' && r.index >= HUB_EXTRA_BASE && typeof r.name === 'string'
@@ -402,13 +475,13 @@ export function normalizeHub(raw: unknown, week: number): HubState {
       const reason = e.reason as HubReason;
       h.hostile.push({ spawnIndex: e.spawnIndex, reason });
       // An earlier 0.3.0 build kept somebody up the lift by name on the hostile list: they are an arrival now.
-      if (e.spawnIndex >= HUB_EXTRA_BASE && typeof e.name === 'string' && !h.arrivals.some((r) => r.index === e.spawnIndex)) {
+      if (e.spawnIndex >= HUB_EXTRA_BASE && e.spawnIndex < HUB_GIVER_BASE && typeof e.name === 'string' && !h.arrivals.some((r) => r.index === e.spawnIndex)) {
         h.arrivals.push({ index: e.spawnIndex, kind: 'user', name: e.name, why: reason === 'story' ? 'story' : 'breach' });
       }
     }
   }
   // Never behind an index already handed out.
-  h.nextArrival = Math.max(num(o.nextArrival, HUB_EXTRA_BASE), ...h.arrivals.map((r) => r.index + 1), ...h.hostile.map((e) => (e.spawnIndex >= HUB_EXTRA_BASE ? e.spawnIndex + 1 : HUB_EXTRA_BASE)));
+  h.nextArrival = Math.max(num(o.nextArrival, HUB_EXTRA_BASE), ...h.arrivals.map((r) => r.index + 1), ...h.hostile.map((e) => (e.spawnIndex >= HUB_EXTRA_BASE && e.spawnIndex < HUB_GIVER_BASE ? e.spawnIndex + 1 : HUB_EXTRA_BASE)));
   if (typeof o.ignores === 'object' && o.ignores !== null) {
     for (const [k, v] of Object.entries(o.ignores)) {
       if (!/^\d+$/.test(k)) continue;
@@ -427,7 +500,8 @@ export function normalizeHub(raw: unknown, week: number): HubState {
  * do not bring them back.
  */
 export function noteResolved(s: SaveState, spawnIndex: number): void {
-  if (spawnIndex < 0) return;
+  // On a mission map the card keeps its own people (missionplay.ts), by their place in its crowd.
+  if (spawnIndex < 0 || s.location === 'mission') return;
   const list = s.location === 'office' ? s.floorState.resolved : s.location === 'hub' ? s.hub.resolved : null;
   if (list !== null && !list.includes(spawnIndex)) list.push(spawnIndex);
   if (s.location === 'hub') s.hub.hostile = s.hub.hostile.filter((h) => h.spawnIndex !== spawnIndex);
@@ -435,6 +509,7 @@ export function noteResolved(s: SaveState, spawnIndex: number): void {
 
 /** Gear lying on the floor you are on: the P1's, or the hub's (which keeps it from week to week). */
 export function gearDropsHere(s: SaveState): { gear: GearInstance; x: number; z: number }[] {
+  if (s.location === 'mission' && s.mission !== null) return s.mission.gearDrops;
   return s.location === 'hub' ? s.hub.gearDrops : s.floorState.gearDrops;
 }
 
@@ -525,6 +600,10 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     buffs: {},
     floorState: freshFloorState(0),
     hub: freshHub(1),
+    deck: emptyDeck(),
+    mission: null,
+    p1Run: null,
+    rapport: {},
     weekend: freshWeekend(),
     oncall: freshOnCall(),
     upgrades: [],
@@ -649,16 +728,35 @@ export function normalizeSave(raw: unknown): SaveState | null {
     oncall: normalizeOnCall((m as Partial<SaveState>).oncall),
     floorState: { ...freshFloorState(m.floor ?? 0), ...m.floorState },
     hub: normalizeHub((m as Partial<SaveState>).hub, typeof m.week === 'number' ? m.week : 1),
+    // S1b's fields are additive to v4: a save from before them gets a deck dealt on load (`Game.loadWorld`).
+    deck: normalizeDeck((m as Partial<SaveState>).deck),
+    mission: normalizeMission((m as Partial<SaveState>).mission),
+    p1Run: normalizeMission((m as Partial<SaveState>).p1Run),
+    rapport: normalizeRapport((m as Partial<SaveState>).rapport),
     ammo: { ...fresh.ammo, ...m.ammo },
     standing: { ...fresh.standing, ...m.standing },
     attrUps: { ...fresh.attrUps, ...m.attrUps },
     induction: normalizeInduction((m as Partial<SaveState>).induction),
     hudHidden: Array.isArray((m as Partial<SaveState>).hudHidden) ? (m.hudHidden as unknown[]).filter((x): x is HudMeter => (HUD_METERS as readonly unknown[]).includes(x)) : [],
   };
+  // A mission with nothing to come back to (no card of that week's deck) lands on the hub instead.
+  if (out.location === 'mission' && (out.mission === null || out.deck.week !== out.week || out.deck.cards[out.mission.index]?.id !== out.mission.card)) {
+    out.location = 'hub';
+    out.mission = null;
+  }
+  if (out.location !== 'mission') out.mission = null;
+  if (out.p1Run !== null && (out.deck.week !== out.week || out.deck.cards[out.p1Run.index]?.id !== out.p1Run.card)) out.p1Run = null;
   for (const k of SKILLS) if (out.skills[k] === undefined) out.skills[k] = { value: 5, progress: 0 };
   for (const a of ATTRIBUTES) if (typeof out.attrs[a] !== 'number') out.attrs[a] = 35;
   if (out.gear.length === 0) out.gear = fresh.gear;
   if (gearByUid(out, out.equipped.weapon) === undefined) out.equipped.weapon = out.gear.find((g) => baseOf(g)?.slot === 'weapon')?.uid ?? fresh.equipped.weapon;
+  return out;
+}
+
+function normalizeRapport(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {};
+  if (typeof raw !== 'object' || raw === null) return out;
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
   return out;
 }
 
@@ -781,7 +879,8 @@ export interface Derived {
  * plate. Management does not check the plate before adding to it.
  */
 export function workload(s: SaveState): { active: number; capacity: number; over: number } {
-  const active = s.questLog.filter(isActive).length + s.quests.filter((q) => !q.done && q.kind !== 'boss').length;
+  // Cards you accepted from the week's deck are on the plate too (S1b); the P1 never was a choice.
+  const active = s.questLog.filter(isActive).length + s.quests.filter((q) => !q.done && q.kind !== 'boss').length + heldCards(s.deck).length;
   const specialist = s.rung >= 4 && s.track === 'specialist';
   const capacity = 3 + (specialist ? 1 : 0) + perk(s, 'timemgmt') + (perk(s, 'boundaries') > 0 ? 1 : 0) + (perk(s, 'mentor') >= 2 ? 1 : 0);
   return { active, capacity, over: Math.max(0, active - capacity) };

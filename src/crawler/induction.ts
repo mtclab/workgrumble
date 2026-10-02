@@ -155,7 +155,7 @@ export function propLive(prop: PropId, step: StepId | 'done'): boolean {
  * the lift, the mökki, a later week - it is abandoned: it ends without
  * counting as done, so the next career's form still offers it.
  */
-export function inductionOnLoad(st: InductionState | null, location: 'hub' | 'office' | 'mokki', week: number): 'none' | 'run' | 'finish' | 'abandon' {
+export function inductionOnLoad(st: InductionState | null, location: 'hub' | 'office' | 'mission' | 'mokki', week: number): 'none' | 'run' | 'finish' | 'abandon' {
   if (st === null) return 'none';
   if (st.step === 'done') return 'finish';
   return location === 'hub' && week === 1 ? 'run' : 'abandon';

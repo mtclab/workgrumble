@@ -53,11 +53,13 @@ import {
   updateAuras,
 } from './entities';
 import { Hud, type HudFrame } from './hud';
-import { buildHub, floorLabel, Hub, HUB_FLOOR, hubSeed, hubTheme, p1Resolved } from './hub';
+import { buildHub, floorLabel, Hub, HUB_FLOOR, hubSeed, hubTheme, p1Resolved, workstationOf } from './hub';
 import { floorAwake, HUD_METERS, inductionOnLoad, type InductionEvent, isPracticeTicket, type MeterFacts, MORAG, startInduction, stillHidden, welcomeLine } from './induction';
 import { InductionDay } from './inductionday';
-import type { MissionCard } from './mission';
-import { MissionPlay } from './missionplay';
+import { type AlarmRule, type MissionCard, type Outcome } from './mission';
+import { AFTER_HOURS_LIGHT, briefing, MissionPlay, type MissionView } from './missionplay';
+import { POOL } from './missions';
+import { type CardView, cardView, coworkerCard, deal, DECLINE_RAPPORT, deckCard, handIds, payRate } from './deck';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
@@ -123,6 +125,7 @@ import {
   derive,
   type Derived,
   freshFloorState,
+  freshMission,
   freshWeekend,
   hubWeek,
   levelUpReady,
@@ -181,6 +184,9 @@ const SHOULDER = 0.45;
 
 /** The P1 floor's arrival lift, made into the way back to the hub: well clear of anything a level numbers itself. */
 export const ARRIVAL_LIFT_ID = 9_000_100;
+
+/** Sneaking speed as a share of walking (docs/SPEC_HELLDESK_030_S1.md, S1b: the stapler's tuning). */
+export const CROUCH_SPEED = 0.7;
 
 export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   readonly renderer: THREE.WebGLRenderer;
@@ -337,6 +343,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   inductionDay: InductionDay | null = null;
   /** A mission card being played (the 0.3.0 spike, `?mission=`), or null: then nothing below changes anything. */
   mission: MissionPlay | null = null;
+  /** Where a mission shows its HUD and results card: the DOM's, unless a stand-in is given (headlessgame.ts). */
+  missionView: ((card: MissionCard) => MissionView) | null = null;
   /** The hub while you are on it (hub.ts), or null. */
   hub: Hub | null = null;
   /** What the meter reveal looks at, refilled in place each frame (no allocation while meters wait). */
@@ -576,6 +584,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   loadWorld(fromSave: boolean): void {
     if (this.save.location === 'mokki') this.loadMokki(fromSave);
     else if (this.save.location === 'hub') this.loadHub(fromSave);
+    else if (this.save.location === 'mission' && this.save.mission !== null) this.loadCard(this.save.mission.index, fromSave);
     else this.loadFloor(this.save.floor, fromSave);
   }
 
@@ -692,6 +701,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const seed = hubSeed(s.seed);
     this.levelRng = new Rng(seed ^ 0x5bd1e995);
     this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
+    // A save from before the deck (or a week not dealt yet): this week's cards, now.
+    if (s.deck.week !== s.week) this.dealWeek();
     this.level = buildHub(s.seed);
     this.dressOffice(theme, HUB_FLOOR);
     // What you already used this week stays used; the weekend refills it.
@@ -730,6 +741,17 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const s = this.save;
     s.quests = s.quests.filter((q) => q.kind !== 'boss');
     if (p1Resolved(s) || (s.floor === FINAL_FLOOR && (s.flags.ceoDeal === true || s.flags.goldenParachute === true))) return;
+    // A week whose P1 is a card (the Printer Uprising): the card is the incident.
+    const p1card = s.deck.cards.find((c) => c.p1);
+    const card = p1card === undefined ? undefined : deckCard(p1card);
+    if (card !== undefined) {
+      s.quests.unshift({
+        id: s.nextQuestId++, kind: 'boss', title: `MAJOR INCIDENT: ${card.title.replace(/^P1: /, '')}`,
+        body: `${card.place}: ${card.objective.text} Take the lift. Friday opens once it is dealt with.`,
+        from: card.giver.name, goal: 1, progress: 0, reward: 0, done: false,
+      });
+      return;
+    }
     const name = bossName(s.floor);
     s.quests.unshift({
       id: s.nextQuestId++, kind: 'boss', title: `MAJOR INCIDENT: ${name}`,
@@ -755,11 +777,11 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   /**
-   * A mission card (the 0.3.0 spike, missionplay.ts): a fresh trainee on the
-   * card's recipe map, with its people and its watch. No boss, no quests, no
-   * staffing or mentoring, and nothing is saved.
+   * A mission card on the debug path (`?mission=`, missionplay.ts): a fresh
+   * trainee on the card's recipe map, with its people and its watch. No
+   * boss, no quests, no staffing or mentoring, and nothing is saved.
    */
-  loadMission(card: MissionCard, seed: number, pinned: boolean): void {
+  loadMission(card: MissionCard, seed: number, pinned: boolean, alarm: AlarmRule = card.alarm): void {
     this.clearWorld();
     const s = newSave(seed);
     s.floor = card.floor;
@@ -773,7 +795,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (theme === undefined) throw new Error('no theme');
     this.levelRng = new Rng(seed ^ 0x5bd1e995);
     this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
-    this.level = generateLevel(card.floor, theme, seed, false, true, card.recipe);
+    this.level = generateLevel(card.floor, theme, seed, false, true, card.recipe === 'large' ? undefined : card.recipe);
     this.dressOffice(theme, card.floor);
     this.elevatorOpen = true;
     this.pendingStaff = null;
@@ -785,7 +807,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.player.yaw = Math.PI;
     this.player.pitch = 0;
     this.player.crouching = false;
-    this.mission = new MissionPlay(this, card, seed, pinned);
+    this.arrivalLift();
+    this.mission = new MissionPlay(this, card, seed, pinned, this.missionView?.(card), { alarm });
     this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
     this.refreshDerived();
     this.markSeen();
@@ -793,6 +816,259 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.settleWorld();
     sfx.setBoss(false);
     sfx.setAmbient('office');
+  }
+
+  /**
+   * A card of the week's deck (S1b): up the lift to its map, or (`fromSave`)
+   * back onto it as the save kept it, at its lift. Its map, people and alarm
+   * come from the deck (the card's seed and dealt rules), so a reload
+   * rebuilds the same map and the run puts everyone back as they were. A P1
+   * card that was left resumes where it was left.
+   */
+  loadCard(index: number, fromSave: boolean): void {
+    const s = this.save;
+    const dealt = s.deck.cards[index];
+    const card = dealt === undefined ? undefined : deckCard(dealt);
+    if (dealt === undefined || card === undefined) {
+      s.mission = null;
+      this.loadHub(fromSave);
+      return;
+    }
+    if (!fromSave || s.mission === null || s.mission.index !== index) {
+      const left = card.p1 === true && s.p1Run !== null && s.p1Run.index === index ? s.p1Run : null;
+      s.mission = left ?? freshMission(card.id, index, dealt.seed, dealt.alarm ?? card.alarm, dealt.afterHours);
+      if (card.p1 === true) s.p1Run = null;
+    }
+    const m = s.mission;
+    if (m === null) throw new Error('no mission');
+    this.clearWorld();
+    s.location = 'mission';
+    // A 'large' card is played on the week's own floor (its size and look); the rest on their template.
+    const floor = card.recipe === 'large' ? s.floor : card.floor;
+    const theme = THEMES[floor % THEMES.length] ?? THEMES[0];
+    if (theme === undefined) throw new Error('no theme');
+    this.levelRng = new Rng(m.seed ^ 0x5bd1e995);
+    this.lootRng = new Rng((m.seed ^ 0x2545f491) + s.week);
+    this.level = generateLevel(floor, theme, m.seed, false, true, card.recipe === 'large' ? undefined : card.recipe);
+    this.dressOffice(theme, floor);
+    // After hours (D6): the lights are down (lighting only; light-affects-sight is S4).
+    if (m.afterHours) this.hemi.intensity *= AFTER_HOURS_LIGHT;
+    for (const it of this.level.interactables) if (m.used.includes(it.id)) it.used = true;
+    this.elevatorOpen = true;
+    // Nobody rings you on a card: the phone and the team wait for the hub.
+    this.pendingStaff = null;
+    this.staffIn = Infinity;
+    this.mentorIn = Infinity;
+    this.mentorAsk = null;
+    this.slackedTerminals.clear();
+    this.loggedOn.clear();
+    this.player.pos.set(this.level.start.x, 0, this.level.start.z);
+    this.player.yaw = Math.PI;
+    this.player.pitch = 0;
+    this.player.crouching = false;
+    this.arrivalLift();
+    this.mission = new MissionPlay(this, card, m.seed, true, this.missionView?.(card), { alarm: m.alarm, afterHours: m.afterHours, rate: payRate(dealt), career: true, from: m.run });
+    restoreGearDrops(this);
+    this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
+    this.refreshDerived();
+    this.markSeen();
+    this.updateLights(true);
+    this.settleWorld();
+    sfx.setBoss(false);
+    sfx.setAmbient('office');
+    if (!fromSave) this.autosave();
+  }
+
+  /** On a floor of today's generator the lobby's lift is only drawn: make it the one you came up in. */
+  private arrivalLift(): void {
+    const back = this.level.arrival;
+    if (back !== undefined) this.level.interactables.unshift({ kind: 'elevator', x: back.x, z: back.z, id: ARRIVAL_LIFT_ID, room: 0, used: false, mesh: back.mesh, lock: 0 });
+  }
+
+  /** The hub's lift to a card of the week's deck: its map, then its briefing. */
+  liftToCard(index: number): void {
+    const s = this.save;
+    const dealt = s.deck.cards[index];
+    const card = dealt === undefined ? undefined : deckCard(dealt);
+    if (dealt === undefined || card === undefined) return;
+    const resuming = card.p1 === true && s.p1Run !== null && s.p1Run.index === index;
+    this.autosave();
+    sfx.ding();
+    screens.showLoading(this, screens.LOADING_OFFICE, () => {
+      this.loadCard(index, false);
+      screens.resume(this);
+      if (resuming) this.hud.toast(`${card.title}: as you left it.`, 'info');
+      else this.openDialogue(briefing(card, dealt.alarm ?? card.alarm, dealt.afterHours));
+    });
+  }
+
+  /** The results card's Back to the hub: the card is over (`cardEnded` has the deck), down to the hub. */
+  leaveMission(): void {
+    const s = this.save;
+    s.mission = null;
+    if (s.location === 'mission') s.location = 'hub';
+    sfx.ding();
+    screens.showLoading(this, screens.LOADING_OFFICE, () => {
+      this.loadHub(false);
+      screens.resume(this);
+      this.hud.toast(`${this.floorName()}.`, 'info');
+    });
+  }
+
+  /** Off a P1 card's map without finishing it (a P1 is never aborted): it waits, as left, for the lift back. */
+  leaveP1(): void {
+    const s = this.save;
+    this.mission?.note();
+    s.p1Run = s.mission;
+    s.mission = null;
+    s.location = 'hub';
+    this.leaveMission();
+  }
+
+  /** Friday straight from a card's lift (the card stays on the board, and Friday settles it). */
+  leaveForFriday(): void {
+    const s = this.save;
+    s.mission = null;
+    s.location = 'hub';
+    if (s.floor === FINAL_FLOOR && !s.won) this.finishStory();
+    else this.goToMokki();
+  }
+
+  /** Is the week's P1 resolved (Friday is open)? */
+  p1Done(): boolean {
+    return p1Resolved(this.save);
+  }
+
+  /**
+   * A card of the deck is over (S1b), from its map: done (paid already, and
+   * its giver a little warmer), failed or burned out on (its failure: the
+   * standing, and a coworker giver after you on the hub on your next visit,
+   * announced), or aborted (still on the board until Friday). The item it
+   * had you take is handed over; the career is back on the hub's books at
+   * once, so a save from the results card is a hub save.
+   */
+  cardEnded(mp: MissionPlay, o: Outcome): void {
+    const s = this.save;
+    const m = s.mission;
+    const card = mp.card;
+    if (card.objective.kind === 'take') this.takeItem(card.objective.item);
+    const dealt = m === null ? undefined : s.deck.cards[m.index];
+    s.mission = null;
+    s.location = 'hub';
+    if (dealt === undefined || dealt.id !== card.id) return;
+    const coworker = coworkerCard(card);
+    if (o.finish === 'done') {
+      dealt.state = 'done';
+      if (coworker) s.rapport[card.giver.id] = (s.rapport[card.giver.id] ?? 0) + 3;
+      this.journal(`Card closed: ${card.title}, for ${card.giver.name}.`);
+    } else if (o.finish === 'failed' || o.finish === 'burnout') {
+      dealt.state = 'failed';
+      this.cardFailed(card);
+    }
+  }
+
+  /**
+   * A card's failure (spec 2.5): its standing; the giver cooler; and, when
+   * the card says so and the giver is a coworker, them after you on the hub
+   * next time you are there (a Friday miss never shows: Monday starts the
+   * hub's week again, and they had the weekend).
+   */
+  private cardFailed(card: MissionCard): void {
+    const s = this.save;
+    const f = card.failure;
+    if (f.management !== 0) this.standing('management', f.management);
+    if (f.staff !== 0) this.standing('staff', f.staff);
+    const coworker = coworkerCard(card);
+    if (coworker) s.rapport[card.giver.id] = (s.rapport[card.giver.id] ?? 0) - 5;
+    if (f.hostile && coworker && !s.hub.failed.some((x) => x.giver === card.giver.id)) s.hub.failed.push({ giver: card.giver.id, card: card.title });
+    this.hud.toast(`Card failed: ${card.title}. ${f.text}`, 'bad');
+    this.journal(`Card failed: ${card.title}. ${f.text}`);
+  }
+
+  /** Cards that may not be dealt this week: a side quest in hand that tells the same story, or a giver who is the week's story person. */
+  deckExclude(): string[] {
+    const s = this.save;
+    const npc = storyNpcFor(s.floor).id;
+    return POOL.filter((c) => c.giver.id === npc || (c.sibling !== undefined && s.questLog.some((q) => q.id === c.sibling && isActive(q)))).map((c) => c.id);
+  }
+
+  /** A card of the week's deck as the workstation and its giver show it. */
+  cardView(index: number): CardView {
+    const s = this.save;
+    const d = s.deck.cards[index];
+    if (d === undefined) throw new Error(`no card ${index}`);
+    return cardView(d, index, { title: `Floor ${floorLabel(s.floor)}: the major incident (${bossName(s.floor)})`, place: `Floor ${floorLabel(s.floor)}` });
+  }
+
+  /** The week's deck, card by card (the Projects window). */
+  deckViews(): CardView[] {
+    return this.save.deck.cards.map((_c, i) => this.cardView(i));
+  }
+
+  /** Standing at your own desk's computer on the hub (S1b): the deck is on it. */
+  atWorkstation(): boolean {
+    const t = this.currentTerminal;
+    return this.hub !== null && t !== null && workstationOf(this.level)?.id === t.id;
+  }
+
+  /**
+   * Take a card on (S1b): it is on your plate (workload) and on the lift. A
+   * card handed over in person is only taken from its giver (`byGiver`).
+   * Over capacity it is still yours: today's overload penalties say so.
+   */
+  acceptCard(index: number, byGiver = false): { ok: boolean; text: string } {
+    const s = this.save;
+    const d = s.deck.cards[index];
+    const card = d === undefined ? undefined : deckCard(d);
+    if (d === undefined || card === undefined || d.state !== 'offered') return { ok: false, text: 'That card is not on offer.' };
+    if (d.inPerson && !byGiver) return { ok: false, text: `Ask ${card.giver.name}: it is theirs to hand over.` };
+    d.state = 'accepted';
+    this.refreshDerived();
+    const load = workload(s);
+    sfx.chime();
+    this.journal(`Card taken: ${card.title}, for ${card.giver.name}.`);
+    const over = load.over > 0 ? ` You are over capacity (${load.active}/${load.capacity}).` : '';
+    this.hud.toast(`On your plate: ${card.title}. It is on the lift.${over}`, load.over > 0 ? 'bad' : 'good');
+    return { ok: true, text: `Accepted: ${card.title}. Take the lift when you are ready.${over}` };
+  }
+
+  /** Turn a card down: gone from the board; a coworker's costs a little standing with them, and only them. */
+  declineCard(index: number, byGiver = false): { ok: boolean; text: string } {
+    const s = this.save;
+    const d = s.deck.cards[index];
+    const card = d === undefined ? undefined : deckCard(d);
+    if (d === undefined || card === undefined || d.state !== 'offered') return { ok: false, text: 'That card is not on offer.' };
+    if (d.inPerson && !byGiver) return { ok: false, text: `Ask ${card.giver.name}: it is theirs to hand over.` };
+    d.state = 'declined';
+    const coworker = coworkerCard(card);
+    if (coworker) s.rapport[card.giver.id] = (s.rapport[card.giver.id] ?? 0) - DECLINE_RAPPORT;
+    this.hud.toast(`Declined: ${card.title}.${coworker ? ` ${card.giver.name} will remember (standing with them -${DECLINE_RAPPORT}).` : ''}`, 'info');
+    return { ok: true, text: `Declined: ${card.title}.` };
+  }
+
+  /** Monday's deal (D2): this week's deck, never last week's hand again. */
+  dealWeek(): void {
+    const s = this.save;
+    s.deck = deal({ careerSeed: s.seed, week: s.week, floor: s.floor, rung: s.rung, previous: handIds(s.deck), exclude: this.deckExclude() });
+    s.p1Run = null;
+  }
+
+  /**
+   * Friday: the cards you took and did not finish are missed (each card's
+   * standing loss, and its giver cooler; nobody is waiting for you on
+   * Monday: they had the weekend). The rest of the deck goes with the week.
+   */
+  private settleDeck(): string {
+    const s = this.save;
+    let missed = 0;
+    for (const c of s.deck.cards) {
+      const card = deckCard(c);
+      if (c.p1 || c.state !== 'accepted' || card === undefined) continue;
+      c.state = 'failed';
+      missed++;
+      this.cardFailed(card);
+    }
+    return missed === 0 ? '' : `${missed} card${missed > 1 ? 's' : ''} missed this week.`;
   }
 
   spawnFloorActors(): void {
@@ -1032,11 +1308,12 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   }
 
   writeSlotFor(id: SlotId, s: SaveState = this.save): boolean {
-    // A vision is never saved: whatever asks waits until you surface. Nor is a mission card's trainee.
-    if (this.vision !== null || this.mission) return false;
+    // A vision is never saved: whatever asks waits until you surface. Nor is a debug mission's trainee (a career's card is).
+    if (this.vision !== null || this.mission?.career === false) return false;
     if (s === this.save) {
       this.recordBoss();
       this.hub?.note();
+      this.mission?.note();
     }
     return writeSlot(id, { name: s.name, title: titleFor(s.rung, s.domain, s.track, s.arch), where: this.level === undefined ? '' : this.floorName(), level: s.level }, s);
   }
@@ -1064,7 +1341,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.hud.toast('Ironman: no quicksaves. The building only remembers what you did.', 'bad');
       return;
     }
-    if (this.mission) {
+    if (this.mission?.career === false) {
       this.hud.toast('A mission card is not saved. Again from the results card replays it.', 'info');
       return;
     }
@@ -1077,7 +1354,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.hud.toast('Ironman: there is no going back.', 'bad');
       return;
     }
-    if (this.mission) {
+    if (this.mission?.career === false) {
       this.hud.toast('A mission card is not saved: the lift aborts it.', 'info');
       return;
     }
@@ -1540,8 +1817,9 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     for (const a of this.actors) {
       const far = Math.hypot(a.pos.x - this.player.pos.x, a.pos.z - this.player.pos.z) > ACTOR_RANGE;
       a.root.visible = !far;
-      // Far away and not after you, they wait - unless they are walking over to you with a problem.
-      if (far && !a.aggro && !a.recruited && !a.resolved && !(a.hostile && a.hp <= 0) && this.hub?.seeks(a) !== true) continue;
+      // Far away and not after you, they wait - unless they are walking over to you with a problem,
+      // or they are a mission's watched people (a patrol keeps its round wherever you are: it is the stealth clock).
+      if (far && !a.aggro && !a.recruited && !a.resolved && !(a.hostile && a.hp <= 0) && this.hub?.seeks(a) !== true && this.mission?.watch.watches(a) !== true) continue;
       updateActor(this, a, dt);
       if (a.hostile && !a.resolved && a.hp <= 0) resolveActor(this, a);
     }
@@ -1657,7 +1935,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     speed *= 1 - this.auraSlow;
     speed *= 1 - this.hazardSlow;
     if (this.slowT > 0 && !d.ultra) speed *= 0.6;
-    if (this.player.crouching && perk(s, 'silentkeys') === 0) speed *= 0.55;
+    // Sneaking is 0.7 of walking (S1b, the spike's tuning: at 0.55 the quiet route did not pay).
+    if (this.player.crouching && perk(s, 'silentkeys') === 0) speed *= CROUCH_SPEED;
     if (this.blocking) speed *= 0.5;
     if (this.charging && this.chargeT > TAP_TIME && d.weapon.kind === 'melee') speed *= 0.75;
     const moving = fwd !== 0 || side !== 0;
@@ -1784,10 +2063,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.os.hide();
       this.currentTerminal = null;
     }
-    // A burnout on a mission card ends the card, not a career.
+    // A burnout on a mission card ends the card. In a career the card has failed, and you wake on the hub (Ironman: the career is over).
     if (this.mission) {
       this.mission.finish('burnout');
-      return;
+      if (!this.mission.career) return;
     }
     screens.showDead(this);
   }
@@ -2244,6 +2523,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       // From the P1 floor: its boss is resolved (that is what opens Friday). From the hub it already was.
       if (s.location === 'office' && (this.boss === null || this.boss.resolved)) s.floorState.bossDone = true;
       const week = settleWeek(this);
+      const cards = this.settleDeck();
       restTeam(this);
       const pay = Math.round(salaryFor(s.rung) * WORKPLACES[s.workplace].rep);
       s.rep += pay;
@@ -2253,6 +2533,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       this.journal(`Weekend ${s.week} at the mökki. Salary ₡${pay}.`);
       startOnCall(this);
       if (week !== '') this.hud.toast(`📌 ${week}`, 'info');
+      if (cards !== '') this.hud.toast(cards, 'bad');
       if (s.upgrades.includes('guestroom')) adjustStanding(s, 'kitchen', 3);
       // Friday evening phone calls: HR first, then Derek with the review.
       const queue: (() => DialogueNode)[] = [];
@@ -2292,6 +2573,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');
     delete s.consumables.laptop;
     s.hub = hubWeek(s.hub, s.week);
+    this.dealWeek();
   }
 
   /** "Monday. This week's major incident: <boss>, floor <n>." */
@@ -2517,7 +2799,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       }
       l.visible = true;
       l.position.copy(spot);
-      l.intensity = this.save.location === 'office' && this.save.floor === 0 ? 10 : 16;
+      l.intensity = (this.save.location === 'office' && this.save.floor === 0 ? 10 : 16) * (this.mission?.lightScale ?? 1);
       l.castShadow = i === 0 && this.settings.quality === 'high';
     });
     const flick = this.lights[2];

@@ -3,12 +3,14 @@ import { TICKETS } from './content/tickets';
 import type { ActorKind } from './entities';
 import { Game } from './game';
 import { rest } from './hosts';
-import type { HubDebug } from './hub';
-import { findPrompt, interact, standAt } from './interact';
+import { type HubDebug, workstationOf } from './hub';
+import { findPrompt, interact, standAt, standBy } from './interact';
 import { CARDS_SHOWN, INDUCTION_TERMINAL_ID } from './inductionday';
 import type { InteractKind } from './level';
 import { type MissionDebug, startMission } from './missionplay';
 import { missionById } from './missions';
+import { ALARM_RULES } from './mission';
+import type { CardView } from './deck';
 import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
@@ -96,6 +98,13 @@ try {
     // The hub (0.3.0 S1a, e2e/helldesk-hub.spec.ts and the bot's hub-only week): read-only state, and one that only skips the wait for a walk-up.
     hub: (): HubDebug | null => game.hub?.debug() ?? null,
     hubWalkUpNow: (): void => game.hub?.walkUpNow(),
+    // The weekly deck (S1b, e2e/helldesk-deck.spec.ts and the bot): the cards as the workstation shows them (read-only),
+    // and one that only puts the player in front of their own desk's computer.
+    deck: (): CardView[] => game.deckViews(),
+    toWorkstation: (): boolean => {
+      const desk = workstationOf(game.level);
+      return game.hub !== null && desk !== undefined && standBy(game, desk);
+    },
   };
   // `crawler.html?mission=stapler` (or vendor): a fresh trainee straight into
   // that card, no induction, nothing saved. `&seed=N` pins its map. With no
@@ -105,7 +114,9 @@ try {
   if (card !== undefined) {
     const asked = params.get('seed');
     const pinned = asked !== null && /^\d+$/.test(asked);
-    startMission(game, card, pinned ? Number(asked) >>> 0 : Date.now() >>> 0, pinned);
+    // `&alarm=search` (or one-way, cooldown) plays the card by that alarm rule (D7); otherwise its own.
+    const alarm = ALARM_RULES.find((r) => r === params.get('alarm')) ?? card.alarm;
+    startMission(game, card, pinned ? Number(asked) >>> 0 : Date.now() >>> 0, pinned, alarm);
   }
 } catch (err) {
   mount.innerHTML = '<div class="screen" style="display:flex"><div class="title-logo small dead">BSOD</div>'

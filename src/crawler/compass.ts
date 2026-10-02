@@ -10,6 +10,8 @@ export interface CompassMarker {
   readonly icon: string;
   readonly color: string;
   readonly label: string;
+  /** Also written on the automap beside its diamond. */
+  readonly mapLabel?: string;
 }
 
 const FOV = Math.PI * 0.75;

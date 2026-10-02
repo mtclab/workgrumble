@@ -4,8 +4,9 @@ import type { CompassMarker } from './compass';
 import { type DialogueNode, type DialogueOption, said } from './dialogue';
 import { type Actor, say, setMarker } from './entities';
 import type { Game } from './game';
-import { p1Resolved } from './hub';
-import { freeSpotIn, type Room } from './level';
+import { p1Resolved, workstationOf } from './hub';
+import { deckCard } from './deck';
+import { freeSpotIn, type Room, toCell } from './level';
 import {
   advance,
   currentObjective,
@@ -154,9 +155,11 @@ function spawnGiver(g: Game, questId: string): Actor | null {
     return a;
   }
   const rooms = g.level.rooms.filter((r) => r.id !== 0 && r.kind !== 'boss' && r.kind !== 'sauna');
+  // Not on top of somebody already standing there (a colleague at their desk, the week's card givers).
+  const taken = new Set(g.actors.map((a) => toCell(a.pos.z) * g.level.w + toCell(a.pos.x)));
   for (let t = 0; t < 8 && rooms.length > 0; t++) {
     const rm = g.levelRng.pick(rooms);
-    const spot = freeSpotIn(g.level, rm, g.levelRng);
+    const spot = freeSpotIn(g.level, rm, g.levelRng, taken);
     if (spot === null) continue;
     const a = g.spawnAt('npc', spot.x, spot.z, rm.id, false, { npc: { id: def.npc, name: def.giver } });
     if (a !== null) giverOf.set(a, questId);
@@ -179,8 +182,9 @@ export function placeQuestContent(g: Game): void {
     startStage(g, st);
     if (st.staffed !== true) spawnGiver(g, st.id);
   }
-  // New offers: up to three per floor.
-  const offers = sideQuestsFor(f, incidentResolved(g)).filter((q) => !s.questLog.some((st) => st.id === q.id));
+  // New offers: up to three per floor. Not a side quest whose story is one of this week's cards (S1b): the card tells it.
+  const dealt = new Set(s.deck.week === s.week ? s.deck.cards.map((c) => deckCard(c)?.sibling).filter((x): x is string => x !== undefined) : []);
+  const offers = sideQuestsFor(f, incidentResolved(g)).filter((q) => !s.questLog.some((st) => st.id === q.id) && !dealt.has(q.id));
   for (const q of g.levelRng.shuffle(offers).slice(0, 3)) spawnGiver(g, q.id);
   refreshGiverMarkers(g);
 }
@@ -690,6 +694,13 @@ export function questMarkers(g: Game): CompassMarker[] {
   if (lift !== undefined && g.elevatorOpen) out.push({ x: lift.x, z: lift.z, icon: '▲', color: '#ffffff', label: 'The lift (Friday!)' });
   // On the hub the lift is always going somewhere: up to the major incident.
   else if (lift !== undefined && s.location === 'hub') out.push({ x: lift.x, z: lift.z, icon: '▲', color: '#ffffff', label: 'The lift (major incident)' });
+  // Your desk (S1b): the week's deck is on its computer; and whoever has a card to hand you in person.
+  const hub = g.hub ?? null;
+  if (hub !== null) {
+    const desk = workstationOf(g.level);
+    if (desk !== undefined) out.push({ x: desk.x, z: desk.z, icon: '▣', color: '#9fd0ff', label: 'Your desk', mapLabel: 'YOUR DESK' });
+    for (const a of g.actors) if (!a.resolved && hub.offerOf(a) >= 0) out.push({ x: a.pos.x, z: a.pos.z, icon: '!', color: '#ffd54a', label: `${a.name} (a card)` });
+  }
   if (g.boss !== null && g.boss.bossActive && !g.boss.resolved) out.push({ x: g.boss.pos.x, z: g.boss.pos.z, icon: '☠', color: '#ff5050', label: g.boss.name });
   if (s.location === 'mokki') {
     const board = g.level.interactables.find((i) => i.kind === 'board');
