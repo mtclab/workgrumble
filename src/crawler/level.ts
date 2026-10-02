@@ -149,6 +149,8 @@ export interface RecipeLayout {
   readonly spine: readonly number[];
   /** Corridor nodes: where patrols walk to and pause. */
   readonly nodes: readonly number[];
+  /** Nodes on the spine: the one point a patrol that crosses it goes to. */
+  readonly spineNodes: readonly number[];
   /** The locked supply closet in HR's office (an interactable id), or -1. */
   readonly closet: number;
 }
@@ -1113,6 +1115,13 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       const it = interactables.find((x) => x.id === closet);
       if (it !== undefined) it.lock = 15 + floorIndex * 8;
     }
+    // Every office of a recipe has its computer (Marcus's backup agent is on one of them).
+    plan.rooms.forEach((pr, id) => {
+      const rm = rooms[id];
+      if (pr.tag !== 'office' || rm === undefined || interactables.some((x) => x.kind === 'terminal' && x.room === id)) return;
+      const t = wallSpot(rm);
+      if (t !== null) addTerminal(t[0], t[1], rm, facingInto(t[0], t[1], rm));
+    });
     // The corridors' nodes hang lights of their own: the rooms' alone leave a ring in the dark.
     for (const i of plan.nodes) lightSpots.push(new THREE.Vector3(cellCenter(i % w), WALL_H - 0.3, cellCenter(Math.floor(i / w))));
   }
@@ -1467,7 +1476,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   if (plan === null) return level;
   const tagged: Record<string, number[]> = {};
   plan.rooms.forEach((pr, id) => (tagged[pr.tag] ??= []).push(id));
-  return { ...level, glass: glassCells, recipe: { id: plan.id, rooms: tagged, spine: plan.spine, nodes: plan.nodes, closet } };
+  return { ...level, glass: glassCells, recipe: { id: plan.id, rooms: tagged, spine: plan.spine, nodes: plan.nodes, spineNodes: plan.spineNodes, closet } };
 }
 
 // ---- Interactive prop meshes ----

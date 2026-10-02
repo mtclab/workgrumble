@@ -10,14 +10,19 @@ import type { Rng } from './rng';
  *   #  wall                      .  corridor           D  door (a corridor cell)
  *   =  glass: blocks the way, not the view (a cell class of its own)
  *   s  the service spine (corridor)   v  a service door onto it (open: no doors in the spike)
+ *   p  a node on the spine: the one point a patrol crosses it (S1b's stapler tuning)
  *   n  a corridor node (patrols walk between them; each also hangs a light)
  *   L  lobby, the entry lift's room (always room 0)
  *   H  HR's office   O  an office   C  open-plan desks   M  a meeting room behind glass
+ *   I  Internal IT's counter   V  an open pitch area (the vendors' pocket)
  *
  * Every run of one room letter must be a filled rectangle: that is the room.
- * Variety in the spike is a mirror image, picked by the level's seed.
+ * Variety is a mirror image, picked by the level's seed.
  */
-export type RecipeId = 'officeRow' | 'meetingRing';
+export type RecipeId = 'officeRow' | 'meetingRing' | 'annex';
+
+/** Every recipe, for the gates that walk them all. */
+export const RECIPES: readonly RecipeId[] = ['officeRow', 'meetingRing', 'annex'];
 
 /** What a letter is: its room kind, and the tag the mission finds it by. */
 const ROOMS: Readonly<Record<string, { readonly kind: RoomKind; readonly tag: string }>> = {
@@ -26,6 +31,8 @@ const ROOMS: Readonly<Record<string, { readonly kind: RoomKind; readonly tag: st
   O: { kind: 'office', tag: 'office' },
   C: { kind: 'cubicles', tag: 'open' },
   M: { kind: 'meeting', tag: 'meeting' },
+  I: { kind: 'it', tag: 'it' },
+  V: { kind: 'lobby', tag: 'pitch' },
 };
 
 /**
@@ -36,7 +43,7 @@ const ROOMS: Readonly<Record<string, { readonly kind: RoomKind; readonly tag: st
  */
 const OFFICE_ROW = [
   '####################################',
-  '##ssssssssssssssssssssssssssssss####',
+  '##ssssssssssssssssssssssspssssss####',
   '##ssssssssssssssssssssssssssssss####',
   '##v##########################v######',
   '#LLLLLLL#OOOOO#OOOOO#OOOOO#HHHHH####',
@@ -78,9 +85,32 @@ const MEETING_RING = [
   '##########################################',
 ];
 
+/**
+ * The annex (Josh's First Day, card #3): T2's loop round a straight way
+ * from the lift to Internal IT's counter. The straight way runs through an
+ * open pitch area (the vendors' pocket, walled off from the loop); the loop
+ * goes round it, past glass on either side of the straight way.
+ */
+const ANNEX = [
+  '##################################################',
+  '#########n.........n.........n.........n.#########',
+  '#########........################........#########',
+  '#LLLLLLL#..======####VVVVVVVV####======..#IIIIIII#',
+  '#LLLLLLL#..======####VVVVVVVV####======..#IIIIIII#',
+  '#LLLLLLL.............VVVVVVVV............DIIIIIII#',
+  '#LLLLLLL.............VVVVVVVV............DIIIIIII#',
+  '#LLLLLLL#..======####VVVVVVVV####======..#IIIIIII#',
+  '#LLLLLLL#..======####VVVVVVVV####======..#IIIIIII#',
+  '#########..############################..#########',
+  '#########........################........#########',
+  '#########n.........n.........n.........n.#########',
+  '##################################################',
+];
+
 const FOOTPRINTS: Readonly<Record<RecipeId, readonly string[]>> = {
   officeRow: OFFICE_ROW,
   meetingRing: MEETING_RING,
+  annex: ANNEX,
 };
 
 export interface PlanRoom {
@@ -105,6 +135,8 @@ export interface RecipePlan {
   readonly glass: readonly number[];
   readonly spine: readonly number[];
   readonly nodes: readonly number[];
+  /** Nodes on the spine itself: where a patrol that crosses it goes. */
+  readonly spineNodes: readonly number[];
 }
 
 /** Lay a recipe's footprint, mirrored or not by the dice. Throws on a footprint that breaks its own rules. */
@@ -121,12 +153,14 @@ export function layRecipe(id: RecipeId, r: Rng): RecipePlan {
   const glass: number[] = [];
   const spine: number[] = [];
   const nodes: number[] = [];
+  const spineNodes: number[] = [];
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const c = at(x, y);
       const i = y * w + x;
       if (c === '=') glass.push(i);
-      if (c === 's' || c === 'v') spine.push(i);
+      if (c === 's' || c === 'v' || c === 'p') spine.push(i);
+      if (c === 'p') spineNodes.push(i);
       if (c === 'n') nodes.push(i);
       const room = ROOMS[c];
       if (room === undefined || seen[i] === 1) continue;
@@ -144,10 +178,11 @@ export function layRecipe(id: RecipeId, r: Rng): RecipePlan {
       rooms.push({ x, y, w: rw, h: rh, kind: room.kind, tag: room.tag });
     }
   }
-  const lobby = rooms.findIndex((rm) => rm.kind === 'lobby');
+  // The lift's room by its tag: a pitch area is furnished like a lobby, but nobody arrives there.
+  const lobby = rooms.findIndex((rm) => rm.tag === 'lobby');
   if (lobby < 0) throw new Error(`${id}: no lobby`);
   rooms.unshift(...rooms.splice(lobby, 1));
-  return { id, w, h, rows, rooms, glass, spine, nodes };
+  return { id, w, h, rows, rooms, glass, spine, nodes, spineNodes };
 }
 
 /** Is this footprint character walkable floor? */

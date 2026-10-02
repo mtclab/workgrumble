@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { cellCenter, flowField, generateLevel, type Level, NEIGHBOURS8, toCell } from './level';
 import { Rng } from './rng';
-import { layRecipe, type RecipeId } from './templates';
+import { layRecipe, type RecipeId, RECIPES } from './templates';
 import { THEMES } from './textures';
 
 /**
@@ -11,7 +11,6 @@ import { THEMES } from './textures';
  * the whole spine and the objective - and nothing solid was made walkable to
  * get there. The same rules `crawler.test.ts` holds the ordinary floors to.
  */
-const RECIPES: readonly RecipeId[] = ['officeRow', 'meetingRing'];
 const SEEDS = Array.from({ length: 150 }, (_, i) => (i + 1) * 7919);
 const MACHINES = new Set(['fridge', 'locker', 'vending', 'terminal', 'cooler', 'coffee', 'pantti', 'printer', 'crate', 'kiuas']);
 
@@ -32,8 +31,9 @@ describe.each(RECIPES)('recipe %s', (id) => {
   it('lays a footprint that keeps its own rules (rectangular rooms, the lobby first)', () => {
     for (const seed of SEEDS.slice(0, 4)) {
       const plan = layRecipe(id, new Rng(seed));
+      expect(plan.rooms[0]?.tag).toBe('lobby');
       expect(plan.rooms[0]?.kind).toBe('lobby');
-      expect(plan.rooms.filter((rm) => rm.kind === 'lobby')).toHaveLength(1);
+      expect(plan.rooms.filter((rm) => rm.tag === 'lobby')).toHaveLength(1);
       expect(plan.rows.every((row) => row.length === plan.w)).toBe(true);
     }
   });
@@ -74,6 +74,15 @@ describe.each(RECIPES)('recipe %s', (id) => {
         expect(closet?.room).toBe(layout.rooms.hr?.[0]);
         expect(closet?.lock ?? 0).toBeGreaterThan(0);
         expect(layout.spine.length).toBeGreaterThan(20);
+        // The one point a patrol crosses the spine at, and a computer in every office.
+        expect(layout.spineNodes, `seed ${seed}: one spine node`).toHaveLength(1);
+        expect(layout.spine).toContain(layout.spineNodes[0]);
+        for (const o of layout.rooms.office ?? []) expect(level.interactables.some((it) => it.kind === 'terminal' && it.room === o), `seed ${seed}: office ${o} has its computer`).toBe(true);
+      } else if (id === 'annex') {
+        // Josh's way: Internal IT's counter at the far end, the vendors' pitch on the straight way.
+        expect(level.interactables.filter((it) => it.kind === 'itdesk' && it.room === layout.rooms.it?.[0]), `seed ${seed}: the counter`).toHaveLength(1);
+        expect(layout.rooms.pitch).toHaveLength(1);
+        expect(level.glass?.some((g) => g === 1)).toBe(true);
       } else {
         expect(layout.rooms.meeting).toHaveLength(3);
         expect(level.glass?.some((g) => g === 1)).toBe(true);
