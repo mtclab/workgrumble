@@ -973,3 +973,19 @@ describe('gate 7: burnout', () => {
 it('the test world builds the mökki headless', () => {
   expect(generateMokki(1).w).toBeGreaterThan(0);
 });
+
+describe('resolving somebody pays, with or without a mission card', () => {
+  it('a user beaten on the week\'s floor (no card running) pays their Rep', () => {
+    const h = newCareer();
+    const g = h.g;
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    expect(g.mission).toBeNull();
+    const someone = g.actors.find((a) => a.hostile && !a.resolved && a.kind === 'user') as Actor;
+    expect(someone).toBeDefined();
+    const before = g.save.rep;
+    someone.hp = 0;
+    resolveActor(g, someone);
+    expect(g.save.rep, 'Rep for the resolve').toBeGreaterThan(before);
+  });
+});

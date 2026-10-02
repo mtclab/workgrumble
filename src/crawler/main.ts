@@ -14,6 +14,8 @@ import type { CardView } from './deck';
 import { pageNow } from './pager';
 import { offerStaffing } from './questing';
 import { currentObjective, type QuestState } from './quests';
+import * as screens from './screens';
+import { isComposed } from './templates';
 import { requestMentoring } from './teamwork';
 import { standNearFigure } from './vision';
 
@@ -107,11 +109,24 @@ try {
       const desk = workstationOf(game.level);
       return game.hub !== null && desk !== undefined && standBy(game, desk);
     },
+    // A template on show (S2a, e2e/helldesk-templates.spec.ts): stand in its doorway, facing in.
+    toTemplate: (): boolean => game.standInTemplate(),
   };
   // `crawler.html?mission=stapler` (or vendor): a fresh trainee straight into
   // that card, no induction, nothing saved. `&seed=N` pins its map. With no
   // query (or an unknown card) the page is what it always was.
   const params = new URLSearchParams(window.location.search);
+  // `crawler.html?template=T4` (any template id): the lobby and that template, furnished, nobody on
+  // it, nothing saved (the S2a visual sweep). `&seed=N` pins its dice.
+  const shown = `show-${params.get('template') ?? ''}`;
+  if (isComposed(shown)) {
+    const asked = params.get('seed');
+    const seed = asked !== null && /^\d+$/.test(asked) ? Number(asked) >>> 0 : Date.now() >>> 0;
+    screens.showLoading(game, 'Laying the floor', () => {
+      game.loadShowcase(shown, seed);
+      screens.startPlay(game);
+    });
+  }
   const card = missionById(params.get('mission'));
   if (card !== undefined) {
     const asked = params.get('seed');

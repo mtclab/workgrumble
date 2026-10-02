@@ -63,6 +63,7 @@ import { type CardView, cardView, coolGivers, coworkerCard, deal, DECLINE_RAPPOR
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
+import type { ComposedId } from './templates';
 import { EXTRA_BASE, lastStand, lightExitLift, markResolved, redropBossLoot } from './combat';
 import { itemById } from './items';
 import { spellById } from './magic';
@@ -821,6 +822,69 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.settleWorld();
     sfx.setBoss(false);
     sfx.setAmbient('office');
+  }
+
+  /**
+   * One template on show (`crawler?template=T4`, the S2a visual sweep): a
+   * fresh trainee in the lobby of a floor composed of the lobby and that
+   * template, furnished, with nobody on it and nothing saved. Debug path only.
+   */
+  loadShowcase(id: ComposedId, seed: number): void {
+    this.clearWorld();
+    const s = newSave(seed);
+    s.floor = 1;
+    s.location = 'office';
+    s.floorState = freshFloorState(1);
+    this.save = s;
+    this.derivedCache = derive(s);
+    this.resetTransient();
+    this.fixCache = new WeakMap();
+    const theme = THEMES[1] ?? THEMES[0];
+    if (theme === undefined) throw new Error('no theme');
+    this.levelRng = new Rng(seed ^ 0x5bd1e995);
+    this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
+    this.level = generateLevel(1, theme, seed, false, true, id);
+    this.dressOffice(theme, 1);
+    this.elevatorOpen = true;
+    this.pendingStaff = null;
+    this.staffIn = Infinity;
+    this.mentorIn = Infinity;
+    this.slackedTerminals.clear();
+    this.loggedOn.clear();
+    this.player.pos.set(this.level.start.x, 0, this.level.start.z);
+    this.player.yaw = Math.PI;
+    this.player.pitch = 0;
+    this.player.crouching = false;
+    this.field = flowField(this.level, this.player.pos.x, this.player.pos.z, 40);
+    this.refreshDerived();
+    this.markSeen();
+    this.updateLights(true);
+    this.settleWorld();
+    sfx.setBoss(false);
+    sfx.setAmbient('office');
+  }
+
+  /**
+   * Stand just inside the doorway of a composed floor's objective template
+   * (the template on show), facing into it, for a screenshot. False on a
+   * floor that is not composed.
+   */
+  standInTemplate(): boolean {
+    const lv = this.level;
+    const t = lv.recipe?.templates[lv.recipe.objective];
+    const door = t?.doors[0];
+    if (t === undefined || door === undefined) return false;
+    const dx = door % lv.w;
+    const dz = (door - dx) / lv.w;
+    // Into the template: away from the edge the door is on.
+    const ix = dx === t.x ? 1 : dx === t.x + t.w - 1 ? -1 : 0;
+    const iz = dz === t.y ? 1 : dz === t.y + t.h - 1 ? -1 : 0;
+    this.player.pos.set((dx + ix + 0.5) * TILE, 0, (dz + iz + 0.5) * TILE);
+    // The player's forward is (-sin yaw, -cos yaw).
+    this.player.yaw = Math.atan2(-ix, -iz);
+    this.player.pitch = -0.12;
+    this.markSeen();
+    return true;
   }
 
   /**
