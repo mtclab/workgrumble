@@ -24,7 +24,10 @@ function record(finish = 'quiet', detectedAt: number | null = null, repPerMin = 
     repBase: 120, repQuietBonus: finish === 'quiet' ? 48 : 0, repResolves: 0 };
 }
 
-function matrix(fault?: string, extended = false) {
+/** How a run finished, by its card, approach and place in its group (0-9); by default every card is finished. */
+type Finisher = (card: string, approach: string, k: number) => string;
+
+function matrix(fault?: string, extended = false, finish?: Finisher) {
   const runs: { mission: string; approach: string; seed: number; wallMinutes: number }[] = [];
   const lines: string[] = [];
   let active = false;
@@ -44,7 +47,10 @@ function matrix(fault?: string, extended = false) {
       return { status: fault === 'exit' ? 1 : 0, ...(fault === 'timeout' ? { error: new Error('timeout') } : {}) };
     },
     readFileSync: () => JSON.stringify({
-      mission: fault === 'unfinished' ? null : { ...record(last.approach === 'quiet' ? 'quiet' : 'loud'), card: last.mission, approach: last.approach, seed: last.seed },
+      mission: fault === 'unfinished' ? null : {
+        ...record(finish?.(last.mission, last.approach, last.seed - 1700000000) ?? (last.approach === 'quiet' ? 'quiet' : 'loud')),
+        card: last.mission, approach: last.approach, seed: last.seed,
+      },
       errors: fault === 'page' ? ['page error'] : [], snaps: fault === 'bot' ? [{ err: 'bot error' }] : [],
     }),
     console: { log: (line: string) => lines.push(line) },
@@ -107,5 +113,24 @@ describe('reward comparisons', () => {
       expect(summary([record('quiet', null, rate), { ...record('loud', 0, 100), approach: 'loud' }]).withinTarget).toBe(true);
     }
     expect(summary([record(), { ...record('loud', 0, 0), approach: 'loud' }]).staplerQuietVsLoudRatio).toBeNull();
+  });
+});
+
+describe('every card is completable both ways', () => {
+  it('reports each card x approach\'s completion rate, and passes with every one at 80% or more', () => {
+    // Two of the post-its' quiet runs did not finish the card: 80%, still enough.
+    const m = matrix(undefined, false, (card, approach, k) => (card === 'postits' && approach === 'quiet' && k < 2 ? (k === 0 ? 'failed' : 'burnout') : approach === 'quiet' ? 'quiet' : 'loud'));
+    m.run();
+    expect(m.lines).toContain('postits-quiet: completion 0.8000 (8/10 finished)');
+    expect(m.lines).toContain('stapler-loud: completion 1.0000 (10/10 finished)');
+    expect(m.lines).toContain('printer-loud: completion 1.0000 (10/10 finished)');
+    expect(m.lines.filter((l) => /: completion \d/.test(l)), 'one line per card x approach').toHaveLength(12);
+  });
+
+  it.each(['failed', 'burnout', 'aborted'])('fails when one card x approach finishes the card on under 80 percent of its seeds (three runs of ten: %s)', (how) => {
+    const m = matrix(undefined, false, (card, approach, k) => (card === 'josh' && approach === 'loud' && k < 3 ? how : approach === 'quiet' ? 'quiet' : 'loud'));
+    expect(m.run).toThrow(/josh-loud 7\/10/);
+    expect(m.runs, 'after measuring every run').toHaveLength(120);
+    expect(m.lines).toContain('josh-loud: completion 0.7000 (7/10 finished) BELOW 0.8');
   });
 });

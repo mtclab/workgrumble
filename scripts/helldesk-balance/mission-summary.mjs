@@ -46,3 +46,20 @@ export function missionSummary(records) {
     cards,
   };
 }
+
+// Every card must be completable both ways: the share of each card x approach's
+// runs that finished the card (quiet or loud). A failed card, a burnout or an
+// abort counts against it. Below `least` (default 80%), the matrix fails.
+export const COMPLETION_FLOOR = 0.8;
+
+export function missionCompletion(records, least = COMPLETION_FLOOR) {
+  const keys = [...new Set(records.map((r) => `${r.card}|${r.approach}`))];
+  const groups = keys.map((key) => {
+    const [card, approach] = key.split('|');
+    const runs = records.filter((r) => r.card === card && r.approach === approach);
+    const done = runs.filter((r) => r.finish === 'quiet' || r.finish === 'loud').length;
+    const rate = done / runs.length;
+    return { card, approach, runs: runs.length, done, rate, ok: rate >= least - 1e-9 };
+  });
+  return { least, groups, ok: groups.every((g) => g.ok) };
+}

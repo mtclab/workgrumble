@@ -672,8 +672,12 @@ they start Escalated, so quiet immediately falls back to loud. Seeds start at
 (default `mission-results`, including `summary.json`); `MISSION_WALL_MINUTES`
 sets the per-card cap (default 12). `CHROMIUM` selects the browser executable.
 Errors and unfinished cards fail the matrix. A burnout, abort or failed card
-has a results card and counts as a nonquiet finish. Being outside a balance
-target is reported (the targets are enforced in S6, not now).
+has a results card and counts as a nonquiet finish. Every card x approach
+must also finish the card (quiet or loud) on at least 80% of its seeds: the
+matrix prints each one's completion rate (and writes `completion.json`), and
+fails naming any below it; a failed card, a burnout or an abort counts
+against it. Being outside a balance target is reported (the targets are
+enforced in S6, not now).
 
 The quiet policy plays each objective the way the compass shows it (the
 nearest gold diamond): along the service spine where the map has one, then a
