@@ -872,7 +872,7 @@ runtime:
 | `state.ts` | The save (v4, with the hub's week), migration from v2 and v3, derived stats, skills and level-up. |
 | `hub.ts` | The hub: its seed and theme, its people (colleagues rolled by spawn index), your desk, the week's card givers, walk-ups, and every announced reason anyone there turns on you. |
 | `deck.ts`, `mission.ts`, `missions.ts` | The weekly deck (pure): the deal, card states, after-hours pay, the workstation's view of a card; the card rules (objectives, the run, the payout, alarm rules); the pool and its givers. |
-| `missionplay.ts`, `stealth.ts`, `templates.ts` | A card in the game (its crowd, watch, HUD, lift, results, save and reload); suspicion and the alarm rules; the template footprints. |
+| `missionplay.ts`, `stealth.ts`, `templates.ts`, `compose.ts` | A card in the game (its crowd, watch, HUD, lift, results, save and reload); suspicion and the alarm rules; the spike's footprints, the S2a templates and recipes; floors composed from templates (placement, corridors, the spine, loops). |
 | `saves.ts`, `settings.ts` | Save slots; global options, the bindings (keys and mouse buttons). |
 | `autoquality.ts` | The first launch's graphics-quality pick (pure): when a launch picks, the timing window, the verdict per level. |
 | `a11y.ts` | Comfort and accessibility rules (pure): shake and hit pause when off, the screen edge's shape per kind. |
@@ -891,7 +891,7 @@ runtime:
 | `desk.ts` | The ticket queue and mail tasks. |
 | `hosts.ts` | Shop, inventory, perks, rest, deals, the small world effects. |
 | `screens.ts` | Title, load and save menus, pause, burnout, endings, lifts, the loading card. |
-| `level.ts`, `mokki.ts` | Seeded floors (and the hub's recipe) and the cottage plot (grid collision, line of sight, flow fields). |
+| `level.ts`, `mokki.ts` | Seeded floors (and composed ones: the hub, the mission recipes) and the cottage plot (grid collision, line of sight, the partition rule, the hum, flow fields). |
 | `entities.ts` | Every NPC: stats, elites, AI, boss patterns and phases. |
 | `os.ts` | WorkgrumbleOS: tickets, mail, KB, Internal IT (buy/sell), inventory, character and perks, HR, journal, achievements, settings, help. |
 | `graphics.ts`, `particles.ts` | The render pipeline and mood shader, generated normal maps; the particle pool. |
@@ -998,3 +998,57 @@ of the pool to its objective, the stapler's tuning) and `botplay.test.ts`
 finishes each). `deckplay.ts` is their shared test support. `e2e/helldesk-deck.spec.ts` plays a card from the desk to its
 quiet finish and pay, a loud one aborted and still on the board, and a card
 handed over in person.
+
+## Templates and recipes (0.3.0 S2a)
+
+Floors with a purpose (docs/SPEC_HELLDESK_030_S2.md). `templates.ts` draws
+each template as an ASCII footprint with seeded inner variety, laid in any
+of its eight mirrored and turned variants (Internal IT's counter only
+mirrors): T1 the bullpen (desk pods split by aisles, four doors), T2 the
+meeting ring (two or three glass boxes), T3 the office row (HR's office at
+the end, service doors behind HR's and some others), T4 the kitchen hub (an
+island counter, four spokes), T5 the server hall (rack aisles, one two-wide
+cross aisle, the terminal and crate in rack slots), T6 the atrium (a
+planted void with the landmark tree, a walk all round), T7 the lobby (the
+lift on the top wall, reception facing it, a back door), T9 the arena
+(today's boss room), T10 the print room (plus the shredder), the sauna and
+Internal IT. A template's structure (aisles, counters, planters, racks) is
+placed before its room is furnished by kind as before.
+
+`compose.ts` lays a recipe (`COMPOSED` in templates.ts): the templates
+placed by rejection sampling (a hub's kitchen near the middle, then the
+largest first, keeping the most compact of the spots that fit), then a
+recipe's spine (T8: two cells wide, from the lobby's service door to the
+objective template's, outside every template, past a supply closet in an
+alcove, with no lights), then corridors two cells wide between doors (a
+spanning tree from the lobby, every other door to the nearest corridor,
+then extra corridors until `loopCount`, the cycle rank of the floor's
+region graph, meets the recipe's loops). Corridors pay to cross or run
+beside the spine, so it stays a separate way. The hub is the `hub` recipe
+(T7, T4, T1, T1, T2, T3, T5, T10, the sauna at 70%, Internal IT; two
+loops), seeded once per career as before. The mission recipes (`officeSpine`,
+`printFloor`, `annexRing`, `bullpens`, `meetingFloor`, `serverSpine`,
+`atriumRing`, `auditFloor`, `backupsFloor`, `migration`, `execSuite`) are
+the proposal's maps for the cards to move onto in S2b; the S1b cards keep
+the spike's footprints. `crawler.html?template=<id>` shows one template
+(the lobby and it, nobody on it, nothing saved; `__helldesk.toTemplate()`
+stands you in its doorway).
+
+Rules the templates bring: a desk's partition or a counter (`Level.low`)
+hides a crouched player from a standing person across it (`coverBetween`:
+the sight line runs under 1.4 m through it), never a standing one; inside a
+server hall (`Level.hum`) a noise carries half as far; a hit landed in the
+kitchen hub costs Kitchen standing, once a fight (30 s).
+
+Tests: `compose.test.ts` (every template in every variant on 12 seeds of
+inner variety: its footprint, its doors on the edge, every cell reached
+from every door, its must-haves; the recipes' rules; every recipe on 150
+seeds: connected from the lift, every template walled but for its doors,
+its loops, the objective in reach, the spine outside every template to the
+objective past its closet, no machine walked through, nothing in a wall,
+the hum exactly the halls'), `stealth.test.ts` (the partition rule on the
+real AI and on a real bullpen; the hum), `kitchenfight.test.ts`,
+`hublevel.test.ts` and the S1a hub tests on the composed hub.
+`e2e/helldesk-templates.spec.ts` captures each template on the served build
+for review.
+
