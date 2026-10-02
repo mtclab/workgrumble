@@ -70,6 +70,12 @@ export interface DealInput {
   readonly previous: readonly string[];
   /** Cards that may not be dealt this week (a side quest in hand that tells the same story). */
   readonly exclude: readonly string[];
+  /**
+   * Dealt for a week already under way (a save from before the deck, or a
+   * deck that did not read back): the P1 is the week's floor, whose progress
+   * (its boss beaten, Friday open) the save already has.
+   */
+  readonly midWeek?: boolean;
 }
 
 function cardById(id: string): MissionCard | undefined {
@@ -115,7 +121,7 @@ export function deal(input: DealInput): Deck {
 
   // The P1: the week's floor, unless this is a Helpdesk week of Overtime and the printers have risen instead.
   const printer = cardById('printer');
-  const printerP1 = printer !== undefined && band === 'helpdesk' && input.floor > STORY_FLOORS && !excluded.has('printer') && r.chance(PRINTER_P1_ODDS);
+  const printerP1 = printer !== undefined && input.midWeek !== true && band === 'helpdesk' && input.floor > STORY_FLOORS && !excluded.has('printer') && r.chance(PRINTER_P1_ODDS);
   const cards: DealtCard[] = [
     printerP1 && printer !== undefined
       ? { id: printer.id, p1: true, alarm: r.pick(rulesFor(printer)), afterHours: r.chance(AFTER_HOURS_ODDS), inPerson: false, seed: seedFor(0), state: 'accepted' }

@@ -697,13 +697,15 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.clearWorld();
     const s = this.save;
     s.location = 'hub';
+    // The week is under way already (its hub kept, or its floor's boss beaten): a deck dealt now keeps the floor's P1.
+    const underWay = s.hub.week === s.week || (s.floorState.floor === s.floor && s.floorState.bossDone);
     if (s.hub.week !== s.week) s.hub = hubWeek(s.hub, s.week);
     const theme = hubTheme(s.seed);
     const seed = hubSeed(s.seed);
     this.levelRng = new Rng(seed ^ 0x5bd1e995);
     this.lootRng = new Rng((seed ^ 0x2545f491) + s.week);
-    // A save from before the deck (or a week not dealt yet): this week's cards, now.
-    if (s.deck.week !== s.week) this.dealWeek();
+    // A save from before the deck (or a deck that did not read back): this week's cards, now.
+    if (s.deck.week !== s.week) this.dealWeek(underWay);
     this.level = buildHub(s.seed);
     this.dressOffice(theme, HUB_FLOOR);
     // What you already used this week stays used; the weekend refills it.
@@ -1060,10 +1062,14 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     return { ok: true, text: `Declined: ${card.title}.` };
   }
 
-  /** Monday's deal (D2): this week's deck, never last week's hand again. */
-  dealWeek(): void {
+  /**
+   * Monday's deal (D2): this week's deck, never last week's hand again.
+   * `midWeek`: dealt for a week already under way, whose P1 is the floor's
+   * (an earned Friday is never taken away by a card standing in for it).
+   */
+  dealWeek(midWeek = false): void {
     const s = this.save;
-    s.deck = deal({ careerSeed: s.seed, week: s.week, floor: s.floor, rung: s.rung, previous: handIds(s.deck), exclude: this.deckExclude() });
+    s.deck = deal({ careerSeed: s.seed, week: s.week, floor: s.floor, rung: s.rung, previous: handIds(s.deck), exclude: this.deckExclude(), midWeek });
     s.left = [];
   }
 

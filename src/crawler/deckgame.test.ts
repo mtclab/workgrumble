@@ -501,3 +501,44 @@ describe('gate 6: save and reload mid-mission', () => {
     expect(press(h, lift(g))).toEqual(['Friday: to the mökki', 'Not yet.']);
   });
 });
+
+describe('a deck dealt for a week already under way', () => {
+  /** A Helpdesk career in Overtime whose week would deal the Printer Uprising as its P1 on a Monday. */
+  function printerCareer(): Headless {
+    const h = newCareer();
+    const s = h.g.save;
+    const floor = 6;
+    const seed = Array.from({ length: 400 }, (_, k) => k + 1).find((x) => deal({ careerSeed: x, week: s.week, floor, rung: 0, previous: [], exclude: [] }).cards[0]?.id === 'printer');
+    expect(seed, 'a career whose Monday would deal the printers').toBeDefined();
+    s.seed = seed!;
+    s.floor = floor;
+    return h;
+  }
+
+  it('an Overtime Helpdesk save from before the deck, its floor\'s boss already beaten: Friday is still open after the load', () => {
+    const h = printerCareer();
+    const s = h.g.save;
+    s.floorState = { ...s.floorState, floor: s.floor, bossDone: true };
+    expect(h.g.p1Done(), 'Friday was open when it was saved').toBe(true);
+    const raw = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
+    delete raw.deck;
+    const back = headless(normalizeSave(raw)!);
+    back.g.loadWorld(true);
+    expect(back.g.p1Done(), 'Friday is still open').toBe(true);
+    expect(press(back, lift(back.g))).toContain('Friday: to the mökki');
+    const p1 = back.g.save.deck.cards.find((c) => c.p1)!;
+    expect(p1.id, 'the floor is the week\'s P1').toBe(FLOOR_P1);
+  });
+
+  it('a deck that did not read back, mid-week: the same', () => {
+    const h = printerCareer();
+    const s = h.g.save;
+    s.floorState = { ...s.floorState, floor: s.floor, bossDone: true };
+    const raw = JSON.parse(JSON.stringify(s)) as Record<string, unknown>;
+    raw.deck = { week: 'broken' };
+    const back = headless(normalizeSave(raw)!);
+    back.g.loadWorld(true);
+    expect(back.g.p1Done(), 'Friday is still open').toBe(true);
+    expect(back.g.save.deck.cards[0]?.id).toBe(FLOOR_P1);
+  });
+});
