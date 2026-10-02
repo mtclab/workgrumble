@@ -197,6 +197,11 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     const fine = newSave(7919);
     fine.standing.staff = -39;
     expect(hostiles(hubFor(fine))).toEqual([]);
+    // Not on induction day: the morning is Morag's (only her dummy takes a hit).
+    const morning = newSave(7919);
+    morning.standing.staff = -50;
+    morning.induction = { step: 'look', looked: 0, sanityTold: false };
+    expect(hostiles(hubFor(morning)).map((a) => a.kind)).toEqual(['dummy']);
   });
 
   it('a story choice that makes an enemy: they turn up announced, not swinging', () => {
@@ -369,6 +374,20 @@ describe('gate 4: walk-ups', () => {
     expect(hub.walkingUp()).toBeNull();
     expect(g.save.queue.map((q) => q.from)).toContain(third.name);
     expect(hostiles(h)).toEqual(w.resolved ? [] : [w]);
+  });
+
+  it('nobody walks up while the induction runs, even once the floor is awake for its last steps', () => {
+    const save = newSave(7919);
+    save.induction = { step: 'ticket', looked: 0, sanityTold: false };
+    const h = hubFor(save);
+    expect(h.g.inductionDay).not.toBeNull();
+    expect(h.g.floorAwake).toBe(true);
+    h.run(200);
+    expect(h.g.hub?.debug().walker).toBeNull();
+    expect(h.g.save.hub.clock, 'the hub\'s week starts after the morning').toBe(0);
+    h.g.endInduction('finish', false);
+    h.run(130);
+    expect(h.g.save.hub.clock).toBeGreaterThan(129);
   });
 
   it('a walk-up comes every 60 to 120 s of hub time, one at a time', { timeout: 60_000 }, () => {

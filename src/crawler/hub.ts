@@ -197,7 +197,7 @@ export class Hub implements HubCtx {
   monday(): void {
     const g = this.g;
     const s = g.save;
-    if (s.standing.staff >= GRUDGE_STAFF) return;
+    if (s.standing.staff >= GRUDGE_STAFF || g.inductionDay !== null) return;
     const pool = g.actors.filter((a) => a.colleague && !a.hostile && !a.resolved);
     if (pool.length === 0) return;
     const a = new Rng((hubSeed(s.seed) ^ Math.imul(s.week, 7919)) >>> 0).pick(pool);
@@ -216,8 +216,8 @@ export class Hub implements HubCtx {
   /** One frame on the hub: its clock, the walk-ups, and the managers' noses. */
   update(dt: number): void {
     const g = this.g;
-    // Induction day: the floor is asleep, nobody comes over or notices anything.
-    if (!g.floorAwake) return;
+    // Induction day: the morning is Morag's. Nobody comes over or notices anything until it is done.
+    if (!g.floorAwake || g.inductionDay !== null) return;
     const h = g.save.hub;
     h.clock += dt;
     this.smellTest();
