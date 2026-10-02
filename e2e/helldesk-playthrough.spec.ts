@@ -240,17 +240,30 @@ async function standAt(page: Page, kind: string, prompt: string | RegExp): Promi
  * incident from the hub, or back down to the hub from it. Lands in play there.
  */
 async function lift(page: Page, button: string, to: 'office' | 'hub'): Promise<void> {
-  await standAt(page, 'elevator', 'Take the lift');
-  await pressE(page, 'dialogue');
+  await liftOpen(page);
   await page.locator('.dlg-opt', { hasText: button }).click();
   await expect.poll(async () => (await save(page)).location, { timeout: 120_000 }).toBe(to);
   await settle(page);
 }
 
+/** In front of the lift with its buttons up (E, the real key); a call that rang first is answered, and E pressed again. */
+async function liftOpen(page: Page): Promise<void> {
+  await standAt(page, 'elevator', 'Take the lift');
+  await expect.poll(async () => {
+    const now = await screen(page);
+    if (now === 'play') await page.keyboard.press('e');
+    else if (now === 'dialogue' && !((await page.locator('.dlg').textContent()) ?? '').startsWith('The lift')) {
+      await page.locator('.dlg-opt.is-sel').first().click({ timeout: 5_000 }).catch(() => undefined);
+      await settle(page);
+      await standAt(page, 'elevator', 'Take the lift');
+    }
+    return (await screen(page)) === 'dialogue' && ((await page.locator('.dlg').textContent()) ?? '').startsWith('The lift');
+  }, { timeout: 60_000, intervals: [600] }).toBe(true);
+}
+
 /** The lift's buttons as offered (E on it), closed again with Not yet. */
 async function liftButtons(page: Page): Promise<string[]> {
-  await standAt(page, 'elevator', 'Take the lift');
-  await pressE(page, 'dialogue');
+  await liftOpen(page);
   const labels = (await page.locator('.dlg-opt').allTextContents()).map((l) => l.replace(/^\d+\.\s*/, '').trim());
   await page.locator('.dlg-opt', { hasText: 'Not yet.' }).click();
   await settle(page);

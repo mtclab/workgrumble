@@ -159,17 +159,29 @@ async function capture(page: Page): Promise<void> {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 }
 
+/** In front of the lift with its buttons up (E, the real key); a call that rang first is answered, and E pressed again. */
+async function liftOpen(page: Page): Promise<void> {
+  const stand = async (): Promise<void> => {
+    await settle(page);
+    await capture(page);
+    expect(await page.evaluate(() => (window as unknown as W).__helldesk.standAt('elevator'))).toBe(true);
+    await expect(page.locator('.hud-prompt')).toContainText('Take the lift');
+  };
+  await stand();
+  await expect.poll(async () => {
+    const now = await screen(page);
+    if (now === 'play') await page.keyboard.press('e');
+    else if (now === 'dialogue' && !((await page.locator('.dlg').textContent()) ?? '').startsWith('The lift')) {
+      await page.locator('.dlg-opt.is-sel').first().click({ timeout: 5_000 }).catch(() => undefined);
+      await stand();
+    }
+    return (await screen(page)) === 'dialogue' && ((await page.locator('.dlg').textContent()) ?? '').startsWith('The lift');
+  }, { timeout: 60_000, intervals: [600] }).toBe(true);
+}
+
 /** E (the real key) on the lift in front of you, and the button labelled `button`. */
 async function takeLift(page: Page, button: string | RegExp, to: string): Promise<void> {
-  await settle(page);
-  await capture(page);
-  expect(await page.evaluate(() => (window as unknown as W).__helldesk.standAt('elevator'))).toBe(true);
-  await expect(page.locator('.hud-prompt')).toContainText('Take the lift');
-  await expect.poll(async () => {
-    if ((await screen(page)) === 'play') await page.keyboard.press('e');
-    return screen(page);
-  }, { timeout: 60_000, intervals: [600] }).toBe('dialogue');
-  await expect(page.locator('.dlg')).toContainText('The lift');
+  await liftOpen(page);
   await page.locator('.dlg-opt', { hasText: button }).click();
   await expect.poll(async () => (await where(page)).location, { timeout: 120_000 }).toBe(to);
   await settle(page);
@@ -177,13 +189,7 @@ async function takeLift(page: Page, button: string | RegExp, to: string): Promis
 
 /** The lift's buttons, as offered, without pressing any (Not yet. closes it). */
 async function liftButtons(page: Page): Promise<string[]> {
-  await settle(page);
-  await capture(page);
-  expect(await page.evaluate(() => (window as unknown as W).__helldesk.standAt('elevator'))).toBe(true);
-  await expect.poll(async () => {
-    if ((await screen(page)) === 'play') await page.keyboard.press('e');
-    return screen(page);
-  }, { timeout: 60_000, intervals: [600] }).toBe('dialogue');
+  await liftOpen(page);
   const labels = (await page.locator('.dlg-opt').allTextContents()).map((l) => l.replace(/^\d+\.\s*/, '').trim());
   await page.locator('.dlg-opt', { hasText: 'Not yet.' }).click();
   await settle(page);
