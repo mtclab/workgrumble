@@ -141,7 +141,7 @@ describe('gate 2: your workstation, and taking cards on', () => {
     const h = newCareer();
     withDeck(h, [{ id: 'stapler', alarm: 'search' }, { id: 'postits', afterHours: true }, { id: 'vendor', alarm: 'cooldown' }]);
     const views = h.g.deckViews();
-    expect(views[0]).toMatchObject({ p1: true, title: 'Floor B1: the major incident (Derek)', afterHours: false });
+    expect(views[0]).toMatchObject({ p1: true, title: 'Floor B1: the major incident (Derek)', afterHours: false, deadline: 'before Friday (it unlocks Friday)' });
     expect(views[1]).toMatchObject({ title: 'The Red Stapler, Recovered', giver: 'Milton (Basement)', coworker: true, size: 'Task', style: 'Sneaky', band: 'Helpdesk', deadline: 'Friday', rule: 'Lose them and they search, then give up.', state: 'offered' });
     expect(views[1]?.pay).toBe('₡120, +₡48 and Management +3, Staff +2 if nobody notices');
     expect(views[2]).toMatchObject({ giver: 'Priya (InfoSec)', afterHours: true, rule: 'Lose them and they search, then give up.' });

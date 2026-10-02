@@ -293,7 +293,7 @@ export function cardView(d: DealtCard, index: number, floor: FloorP1, rapport: R
   if (card === undefined) {
     return {
       index, id: d.id, title: floor.title, giver: 'The Service Desk', coworker: false, rapport: null, size: 'Project', style: 'Loud', band: 'Every band',
-      pay: 'The boss\'s bounty, and Friday', deadline: 'Friday (it opens Friday)', afterHours: false, rule: 'A floor as it always was: everyone hostile on sight.',
+      pay: 'The boss\'s bounty, and Friday', deadline: 'before Friday (it unlocks Friday)', afterHours: false, rule: 'A floor as it always was: everyone hostile on sight.',
       place: floor.place, state: d.state, inPerson: false, p1: true,
     };
   }
