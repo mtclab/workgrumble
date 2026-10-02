@@ -1,6 +1,6 @@
 # Helldesk 0.3.0 "the RPG pass" - design proposal
 
-Status: PROPOSAL for discussion. Nothing here is decided. Owner decisions are collected in section 8.
+Status: PROPOSAL, with owner decisions D1-D9 recorded in section 8a (2026-10-02). Sections that conflict with 8a are superseded by it.
 
 Naming note: `docs/SPEC_030.md` in the repo is the OFFICE SIM's 0.3.0 (interruptions). Helldesk versions on its own line (`docs/SPEC_CHANGELOG.md`: 0.2.0). This spec should land as `docs/SPEC_HELLDESK_030.md` to avoid the clash.
 
@@ -396,6 +396,24 @@ Each slice's gate includes the standing rule: every bug found gets a permanent a
 - **Scope.** S1-S4 are the release; S5-S7 could slip to 0.3.x without breaking the promise. The 12 cards are a starter; the deck needs ~25 for Overtime not to repeat.
 - **Open**: should the hub be one persistent floor per week (as proposed) or one persistent BUILDING (the same hub every week, only the deck changes)? A persistent hub would let the office remember furniture, damage and people across weeks (the team already persists by name); it costs the theme-per-floor variety. Not needed for 0.3.0.
 - **Open**: do bosses stay one per week, or do P1 cards sometimes end without a boss (a war room, a cutover)? Proposal: one boss per week for floors 0-4 (the story needs them), Overtime alternates.
+
+## 8a. Owner decisions (2026-10-02, DECIDED)
+
+These supersede the recommendations in section 8 where they differ.
+
+| # | Decided |
+|---|---|
+| D1 | **Office hub.** You talk to coworkers there and get tasks and projects at your workstation (WorkgrumbleOS), in different sizes and difficulties. The mokki stays the weekend. |
+| D2 | **A random deck each week, with the P1 kept.** Every week deals a different random mix of missions (size, style, giver, after-hours or not) plus random events. One major incident (P1) is always on the board and unlocks Friday. |
+| D3 | **Intern only** on sneaky missions; the team can come on loud ones. |
+| D4 | **Attacking a neutral colleague is allowed and brings a reaction**: witnesses, HR, the alarm. |
+| D5 | **More disguises than three.** A disguise set of gear items, each fooling specific groups. The full outfit system stays later. |
+| D6 | **After-hours missions** are a variant any giver can offer. Pay depends on who gives the mission: some pay more for after hours, some do not. |
+| D7 | **The alarm rule varies by mission**, so missions do not all play the same. Each card carries its own rule: for example one-way, searchers who calm back to Noticed after a visible countdown, or a full cool-down. The card says which. |
+| D8 | **One persistent hub floor that you decorate**, including shared spaces such as the kitchen and lobby. Decor sticks across weeks. Variety comes from the mission maps, which are generated fresh. Boss and P1 missions give special items, some with percentage or other buffs, and trophies for the hub. |
+| D9 | **Plan everything (S1-S7).** S1-S4 is still the line below which it is not the RPG pass. |
+
+Consequences to design in S1/S2: the hub persists (furniture, decor, damage, people) in the save; today's floor-per-week climb becomes where missions take you (the story floors are mission locations); decor items need slots and a placement mode; percentage buffs go through the existing derived stats (state.ts derive), never as one-off hacks.
 
 ## 8. Owner decisions needed (with my recommendation)
 
