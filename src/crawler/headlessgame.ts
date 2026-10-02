@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { updateProjectiles } from './combat';
 import type { DialogueNode } from './dialogue';
 import { Game } from './game';
-import { flowField } from './level';
+import { Input } from './input';
+import { Player } from './player';
 import { Rng } from './rng';
 import { DEFAULT_KEYS, DEFAULT_SETTINGS } from './settings';
 import { derive, type SaveState } from './state';
@@ -10,7 +10,7 @@ import { derive, type SaveState } from './state';
 /**
  * Test support: a Game with no screen (no WebGL in a unit test). The real
  * world-building, people and rules run on it - `loadHub`, `loadFloor`, the
- * lift, the hub's hostility, the AI frame by frame - while the renderer, the
+ * lift, the hub's hostility, and every frame through `Game.step` itself - while the renderer, the
  * HUD and the menus are stand-ins that record what they were asked to show.
  *
  * The test file still mocks what needs a canvas: `./textures` (speech
@@ -25,7 +25,11 @@ export interface Headless {
   readonly dialogues: DialogueNode[];
   /** Sanity lost, by the game time it was lost at (`run` records it). */
   readonly hurts: { readonly t: number; readonly lost: number }[];
-  /** Advance the world `seconds` of game time: the people, the hub, the flying things. Calls `each` every frame. */
+  /**
+   * Run `seconds` worth of frames of the production loop (`Game.step`, the
+   * balance bot's loop). Calls `each` after every frame. Like the game, a
+   * frame with a dialogue or menu up does not move the clock: answer it.
+   */
   run(seconds: number, each?: () => void): void;
   /** Answer the dialogue that is up with the option labelled `label` (as a click would): what it opens next, or null when it closes. */
   pick(label: string | RegExp): DialogueNode | null;
@@ -40,26 +44,34 @@ export function headless(save: SaveState): Headless {
   const toasts: string[] = [];
   const dialogues: DialogueNode[] = [];
   const hurts: { t: number; lost: number }[] = [];
+  const scene = new THREE.Scene();
+  const camera = new THREE.PerspectiveCamera();
   const element = { style: {}, classList: { add: noop, remove: noop, toggle: noop }, append: noop, replaceChildren: noop };
   Object.assign(g, {
     save,
     settings: { ...DEFAULT_SETTINGS, keys: { ...DEFAULT_KEYS }, autosave: false, tips: false },
-    scene: new THREE.Scene(),
-    camera: new THREE.PerspectiveCamera(),
+    scene,
+    camera,
     hemi: new THREE.HemisphereLight(),
     sun: new THREE.DirectionalLight(),
     lights: [],
+    carry: new THREE.PointLight(),
     renderer: { getRenderTarget: () => null, setRenderTarget: noop, compileAsync: () => Promise.resolve(), shadowMap: { enabled: false }, toneMappingExposure: 1 },
     pipeline: { bloom: {}, composer: { readBuffer: null } },
     particles: { clear: noop, emit: noop, update: noop },
-    player: { pos: new THREE.Vector3(), yaw: 0, pitch: 0, crouching: false, crouch: 0, outdoor: false, onGround: true, swing: 0, charge: 0, setTool: noop, model: { visible: true } },
+    // The real player (moved, collided and timed by the real frame); only its picture is never drawn.
+    player: new Player(camera, scene),
     hud: {
       toast: (t: string): void => { toasts.push(t); },
       flash: noop, hitFrom: noop, hitAround: noop, tip: noop, showCard: noop, point: noop, pulseSanity: noop, mapOpen: false, root: element,
     },
     os: { hide: noop, open: noop, syncQuality: noop },
     dialogue: { close: noop, show: noop },
-    input: { enabled: true, locked: true, releaseLock: noop, requestLock: noop, hit: () => false, down: () => false, endFrame: noop, mouseDX: 0, mouseDY: 0, wheel: 0 },
+    // The real input sets with no window to listen to: a test presses keys by putting them in `keys` (held) or `pressed` (this frame).
+    input: Object.assign(Object.create(Input.prototype) as Input, {
+      keys: new Set<string>(), pressed: new Set<string>(), mouseDX: 0, mouseDY: 0, wheel: 0, locked: true, enabled: true, releasing: false,
+      attackCode: DEFAULT_KEYS.attack, blockCode: DEFAULT_KEYS.block, requestLock: noop, releaseLock: noop,
+    }),
     overlay: element,
     menuKeys: { open: noop, close: noop },
     compass: { visible: false, update: noop },
@@ -77,6 +89,10 @@ export function headless(save: SaveState): Headless {
     sisuT: 0, invisT: 0, saunaT: 0, slowT: 0, hitStop: 0, hurtFlash: 0, faceT: 0, faceMood: 'normal', shakeAmt: 0,
     attackCd: 0, shoveCd: 0, chargeT: 0, charging: false, swingQueued: false, dryFire: false, blocking: false, rmbT: 0,
     abilityCd: 0, auraSlow: 0, hazardSlow: 0, mark: null, lastVisionDiff: null, headless: true,
+    // The frame's own working state (class field defaults, which Object.create skips).
+    athleticsT: 0, stealthT: 0, stumbleT: 3, withdrawalT: 0, jitterT: 4, stillT: 0, stepIn: 0, busyAt: null, rootReason: '',
+    pauseAfterLoad: false, dustIn: 0, moveDir: new THREE.Vector2(),
+    meterFacts: { step: null, loyly: 0, maxLoyly: 0, runes: 0, ability: false, bac: 0, stomach: 0, caffeine: 0, crash: 0 },
     openDialogue: (node: DialogueNode, after?: () => void): void => {
       dialogues.push(node);
       g.screen = 'dialogue';
@@ -85,18 +101,13 @@ export function headless(save: SaveState): Headless {
   });
   g.derivedCache = derive(save);
   const run = (seconds: number, each?: () => void): void => {
-    const end = g.time + seconds - 1e-9;
-    while (g.time < end) {
-      g.time += DT;
-      g.fieldIn -= DT;
-      if (g.fieldIn <= 0) {
-        g.fieldIn = 0.35;
-        g.field = flowField(g.level, g.player.pos.x, g.player.pos.z, 40);
-      }
+    // The production frame (`Game.step`, what the balance bot drives): the
+    // player's timers, vices, quests, pager, team, the people, the hub, the
+    // flying things, the SLA clocks and the burnout check, in the game's order.
+    const frames = Math.round(seconds / DT);
+    for (let i = 0; i < frames; i++) {
       const before = g.save.sanity;
-      g.updateActors(DT);
-      g.hub?.update(DT);
-      updateProjectiles(g, DT);
+      g.step(DT);
       if (g.save.sanity < before) hurts.push({ t: g.time, lost: before - g.save.sanity });
       each?.();
     }

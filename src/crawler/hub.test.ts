@@ -47,12 +47,25 @@ function graceThenFight(h: Headless, a: Actor): number {
   const before = h.hurts.length;
   const close = (): void => { if (Math.hypot(a.pos.x - h.g.player.pos.x, a.pos.z - h.g.player.pos.z) > 2.5) standBeforeActor(h.g, a, 1.5); };
   close();
-  h.run(20, close);
+  // Frame by frame until the first hit (or 20 s): the fight itself is not the point, and a long one would burn you out.
+  for (let t = 0; t < 20 && h.hurts.length === before; t += DT) h.run(DT, close);
   const hits = h.hurts.slice(before);
   expect(hits.length, `${a.name} comes after you`).toBeGreaterThan(0);
   const first = (hits[0]?.t ?? Infinity) - t0;
   expect(first, `${a.name} does not hit within ${HUB_GRACE} s of turning`).toBeGreaterThan(HUB_GRACE);
   return first;
+}
+
+/**
+ * The phone and the team do not wait for a test: a staffing call or a
+ * mentoring ask that rings while the hub runs is answered (its first
+ * option), as a player would, so the clock keeps going. Then `each`.
+ */
+function answering(h: Headless, each?: () => void): () => void {
+  return () => {
+    while (h.g.screen === 'dialogue') h.pick(/./);
+    each?.();
+  };
 }
 
 /** Somebody whose next swing is due now: without the grace they would hit within half a second of turning. */
@@ -156,7 +169,9 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     expect(h.g.save.hub.hostile).toEqual([{ spawnIndex: m.spawnIndex, reason: 'caught' }]);
     expect(h.g.save.warnings).toBe(1);
     announced(h, m, 'caught you');
+    // Sobered up at once, without the hangover the real vices would hand you for the drop (it lowers max Sanity).
     h.g.save.bac = 0;
+    h.g.save.peakBac = 0;
     h.g.refreshDerived();
     graceThenFight(h, m);
   });
@@ -238,12 +253,14 @@ describe('gate 3: every source turns exactly the right person, announced, and no
       h.pick(/./);
       answered++;
     };
-    h.run(600, answer);
+    h.run(600, answering(h, answer));
     expect(g.save.hub.clock, 'ten minutes of hub time').toBeGreaterThan(599);
     expect(answered, 'people walked up, and were talked to').toBeGreaterThanOrEqual(4);
     expect(hostiles(h), 'nobody turned').toEqual([]);
     expect(h.hurts, 'nobody hit you').toEqual([]);
     // Caught napping, and at the cat pictures: a manager with words, not a fight.
+    // Ten minutes of the trickle filled the Löyly meter: empty it, so this nap is about the manager and not a SUO vision.
+    g.save.loyly = 0;
     const chance = vi.spyOn(fx, 'chance').mockReturnValue(true);
     host.rest(g, false);
     chance.mockRestore();
@@ -310,25 +327,25 @@ describe('gate 4: walk-ups', () => {
       expect(g.actors.filter((a) => hub.seeks(a)).length).toBeLessThanOrEqual(1);
     };
     const reach = (): void => {
-      for (let t = 0; t < 40 && !hub.debug().reached; t += 0.5) h.run(0.5, watch);
+      for (let t = 0; t < 40 && !hub.debug().reached; t += 0.5) h.run(0.5, answering(h, watch));
       expect(hub.debug().reached, 'the walk-up reaches you').toBe(true);
     };
 
     hub.walkUpNow();
-    h.run(DT, watch);
+    h.run(DT, answering(h, watch));
     const w = hub.walkingUp();
     if (w === null) throw new Error('nobody walked up');
     expect(w.hostile).toBe(false);
     // Kept waiting at your side longer than the gap between walk-ups: still the one walk-up.
     reach();
-    h.run(150, watch);
+    h.run(150, answering(h, watch));
     expect(hub.walkingUp(), 'still the same walk-up, nobody else').toBe(w);
     for (let n = 1; n <= IGNORES_TO_TURN; n++) {
       reach();
       ready(w);
       const p = awayFrom(h, w);
       g.player.pos.set(p.x, 0, p.z);
-      h.run(DT, watch);
+      h.run(DT, answering(h, watch));
       expect(g.save.hub.ignores[w.spawnIndex] ?? 0, `ignore ${n}`).toBe(n);
       if (n < IGNORES_TO_TURN) {
         expect(w.hostile, `not yet, after ${n}`).toBe(false);
@@ -343,7 +360,7 @@ describe('gate 4: walk-ups', () => {
 
     // The next one, talked to: resolved, paid, and nobody turned.
     hub.walkUpNow();
-    h.run(DT, watch);
+    h.run(DT, answering(h, watch));
     const next = hub.walkingUp();
     if (next === null) throw new Error('nobody walked up');
     expect(next).not.toBe(w);
@@ -359,14 +376,14 @@ describe('gate 4: walk-ups', () => {
     expect(next.marker).toBeNull();
     expect(g.save.rep).toBeGreaterThan(rep);
     expect(g.save.hub.ignores[next.spawnIndex]).toBeUndefined();
+    h.pick(/./);
 
     // And one asked for a ticket: it goes into your queue, from them.
     hub.walkUpNow();
-    h.run(DT, watch);
+    h.run(DT, answering(h, watch));
     const third = hub.walkingUp();
     if (third === null) throw new Error('nobody walked up');
     reach();
-    h.pick(/./);
     g.promptTarget = { kind: 'actor', a: third };
     interact(g);
     h.pick('Could you raise a ticket for that?');
@@ -386,7 +403,7 @@ describe('gate 4: walk-ups', () => {
     expect(h.g.hub?.debug().walker).toBeNull();
     expect(h.g.save.hub.clock, 'the hub\'s week starts after the morning').toBe(0);
     h.g.endInduction('finish', false);
-    h.run(130);
+    h.run(130, answering(h));
     expect(h.g.save.hub.clock).toBeGreaterThan(129);
   });
 
@@ -394,7 +411,7 @@ describe('gate 4: walk-ups', () => {
     const h = hubFor();
     const starts: number[] = [];
     let last: number | null = null;
-    h.run(500, () => {
+    h.run(500, answering(h, () => {
       const d = h.g.hub?.debug();
       const now = d?.walker ?? null;
       if (now !== null && now !== last) starts.push(h.g.save.hub.clock);
@@ -407,7 +424,7 @@ describe('gate 4: walk-ups', () => {
         h.pick(/Walk them through it/);
         h.pick(/./);
       }
-    });
+    }));
     expect(starts.length).toBeGreaterThanOrEqual(3);
     expect(starts[0]).toBeGreaterThanOrEqual(60);
     expect(starts[0]).toBeLessThanOrEqual(120.1);
