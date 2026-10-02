@@ -322,6 +322,15 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     standBeforeActor(g, m, 6);
     h.run(40, () => { if (Math.hypot(m.pos.x - g.player.pos.x, m.pos.z - g.player.pos.z) > 10) standBeforeActor(g, m, 6); });
     expect(hostiles(h), 'only the manager').toEqual(m.resolved ? [] : [m]);
+    // A story choice that makes an enemy is a source too (announced, like the others): Derek, blamed.
+    host.spawnHostile(g, 'manager', 1, 'Derek (bitter)');
+    const d = hostiles(h).find((a) => a.name === 'Derek (bitter)');
+    if (d === undefined) throw new Error('Derek did not come');
+    announced(h, d, 'coming for you');
+    expect(new Set(hostiles(h)), 'the manager (a breach) and Derek (a story choice), nobody else').toEqual(new Set(m.resolved ? [d] : [m, d]));
+    // Every hostile on the hub's books came from an announced source in the table.
+    for (const e of g.save.hub.hostile) expect(['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story']).toContain(e.reason);
+    expect(g.save.hub.hostile.find((e) => e.spawnIndex === d.spawnIndex)?.reason).toBe('story');
   });
 });
 

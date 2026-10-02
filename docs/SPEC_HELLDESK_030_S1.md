@@ -43,6 +43,7 @@ Every source below is announced before anyone attacks: a toast naming who and wh
 | Attacking a neutral person (D4) | sneak attack exists | Only a deliberate melee swing or shove at a neutral person (nobody hostile in its reach) is the crime; your shots, splash and area effects pass through neutral people (no damage, no crime), and a swing at an enemy does not catch the colleague beside them. The crime: the victim turns hostile, every neutral within 12 m who can see it turns hostile, and HR issues a warning (existing warning path). |
 | Witnessed crime | `vices.ts caughtCheck` | Unchanged, plus the witness is hostile for the rest of the week. |
 | Low Staff standing | grudge | Below -40 Staff, one random worker turns hostile each Monday (announced). |
+| Story choice | story.ts | A story choice that makes an enemy (for example blaming Derek) brings them to the hub, announced like the others. |
 
 Hostility lasts until that person is resolved (talked down or beaten) or until next Monday. Resolved hub people come back next Monday, neutral (they had the weekend).
 
