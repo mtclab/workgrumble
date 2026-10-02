@@ -74,6 +74,11 @@ try {
       return b === null ? null : { name: b.name, hp: b.hp, maxHp: b.maxHp, active: b.bossActive, resolved: b.resolved };
     },
     toBoss: (dist: number): boolean => game.boss !== null && !game.boss.resolved && standBeforeActor(game, game.boss, dist),
+    // A spot `dist` metres in front of somebody on the floor (the hub spec's fight with one of the floor's own people).
+    toPerson: (id: number, dist: number): boolean => {
+      const a = game.actors.find((x) => x.id === id && !x.resolved);
+      return a !== undefined && standBeforeActor(game, a, dist);
+    },
     // A long fight's damage already done: the boss down to `hp` (never up). The last hits are the player's.
     weakenBoss: (hp: number): boolean => {
       const b = game.boss;

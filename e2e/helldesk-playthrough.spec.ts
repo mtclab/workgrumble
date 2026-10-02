@@ -3,17 +3,19 @@ import type { Actor } from '../src/crawler/entities';
 import type { Hazard, Projectile } from '../src/crawler/combat';
 
 /**
- * The shipped path, played (Helldesk 0.2.0): one career's first week on the
- * served build, through the real entry point, the way a player plays it.
+ * The shipped path, played (Helldesk 0.3.0 S1a): one career's first week on
+ * the served build, through the real entry point, the way a player plays it.
  *
- * The keyboard from the title into a new career and the whole induction;
- * a user fought (the wind-up seen, hits landed, resolved) and another talked
- * down with a biscuit; a ticket fixed at a terminal, the queue one shorter;
- * F5 and F9, a slot saved and loaded from pause; the floor-0 boss beaten,
- * the lift to Friday, the sauna and the drive back, Monday on floor 1; a
- * burnout and Clock back in; a quality change made in play and still there
- * after a reload. Each test builds its own career from the title, so each
- * stands alone.
+ * The keyboard from the title into a new career and the whole induction, on
+ * the hub (the career's own floor); the lift up to the week's major incident,
+ * where a user is fought (the wind-up seen, hits landed, resolved) and
+ * another talked down with a biscuit; the lift back down, and a ticket fixed
+ * at a hub terminal, the queue one shorter; F5 and F9, a slot saved and
+ * loaded from pause; the floor-0 boss beaten, the lift to Friday, the sauna
+ * and the drive back, Monday on the hub with floor 1 up the lift; a burnout
+ * and Clock back in; a quality change made in play and still there after a
+ * reload. Each test builds its own career from the title, so each stands
+ * alone.
  *
  * Every stage asserts what the player got - the screen, the HUD's words, the
  * queue, the floor, the save they load - not that a call returned. Real keys
@@ -188,8 +190,8 @@ async function boot(page: Page, inducted: boolean): Promise<void> {
   await expect(page.getByRole('button', { name: 'New career' })).toBeVisible({ timeout: 120_000 });
 }
 
-/** New career with the mouse, the induction skipped, Morag's welcome answered: normal play on floor 0. */
-async function skipToFloor(page: Page, name: string): Promise<void> {
+/** New career with the mouse, the induction skipped, Morag's welcome answered: normal play on the hub, floor 0 up the lift. */
+async function skipToHub(page: Page, name: string): Promise<void> {
   await page.getByRole('button', { name: 'New career' }).click();
   await page.getByLabel('Name on the badge').fill(name);
   await page.getByLabel('Skip the induction').check();
@@ -197,7 +199,7 @@ async function skipToFloor(page: Page, name: string): Promise<void> {
   await page.locator('.dlg-opt').first().click();
   await expect.poll(() => screen(page), { timeout: 120_000 }).toBe('play');
   await settle(page);
-  expect((await save(page)).floor).toBe(0);
+  expect(await save(page)).toMatchObject({ floor: 0, location: 'hub' });
 }
 
 /**
@@ -231,6 +233,28 @@ async function standAt(page: Page, kind: string, prompt: string | RegExp): Promi
   await capture(page);
   expect(await page.evaluate((k) => (window as unknown as W).__helldesk.standAt(k), kind)).toBe(true);
   await expect(page.locator('.hud-prompt')).toContainText(prompt);
+}
+
+/**
+ * The lift (E, the real key, and its button): up to the week's major
+ * incident from the hub, or back down to the hub from it. Lands in play there.
+ */
+async function lift(page: Page, button: string, to: 'office' | 'hub'): Promise<void> {
+  await standAt(page, 'elevator', 'Take the lift');
+  await pressE(page, 'dialogue');
+  await page.locator('.dlg-opt', { hasText: button }).click();
+  await expect.poll(async () => (await save(page)).location, { timeout: 120_000 }).toBe(to);
+  await settle(page);
+}
+
+/** The lift's buttons as offered (E on it), closed again with Not yet. */
+async function liftButtons(page: Page): Promise<string[]> {
+  await standAt(page, 'elevator', 'Take the lift');
+  await pressE(page, 'dialogue');
+  const labels = (await page.locator('.dlg-opt').allTextContents()).map((l) => l.replace(/^\d+\.\s*/, '').trim());
+  await page.locator('.dlg-opt', { hasText: 'Not yet.' }).click();
+  await settle(page);
+  return labels;
 }
 
 /** E (the real key) until the screen leaves play for `to`; a call that rang in between is answered first. */
@@ -570,7 +594,12 @@ test('first day: the keyboard from the title, the induction, a fight, a talk-dow
   expect(await page.evaluate(() => (window as unknown as W).__crawler.floorAwake)).toBe(true);
   expect(await page.evaluate(() => (window as unknown as W).__crawler.settings.inductionDone)).toBe(true);
   for (const label of ['SANITY', 'REP', 'PROMILLE', 'CAFFEINE']) await expect(page.locator('.hud-bar')).toContainText(label);
-  expect((await save(page)).floor).toBe(0);
+  // The morning was on the hub; floor 0 is up the lift.
+  expect(await save(page)).toMatchObject({ floor: 0, location: 'hub' });
+
+  // The fights are upstairs: the lift to the week's major incident.
+  await lift(page, 'Floor B1: the major incident', 'office');
+  expect(await save(page)).toMatchObject({ floor: 0, location: 'office' });
 
   // A fight: a user squares up, winds up (the swing is announced), and the stapler answers.
   await settle(page);
@@ -595,6 +624,9 @@ test('first day: the keyboard from the title, the induction, a fight, a talk-dow
 
   // Another one, talked down instead.
   await talkDown(page);
+
+  // Back down to the hub, where the desk work is.
+  await lift(page, 'Back to the hub', 'hub');
 
   // A ticket fixed at a terminal (WorkgrumbleOS): the queue one shorter.
   await standAt(page, 'terminal', 'Log on');
@@ -627,7 +659,9 @@ test('first day: the keyboard from the title, the induction, a fight, a talk-dow
 
 test('saves: F5 and F9 put the career back as it was; a slot saved from pause loads from pause', async ({ page }) => {
   await boot(page, true);
-  await skipToFloor(page, 'Sam Saves');
+  await skipToHub(page, 'Sam Saves');
+  // Up to the floor where there is somebody to talk down.
+  await lift(page, 'Floor B1: the major incident', 'office');
 
   // Walk a little into the floor, then F5.
   await capture(page);
@@ -652,6 +686,7 @@ test('saves: F5 and F9 put the career back as it was; a slot saved from pause lo
   expect(now.consumables.biscuits).toBe(quick.consumables.biscuits);
   expect(now.rep).toBe(quick.rep);
   expect(now.floor).toBe(0);
+  expect(now.location).toBe('office');
   // Position: a save keeps no position, so every load (F9 included) stands
   // the player at the floor's start, the lift lobby - not where F5 was pressed.
   expect((await whereAmI(page)).fromStart).toBeLessThan(0.5);
@@ -685,18 +720,20 @@ test('saves: F5 and F9 put the career back as it was; a slot saved from pause lo
   expect(now.stats.resolvedPeace).toBe(quick.stats.resolvedPeace + 1);
 });
 
-test('the week: the boss of floor 0, the lift to Friday, the sauna and the drive back, Monday on floor 1', async ({ page }) => {
+test('the week: the boss of floor 0 up the lift, the lift to Friday, the sauna and the drive back, Monday on the hub with floor 1 up the lift', async ({ page }) => {
   await boot(page, true);
-  await skipToFloor(page, 'Fran Friday');
+  await skipToHub(page, 'Fran Friday');
   const monday = await save(page);
   expect(monday.week).toBe(1);
+  await expect(page.locator('.hud-quests')).toContainText('MAJOR INCIDENT: Derek');
 
-  // The lift will not go while the major incident stands.
+  // The lift will not go to Friday while the major incident stands: on the hub it goes up to it.
+  expect(await liftButtons(page)).toEqual(['Floor B1: the major incident', 'Not yet.']);
+  await lift(page, 'Floor B1: the major incident', 'office');
   const derek = await boss(page);
   expect(derek).toMatchObject({ name: 'Derek', resolved: false });
-  await standAt(page, 'elevator', 'Lift locked');
-  await page.keyboard.press('e');
-  await expect(page.locator('.hud-toasts')).toContainText('The lift is locked while Derek is unresolved');
+  // Upstairs it goes back down, and still not to Friday.
+  expect(await liftButtons(page)).toEqual(['Back to the hub', 'Not yet.']);
   expect(await screen(page)).toBe('play');
 
   // The fight, in the corner office. Most of it is skipped (the boss starts
@@ -716,7 +753,9 @@ test('the week: the boss of floor 0, the lift to Friday, the sauna and the drive
   // The lift: Friday, and the drive up to the mökki.
   const friday = await save(page);
   await standAt(page, 'elevator', 'Take the lift');
-  await pressE(page, 'transition');
+  await pressE(page, 'dialogue');
+  await page.locator('.dlg-opt', { hasText: 'Friday: to the mökki' }).click();
+  await expect.poll(() => screen(page)).toBe('transition');
   await expect(page.locator('.lift-name')).toContainText('Friday 17:00');
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect.poll(async () => (await save(page)).location, { timeout: 120_000 }).toBe('mokki');
@@ -758,17 +797,22 @@ test('the week: the boss of floor 0, the lift to Friday, the sauna and the drive
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect.poll(async () => (await save(page)).floor, { timeout: 120_000 }).toBe(1);
   await settle(page);
-  const floor1 = await save(page);
-  expect(floor1).toMatchObject({ floor: 1, location: 'office', week: 2 });
+  // Monday lands on the hub; this week's major incident is floor 1, up the lift.
+  const week2 = await save(page);
+  expect(week2).toMatchObject({ floor: 1, location: 'hub', week: 2 });
+  await expect(page.locator('.hud-floor')).toContainText('The hub');
+  await expect(page.locator('.hud-quests')).toContainText('MAJOR INCIDENT: Karen');
+  expect(await liftButtons(page)).toEqual(['Floor 1: the major incident', 'Not yet.']);
+  await lift(page, 'Floor 1: the major incident', 'office');
   await expect(page.locator('.hud-floor')).toContainText('Floor 1');
-  // A new floor, a new major incident, and the lift locked again.
+  // A new floor, a new major incident, and Friday shut again.
   expect(await boss(page)).toMatchObject({ name: 'Karen', resolved: false });
   expect(await page.evaluate(() => (window as unknown as W).__crawler.elevatorOpen)).toBe(false);
 });
 
 test('a burnout and Clock back in; a quality change made in play is kept', async ({ page }) => {
   await boot(page, true);
-  await skipToFloor(page, 'Bo Burnout');
+  await skipToHub(page, 'Bo Burnout');
   const before = await save(page);
   expect(before.stats.burnouts).toBe(0);
 
@@ -788,12 +832,13 @@ test('a burnout and Clock back in; a quality change made in play is kept', async
   expect(s.stats.burnouts).toBe(1);
   expect(s.rep).toBeLessThan(before.rep);
 
-  // Clock back in: the floor again, whole, the burnout on the record.
+  // Clock back in: on the hub again (where it happened), at its lift, the burnout on the record.
   await expect(page.getByRole('button', { name: /Clock back in/ })).toBeFocused();
   await page.keyboard.press('Enter');
   await expect.poll(() => screen(page), { timeout: 120_000 }).toBe('play');
   s = await save(page);
   expect(s.floor).toBe(0);
+  expect(s.location).toBe('hub');
   expect(s.stats.burnouts).toBe(1);
   expect(s.sanity).toBe(await page.evaluate(() => (window as unknown as W).__crawler.derivedCache.maxSanity));
   expect((await whereAmI(page)).fromStart).toBeLessThan(0.5);

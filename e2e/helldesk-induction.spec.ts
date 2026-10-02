@@ -3,7 +3,9 @@ import { expect, type Page, test } from '@playwright/test';
 /**
  * Induction day (docs/SPEC_INDUCTION.md), on the served build.
  *
- * A new career starts a guided first morning in the lobby: one card at a
+ * A new career starts a guided first morning in the hub's lobby (the
+ * career's own floor, 0.3.0 S1a), and Morag ends it pointing at the lift
+ * up to the week's major incident: one card at a
  * time, each moving on only when the player has done what it says. These
  * play the whole of it from New career to normal play, the way a player
  * would - the mouse to look, W to walk, E to talk, the left button to swing
@@ -51,7 +53,7 @@ interface Crawler {
   floorAwake: boolean;
   input: { locked: boolean };
   settings: { inductionDone: boolean };
-  save: { sanity: number };
+  save: { sanity: number; location: string; week: number };
 }
 
 interface Handles {
@@ -254,7 +256,8 @@ test('a new career plays the whole induction, one card at a time, and then the f
   await page.getByRole('button', { name: 'Back' }).click();
   await newCareer(page, false);
 
-  // The lobby is set for the morning, and the floor is asleep.
+  // The hub's lobby is set for the morning, and the floor is asleep.
+  expect(await page.evaluate(() => { const s = (window as unknown as W).__crawler.save; return { location: s.location, week: s.week }; })).toEqual({ location: 'hub', week: 1 });
   let st = await induction(page);
   expect(st.props).toHaveLength(3);
   expect(st.terminal).toBe(true);
@@ -339,6 +342,7 @@ test('a new career plays the whole induction, one card at a time, and then the f
   await page.keyboard.press('m');
   await expect(page.locator('.dlg-opt').first()).toBeVisible({ timeout: 60_000 });
   await expect(page.locator('.dlg-text')).toContainText('lift');
+  await expect(page.locator('.dlg-text')).toContainText('major incident');
   await page.locator('.dlg-opt').first().click();
 
   // Normal play: no card, no props, no lobby computer, the floor awake, and remembered for next time.
@@ -352,6 +356,8 @@ test('a new career plays the whole induction, one card at a time, and then the f
   expect(await page.evaluate(() => (window as unknown as W).__crawler.floorAwake)).toBe(true);
   expect(await page.evaluate(() => (window as unknown as W).__crawler.settings.inductionDone)).toBe(true);
   expect(await page.evaluate((k) => (JSON.parse(localStorage.getItem(k) ?? '{}') as { inductionDone?: boolean }).inductionDone, SETTINGS_KEY)).toBe(true);
+  // Still on the hub: the lift is the player's to take.
+  expect(await page.evaluate(() => (window as unknown as W).__crawler.save.location)).toBe('hub');
 });
 
 test('with "Skip the induction" ticked, a new career lands straight in normal play', async ({ page }) => {
@@ -373,6 +379,8 @@ test('with "Skip the induction" ticked, a new career lands straight in normal pl
   await expect(page.locator('.hud-bar .is-hidden')).toHaveCount(0);
   for (const label of ['SANITY', 'REP', 'LÖYLY', 'PROMILLE', 'CAFFEINE']) await expect(page.locator('.hud-bar')).toContainText(label);
   expect(await page.evaluate(() => (window as unknown as W).__crawler.floorAwake)).toBe(true);
+  // Skipped, a new career lands on the hub.
+  expect(await page.evaluate(() => (window as unknown as W).__crawler.save.location)).toBe('hub');
 });
 
 test('a reload mid-induction comes back at the same step, with the lobby set for it', async ({ page }) => {
