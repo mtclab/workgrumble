@@ -50,7 +50,7 @@ interface Level {
   floor: Uint8Array;
   solid: Uint8Array;
   start: { x: number; z: number };
-  interactables: { id: number; kind: string; used: boolean }[];
+  interactables: { id: number; kind: string; used: boolean; x: number; z: number }[];
 }
 
 interface Crawler {
@@ -422,28 +422,65 @@ test('gate 10: the lift up to the major incident, a fight there, back down to th
   await settle(page);
   // And the boss, some way into its fight (its first nine-tenths skipped).
   expect(await page.evaluate(() => (window as unknown as W).__helldesk.weakenBoss(60))).toBe(true);
+  // A water cooler drunk dry (E, the real key, on the one in front of you).
+  await settle(page);
+  await capture(page);
+  expect(await page.evaluate(() => (window as unknown as W).__helldesk.standAt('cooler')), 'a cooler on the floor').toBe(true);
+  await expect(page.locator('.hud-prompt')).toContainText('Water cooler');
+  const cooler = await page.evaluate(() => {
+    const g = (window as unknown as W).__crawler;
+    const it = g.level.interactables.find((x) => x.kind === 'cooler' && !x.used && Math.hypot(x.x - g.player.pos.x, x.z - g.player.pos.z) < 3);
+    return it?.id ?? -1;
+  });
+  expect(cooler).toBeGreaterThanOrEqual(0);
+  await page.keyboard.press('e');
+  await expect.poll(() => page.evaluate((id) => (window as unknown as W).__crawler.level.interactables.find((x) => x.id === id)?.used ?? false, cooler), { timeout: 30_000 }).toBe(true);
   const left = await page.evaluate(() => {
     const g = (window as unknown as W).__crawler;
     return { boss: g.boss?.hp ?? -1, resolved: [...g.save.floorState.resolved], used: [...g.save.floorState.used] };
   });
   expect(left.resolved).toContain(target.spawnIndex);
+  expect(left.used, 'the cooler is on the floor\'s books').toContain(cooler);
 
   await takeLift(page, 'Back to the hub', 'hub');
   await expect(page.locator('.hud-floor')).toContainText('The hub');
   expect(await page.evaluate(() => (window as unknown as W).__crawler.actors.some((a) => a.hostile && !a.resolved)), 'the hub is calm').toBe(false);
 
   await takeLift(page, 'Floor B1: the major incident', 'office');
-  const back = await page.evaluate((idx) => {
+  const back = await page.evaluate(({ idx, cooler: id }) => {
     const g = (window as unknown as W).__crawler;
     return {
       boss: g.boss?.hp ?? -1,
       resolved: [...g.save.floorState.resolved],
       used: [...g.save.floorState.used],
       gone: !g.actors.some((a) => a.spawnIndex === idx && !a.resolved),
+      // The rebuilt floor's own cooler, in the live level: not just the save's list.
+      coolerUsed: g.level.interactables.find((x) => x.id === id)?.used ?? null,
     };
-  }, target.spawnIndex);
+  }, { idx: target.spawnIndex, cooler });
   expect(back.boss, 'the boss as it was left').toBe(left.boss);
   expect(back.resolved).toEqual(left.resolved);
   expect(back.used).toEqual(left.used);
   expect(back.gone, 'whoever was resolved stays resolved').toBe(true);
+  expect(back.coolerUsed, 'the rebuilt cooler is still empty').toBe(true);
+  // And it says so, to the player in front of it (just inside an open neighbouring cell, facing it).
+  expect(await page.evaluate((id) => {
+    const g = (window as unknown as W).__crawler;
+    const lv = g.level;
+    const it = lv.interactables.find((x) => x.id === id);
+    if (it === undefined) return false;
+    for (const [ox, oz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const cx = Math.floor((it.x + ox * 2) / 2);
+      const cz = Math.floor((it.z + oz * 2) / 2);
+      const i = cz * lv.w + cx;
+      if (cx < 0 || cz < 0 || cx >= lv.w || cz >= lv.h || lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
+      g.player.pos.x = it.x + ox * 1.4;
+      g.player.pos.z = it.z + oz * 1.4;
+      // The player faces (-sin yaw, -cos yaw): back towards the cooler.
+      g.player.yaw = Math.atan2(ox, oz);
+      return true;
+    }
+    return false;
+  }, cooler), 'a spot in front of the cooler').toBe(true);
+  await expect(page.locator('.hud-prompt')).toContainText('Water cooler (empty)', { timeout: 30_000 });
 });
