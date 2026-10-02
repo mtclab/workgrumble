@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { cardView, coworkerCard, deal, type DealInput, DECK_SIZE, type Deck, deckCard, FLOOR_P1, handIds, payRate, rulesFor, STORY_FLOORS } from './deck';
 import { FINAL_FLOOR } from './game';
+import { headless } from './headlessgame';
 import { ALARM_WORDS, BAND_RANK, rungBand } from './mission';
 import { GIVERS, POOL } from './missions';
+import { newSave } from './state';
 
 /**
  * The weekly deck (docs/SPEC_HELLDESK_030_S1.md, S1b gate 1, and the deal's
@@ -160,5 +162,57 @@ describe('the Printer Uprising as the week\'s P1', () => {
     expect(printer, 'it does happen').toBeGreaterThan(0);
     // Never in the hand: it is a P1.
     for (const seed of SEEDS) for (const d of career(seed, 0)) expect(handIds(d)).not.toContain('printer');
+  });
+});
+
+describe('gate 1 with the week\'s real exclusions (Game.deckExclude)', () => {
+  /** The cards the game will not deal this week, as it works them out, for a career at `rung` on `floor` with these side quests in hand. */
+  function exclusions(rung: number, floor: number, quests: readonly string[]): string[] {
+    const s = newSave(1);
+    s.rung = rung;
+    s.floor = floor;
+    s.questLog = quests.map((id) => ({ id, stage: 0, progress: 0, done: false, floor }));
+    return headless(s).g.deckExclude();
+  }
+
+  const cases: readonly { what: string; rung: number; floor: number; quests: readonly string[] }[] = [
+    { what: 'Helpdesk, Milton\'s and the intern\'s quests in hand, Marcus the week\'s story person', rung: 0, floor: 0, quests: ['milton', 'intern'] },
+    { what: 'Helpdesk, Milton\'s and the intern\'s quests in hand', rung: 2, floor: 1, quests: ['milton', 'intern'] },
+    { what: 'Specialist, the password and phishing quests in hand', rung: 6, floor: 2, quests: ['passwords', 'phishtest'] },
+    { what: 'Architect, two sibling quests in hand', rung: 11, floor: 3, quests: ['milton', 'intern'] },
+    { what: 'Architect, the other two sibling quests in hand', rung: 10, floor: 6, quests: ['passwords', 'phishtest'] },
+  ];
+
+  it.each(cases)('$what: every week deals the band\'s minimum at least, 200 careers x 8 weeks', ({ rung, floor, quests }) => {
+    const exclude = exclusions(rung, floor, quests);
+    for (const id of quests) {
+      const card = POOL.find((c) => c.sibling === id);
+      if (card !== undefined) expect(exclude, `${card.id} retells ${id}`).toContain(card.id);
+    }
+    const band = rungBand(rung);
+    const [lo, hi] = DECK_SIZE[band];
+    for (const seed of SEEDS) {
+      let previous: string[] = [];
+      for (let week = 1; week <= WEEKS; week++) {
+        const d = deal({ careerSeed: seed, week, floor, rung, previous, exclude });
+        const at = `seed ${seed} week ${week}`;
+        expect(d.cards.length, `${at}: ${band} deals at least ${lo}`).toBeGreaterThanOrEqual(lo);
+        expect(d.cards.length, `${at}: and at most ${hi}`).toBeLessThanOrEqual(hi);
+        for (const id of handIds(d)) expect(exclude, `${at}: ${id} is not excluded`).not.toContain(id);
+        previous = handIds(d);
+      }
+    }
+  });
+
+  it('the no-repeat rule still holds whenever the minimum leaves room for another hand', () => {
+    const exclude = exclusions(11, 3, ['milton']);
+    for (const seed of SEEDS) {
+      let previous: string[] = [];
+      for (let week = 1; week <= WEEKS; week++) {
+        const d = deal({ careerSeed: seed, week, floor: 3, rung: 11, previous, exclude });
+        if (week > 1) expect(new Set(handIds(d)), `seed ${seed} week ${week}`).not.toEqual(new Set(previous));
+        previous = handIds(d);
+      }
+    }
   });
 });

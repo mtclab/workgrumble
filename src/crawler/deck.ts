@@ -102,7 +102,8 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
  * the same week (and the same week before it) gets the same deck. The P1
  * plus a hand by band, drawn without repeats from the pool at or below the
  * player's band, never all one style (a non-loud and a non-sneaky card
- * whenever the pool allows), never last week's set again; alarm rules dealt
+ * whenever the pool allows), never last week's set again unless the band's
+ * minimum leaves no other hand (the minimum wins); alarm rules dealt
  * per card, two different ones when there are three or more; some after
  * hours; about a third handed over in person by a coworker.
  */
@@ -123,9 +124,13 @@ export function deal(input: DealInput): Deck {
 
   const eligible = POOL.filter((c) => c.p1 !== true && BAND_RANK[c.band] <= BAND_RANK[band] && !excluded.has(c.id));
   const [lo, hi] = DECK_SIZE[band];
-  // At least one card is left out whenever the pool allows, so next week can deal a different set.
-  const room = eligible.length > 1 ? eligible.length - 1 : eligible.length;
-  const want = Math.min(r.int(lo, hi) - 1, room);
+  // The band's minimum comes first, from whatever the week's exclusions leave. Past it, one card is
+  // left out whenever the pool allows, so next week can deal a different set.
+  const least = Math.min(lo - 1, eligible.length);
+  const room = eligible.length > least ? eligible.length - 1 : eligible.length;
+  const want = Math.max(least, Math.min(r.int(lo, hi) - 1, room));
+  // Last week's set again only when the minimum leaves no other hand to deal.
+  const canDiffer = want < eligible.length;
   const previous = [...input.previous];
   const hasNonLoud = eligible.some((c) => c.style !== 'loud');
   const hasNonSneaky = eligible.some((c) => c.style !== 'sneaky');
@@ -135,12 +140,12 @@ export function deal(input: DealInput): Deck {
     const ids = draw.map((c) => c.id);
     if (hasNonLoud && want >= 2 && !draw.some((c) => c.style !== 'loud')) continue;
     if (hasNonSneaky && want >= 2 && !draw.some((c) => c.style !== 'sneaky')) continue;
-    if (want > 0 && sameSet(ids, previous)) continue;
+    if (want > 0 && canDiffer && sameSet(ids, previous)) continue;
     hand = draw;
     break;
   }
   if (hand.length === 0 && want > 0) {
-    // Never reached with the S1b pool (the gate deals 1600 weeks): a deterministic hand that still differs from last week.
+    // Never reached with the S1b pool (the gate deals 1600 weeks a band): a deterministic hand that still differs from last week.
     const rest = eligible.filter((c) => !previous.includes(c.id));
     hand = [...rest, ...eligible.filter((c) => previous.includes(c.id))].slice(0, want);
   }
