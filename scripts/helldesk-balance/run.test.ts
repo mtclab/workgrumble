@@ -7,7 +7,7 @@ const source = readFileSync('scripts/helldesk-balance/run.mjs', 'utf8')
   .replace(/^import .*;\n/gm, '')
   .replaceAll('import.meta.url', "'file:///scripts/helldesk-balance/run.mjs'");
 
-async function run(seed = 1700000000, mission?: string, approach = 'quiet', fault?: string) {
+async function run(seed = 1700000000, mission?: string, approach = 'quiet', fault?: string, extra: Record<string, unknown> = {}) {
   const calls: string[] = [];
   const lines: string[] = [];
   let output = '';
@@ -16,13 +16,18 @@ async function run(seed = 1700000000, mission?: string, approach = 'quiet', faul
     buy: (id: string) => { calls.push(`buy ${id}`); },
     refreshDerived: () => undefined,
     loadFloor: () => { calls.push(`spawn rung ${game.save.rung} seed ${game.save.seed}`); },
+    loadHub: () => { calls.push(`hub rung ${game.save.rung} seed ${game.save.seed}`); },
   };
-  const floors = [0, 1, 2].map((floor) => ({ floor, floorSec: 10, combatSec: 4, combatShare: 0.4, aggroEpisodes: 2 }));
+  const hubShare = typeof extra.hubShare === 'number' ? extra.hubShare : null;
+  const floors = hubShare !== null
+    ? [{ where: 'hub', floor: 0, floorSec: 1200, combatSec: 1200 * hubShare, combatShare: hubShare, aggroEpisodes: 1 }]
+    : [0, 1, 2].map((floor) => ({ floor, floorSec: 10, combatSec: 4, combatShare: 0.4, aggroEpisodes: 2 }));
   const m = { card: mission, seed, seconds: 120, maxTier: 1, detectedAt: null, noticedAt: 24, over: false, finish: 'done', result: { quiet: true, base: 120, bonus: 48, perResolve: 0, repTotal: 168 } };
   const bot = {
     policy: {}, cur: { combatSec: 3, minSanity: 0.9 }, floors: [] as typeof floors, events: [], deaths: [],
     seed: (n: number) => { calls.push(`bot seed ${n}`); },
-    run: (_sec: number, n: number) => { if (fault === 'bot') throw new Error('bot broke'); bot.floors = floors.slice(0, n); m.over = true; return { time: 30 }; },
+    run: (_sec: number, n: number) => { if (fault === 'bot') throw new Error('bot broke'); bot.floors = floors.slice(0, n); m.over = true; bot.ended = hubShare !== null; return { time: 30 }; },
+    ended: false,
   };
   const date = { now: () => 42 };
   const browserContext = {
@@ -54,7 +59,7 @@ async function run(seed = 1700000000, mission?: string, approach = 'quiet', faul
   const context = {
     ...(fault === 'cap' ? { Date: { now: () => ++wallNow } } : {}),
     chromium: { launch: () => ({ newPage: () => page, close: () => { calls.push('closed'); } }) },
-    process: { exitCode: 0, argv: ['node', 'run.mjs', JSON.stringify({ ...(fault === 'cap' ? { wallMinutes: 0.000001 } : {}), name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3, ...(mission ? { mission, approach } : {}) })], env: { OUT: 'result.json' } },
+    process: { exitCode: 0, argv: ['node', 'run.mjs', JSON.stringify({ ...(fault === 'cap' ? { wallMinutes: 0.000001 } : {}), name: 'senior', seed, rung: 6, kit: ['cat6', 'cardigan'], floors: 3, ...(mission ? { mission, approach } : {}), ...(extra.scenario as object ?? {}) })], env: { OUT: 'result.json' } },
     URL,
     missionRecord: runInNewContext(readFileSync('scripts/helldesk-balance/mission-record.mjs', 'utf8').replaceAll('export ', '') + '\nmissionRecord') as unknown,
     readFileSync: () => '',
@@ -115,5 +120,29 @@ describe('mission failure records', () => {
     expect(r.exitCode).toBe(1);
     expect(r.output).toContain(fault === 'cap' ? 'mission did not finish within wall-time cap' : 'mission runner failed before results');
     expect(r.calls.at(-1)).toBe('closed');
+  });
+});
+
+
+describe('a hub-only week', () => {
+  it('stays on the hub (built at the scenario\'s rung), never loads a floor, and reports the 5% gate', async () => {
+    const r = await run(1700000000, undefined, 'quiet', undefined, { scenario: { approach: 'hub-only', hubMinutes: 20 }, hubShare: 0.02 });
+    expect(r.calls).toContain('hub rung 6 seed 1700000000');
+    expect(r.calls.some((c) => c.startsWith('spawn rung'))).toBe(false);
+    expect(JSON.parse(r.output)).toMatchObject({ hubWeek: { combatShare: 0.02, floorSec: 1200, pass: true } });
+    expect(r.lines.some((l) => l.startsWith('hub-only combatShare 0.0200') && l.endsWith('PASS'))).toBe(true);
+    expect(r.exitCode).toBe(0);
+  });
+
+  it('fails the run when the hub is more than 5% fighting', async () => {
+    const r = await run(1700000000, undefined, 'quiet', undefined, { scenario: { approach: 'hub-only' }, hubShare: 0.08 });
+    expect(JSON.parse(r.output)).toMatchObject({ hubWeek: { combatShare: 0.08, pass: false } });
+    expect(r.exitCode).toBe(1);
+  });
+
+  it('is a career\'s approach only, with a positive hub time', async () => {
+    await expect(run(17, 'stapler', 'hub-only')).rejects.toThrow('approach must be quiet, loud or auto');
+    await expect(run(17, undefined, 'quiet', undefined, { scenario: { approach: 'loud' } })).rejects.toThrow('a career\'s approach can only be hub-only');
+    await expect(run(17, undefined, 'quiet', undefined, { scenario: { approach: 'hub-only', hubMinutes: 0 } })).rejects.toThrow('hubMinutes must be positive and finite');
   });
 });

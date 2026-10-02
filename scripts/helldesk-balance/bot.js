@@ -145,7 +145,15 @@
     let i = 0;
     const find = (re) => labels.findIndex((l) => re.test(l));
     const leave = find(/(?:^|\.\s+)(?:Leave\.?$|Heippa\.|Not now\.|Not right now\.|Carry on\.|Leave it\.|Close the lid\.|Not this weekend\.)/);
-    if (/The sauna elf/.test(head)) {
+    if (/^The lift/.test(head)) {
+      // The lift's buttons: Friday when it is open, up to the week's major incident from the hub,
+      // and never anywhere on a hub-only week.
+      const friday = find(/^\d+\. Friday: to the m/);
+      const up = find(/the major incident$/);
+      const stay = find(/Not yet\./);
+      i = B.policy.approach === 'hub-only' ? stay : friday >= 0 ? friday : up >= 0 ? up : stay;
+      if (i < 0) i = opts.length - 1;
+    } else if (/The sauna elf/.test(head)) {
       // One affordable lesson, then back to work, even when training redraws the same menu.
       i = B.policy.buy && conversation.picks === 0 ? 0 : leave;
       if (i < 0) i = opts.length - 1;
@@ -206,7 +214,7 @@
     const s = g.save;
     osT += DT;
     // Work to close and nothing in the queue: pull some from the backlog, like a person would.
-    if (osT < DT * 1.5 && objectives().fix && s.queue.length < 2) { g.pullTickets(); B.cur && (B.cur.pulls = (B.cur.pulls ?? 0) + 1); }
+    if (osT < DT * 1.5 && (objectives().fix || B.policy.approach === 'hub-only') && s.queue.length < 2) { g.pullTickets(); B.cur && (B.cur.pulls = (B.cur.pulls ?? 0) + 1); }
     if (osT < 2 + s.queue.length * 3) return; // reading tickets takes time
     for (const q of [...s.queue]) {
       const fixes = H.fixesFor(q.t);
@@ -227,6 +235,7 @@
       s.questLog.forEach((q, idx) => { if (q.staffed && !q.done && !q.failed && !q.delegated && !q.pushed) { const m = g.pushBack(idx); if (m.startsWith('✔')) B.cur.pushOk++; } });
     }
     osT = 0;
+    B.lastDesk = g.time;
     g.close();
     B.cur.terminalVisits++;
   }
@@ -380,10 +389,26 @@
     }
   }
 
+  /** On the hub: careers take the lift up to the week's major incident; a hub-only week never does. */
+  function hubTarget() {
+    if (B.policy.approach === 'hub-only') return null;
+    const lift = g.level.interactables.find((i) => i.kind === 'elevator');
+    return lift ? { kind: 'use', it: lift, x: lift.x, z: lift.z } : null;
+  }
+
+  /** Somebody walking up to us with a problem: go and talk to them (a hub-only week answers every one). */
+  function walkUp() {
+    const d = H.hub?.();
+    if (!d || d.walker === null) return null;
+    const a = g.actors.find((x) => x.id === d.walker && !x.resolved && !x.hostile);
+    return a ? { kind: 'talk', actor: a, walkUp: true } : null;
+  }
+
   function pickTarget() {
     if (mission) return missionTarget(mission);
     const s = g.save, d = g.derivedCache;
     const ob = objectives();
+    if (s.location === 'hub' && B.policy.approach !== 'hub-only') return hubTarget();
     const low = s.sanity < d.maxSanity * 0.3;
     // 0. Hurt and cornered: back off toward a healer, or away from trouble.
     if (low) {
@@ -400,9 +425,12 @@
       const lady = nearestOf(g.actors.filter((a) => a.kind === 'healer' && !a.resolved));
       if (lady) return { kind: 'goto', x: lady.pos.x, z: lady.pos.z, near: 2.5, actor: lady, wait: 6 };
     }
-    // 3. Tickets and terminal objectives.
+    // 2b. On the hub, whoever walks up is answered before they have to ask twice.
+    if (s.location === 'hub') { const w = walkUp(); if (w) return w; }
+    // 3. Tickets and terminal objectives (a hub-only week works its queue as the day's work).
     const slaLow = s.queue.some((q) => q.sla < 45);
-    if (s.queue.length >= 3 || slaLow || ob.fix || ob.useTerminal) {
+    const deskDue = B.policy.approach === 'hub-only' && s.queue.length < 2 && g.time - (B.lastDesk ?? -Infinity) > 60;
+    if (s.queue.length >= 3 || slaLow || ob.fix || ob.useTerminal || deskDue) {
       const terms = g.level.interactables.filter((i) => i.kind === 'terminal' && !ignored.has(i.id) && (!ob.useTerminal || !g.loggedOn.has(i.id) || s.queue.length > 0));
       const t = nearestOf(terms);
       if (t) return { kind: 'use', it: t, x: t.x, z: t.z, staffing: ob.staffed.has('fix') || ob.staffed.has('useTerminal') };
@@ -459,10 +487,18 @@
       return { kind: g.boss.docile ? 'talk' : 'fight', actor: g.boss };
     }
     const lift = g.level.interactables.find((i) => i.kind === 'elevator');
-    if (lift && g.elevatorOpen) return { kind: 'use', it: lift, x: lift.x, z: lift.z };
+    if (lift && g.elevatorOpen && B.policy.approach !== 'hub-only') return { kind: 'use', it: lift, x: lift.x, z: lift.z };
     return null;
   }
   B.talkers = new Set();
+
+  /** A colleague on the hub in the swing's arc: hitting them would be a crime, so the bot steps round instead. */
+  function colleagueInArc(range) {
+    const p = g.player.pos;
+    const fx = -Math.sin(g.player.yaw), fz = -Math.cos(g.player.yaw);
+    return g.actors.some((a) => a.colleague && !a.hostile && !a.resolved && Math.hypot(a.pos.x - p.x, a.pos.z - p.z) < range + 1
+      && ((a.pos.x - p.x) * fx + (a.pos.z - p.z) * fz) / Math.max(0.01, Math.hypot(a.pos.x - p.x, a.pos.z - p.z)) > 0.3);
+  }
 
   function act() {
     activity = 'other';
@@ -519,6 +555,7 @@
       // Attack and block through the Input's scripted presses (whatever they are bound to).
       if (incoming && s.energy > 15 && R() < B.policy.block) { inp.holdBlock(true); inp.holdAttack(false); checkStuck(false); return; }
       inp.holdBlock(false);
+      if (colleagueInArc(range)) { inp.holdAttack(false); inp.keys.add(K.right); checkStuck(false); return; }
       if (w.kind === 'melee' || w.kind === 'nova') { if (g.attackCd <= 0) inp.tapAttack(); inp.holdAttack(false); }
       else inp.holdAttack(true);
       checkStuck(false);
@@ -562,11 +599,15 @@
   }
 
   // ---------------------------------------------------------------- the week
+  /** Where this run's records are kept: the week's P1 floors, or (hub-only) the hub. */
+  function measured() { return B.policy.approach === 'hub-only' ? 'hub' : 'office'; }
+
   function newFloor() {
     const s = g.save;
-    if (g.screen !== 'play' || s.location !== 'office' || B.floors.some((f) => f.floor === s.floor)) return;
+    const where = measured();
+    if (g.screen !== 'play' || s.location !== where || B.floors.some((f) => f.floor === s.floor && f.where === where)) return;
     B.cur = {
-      floor: s.floor, rung: s.rung, level: s.level, t0: g.time, rep0: s.rep, warnings0: s.warnings, burnouts: 0, minSanity: 1,
+      where, floor: s.floor, rung: s.rung, level: s.level, t0: g.time, rep0: s.rep, warnings0: s.warnings, burnouts: 0, minSanity: 1,
       overloadT: 0, maxOver: 0, staffOffers: 0, pushTries: 0, pushOk: 0, mentorAsks: 0, sideTaken: 0, fixed: 0, wrong: 0, terminalVisits: 0,
       hostiles0: hostiles().filter((a) => PEOPLE.includes(a.kind)).length, staffedDone0: s.stats.staffedDone, staffedMissed0: s.stats.staffedMissed,
       mentored0: s.stats.mentored, perk0: s.perkPoints, quits: 0, moraleSum: 0, moraleN: 0, treats0: s.stats.treats, drinks0: s.stats.drinks, sideDone0: s.questLog.filter((q) => q.done && !q.staffed && !q.mentor).length,
@@ -585,7 +626,7 @@
     if (!c) return;
     const minutes = (g.time - c.t0) / 60;
     const rec = {
-      floor: c.floor, rung: c.rung, level: c.level, minutes: +minutes.toFixed(1), reason,
+      where: c.where, floor: c.floor, rung: c.rung, level: c.level, minutes: +minutes.toFixed(1), reason,
       floorSec: c.floorSec, combatSec: c.combatSec, combatShare: c.floorSec > 0 ? c.combatSec / c.floorSec : 0, aggroEpisodes: c.aggroEpisodes,
       aggroSec: c.aggroSec, aggroShare: c.floorSec > 0 ? c.aggroSec / c.floorSec : 0,
       activitySec: { ...c.activitySec },
@@ -606,9 +647,9 @@
 
   // Aggro is sampled at tick start; activity also counts the bot's menu clock.
   function step(doing = activity, advanceClock = false) {
-    if (g.screen === 'play' && g.save.location === 'office' && B.cur === null) newFloor();
+    if (g.screen === 'play' && g.save.location === measured() && B.cur === null) newFloor();
     const c = B.cur;
-    const onFloor = c && g.save.location === 'office' && c.floor === g.save.floor;
+    const onFloor = c && g.save.location === c.where && c.floor === g.save.floor;
     const inFloor = onFloor && g.screen === 'play';
     const p = g.player.pos;
     const aggro = inFloor && g.actors.some((a) => a.hostile && !a.resolved && a.aggro && Math.hypot(a.pos.x - p.x, a.pos.z - p.z) <= 14);
@@ -647,7 +688,7 @@
 
   function sample() {
     const s = g.save, d = g.derivedCache, c = B.cur;
-    if (!c || s.location !== 'office') return;
+    if (!c || s.location !== c.where) return;
     c.minSanity = Math.min(c.minSanity, s.sanity / d.maxSanity);
     if (d.overload > 0) c.overloadT += DT;
     c.maxOver = Math.max(c.maxOver, d.overload);
@@ -713,7 +754,7 @@
   B.totalBy = {};
   g.onCombatDamage = () => {
     const c = B.cur;
-    if (c && c.floor === g.save.floor && g.save.location === 'office' && g.screen === 'play') c.lastDamageAt = g.time;
+    if (c && c.floor === g.save.floor && g.save.location === c.where && g.screen === 'play') c.lastDamageAt = g.time;
   };
   if (!g.__botHooked) {
     g.__botHooked = true;
@@ -757,10 +798,22 @@
         newFloor();
         continue;
       }
+      // The hub on a career: walk to the lift and go up (nothing is measured on the way).
+      if (s.location === 'hub' && B.policy.approach !== 'hub-only') {
+        act();
+        step('walking');
+        continue;
+      }
       if (B.cur === null || B.cur.floor !== s.floor) { if (B.cur) endFloor('changed'); newFloor(); }
       if (B.cur === null) { step(); continue; }
+      // A hub-only week: so many minutes of hub time, then the record is closed.
+      if (B.policy.approach === 'hub-only' && (g.save.hub?.clock ?? 0) >= (B.policy.hubMinutes ?? 20) * 60) {
+        endFloor('hub-week');
+        B.ended = true;
+        break;
+      }
       // Too long on a floor: a real player would find the boss eventually.
-      if ((g.time - B.cur.t0) / 60 > B.policy.maxFloorMinutes * 1.6 && !B.cur.timedOut) {
+      if (B.policy.approach !== 'hub-only' && (g.time - B.cur.t0) / 60 > B.policy.maxFloorMinutes * 1.6 && !B.cur.timedOut) {
         B.cur.timedOut = true;
         if (g.boss && !g.boss.resolved) { g.boss.hp = 0; g.boss.aggro = true; }
         g.elevatorOpen = true;
@@ -791,6 +844,8 @@
         B.totalBy[tag] = (B.totalBy[tag] ?? 0) + other;
       }
       if (s.location === 'mokki' && wasMokki === 'office') endFloor('friday');
+      // A career's floor record ends when the lift takes the bot down to the hub too (only Friday does, today).
+      if (s.location === 'hub' && wasMokki === 'office' && B.policy.approach !== 'hub-only') endFloor('hub');
     }
     return { steps, lockpick: g.lockpick.open, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, longestDialogue: B.cur?.longestDialogue ?? null, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: target ? target.kind + (target.actor ? ':' + target.actor.kind : target.it ? ':' + target.it.kind : '') : null, ms: Math.round(performance.now() - t0) };
   };

@@ -6,7 +6,11 @@
 //
 // Scenario keys: name, seed (uint32 career and bot seed), floors, wallMinutes, rung, kit (items to start with),
 // workplace, policy (bot policy overrides: staff accept|pushback|delegate,
-// mentor accept|quick|decline, talk, fixAcc, block, treats, recruit, buy).
+// mentor accept|quick|decline, talk, fixAcc, block, treats, recruit, buy),
+// approach (a mission's quiet|loud|auto, or for a career 'hub-only': a week on the hub -
+// tickets, talk, walk-ups, never the lift - for hubMinutes of game time, default 20).
+//
+//   node scripts/helldesk-balance/run.mjs '{"name":"hub","approach":"hub-only","seed":1700000000,"hubMinutes":20,"wallMinutes":30}'
 // Env: HELLDESK_URL (default http://localhost:4179/crawler.html), CHROMIUM
 // (a Chromium executable), OUT (where to write the JSON, default ./bal-<name>.json).
 import { chromium } from '@playwright/test';
@@ -16,7 +20,11 @@ import { missionRecord } from './mission-record.mjs';
 const scenario = JSON.parse(process.argv[2] ?? '{}');
 if (scenario.seed !== undefined && (!Number.isInteger(scenario.seed) || scenario.seed < 0 || scenario.seed > 0xffffffff)) throw new Error('seed must be a uint32');
 if (scenario.mission !== undefined && !['stapler', 'vendor'].includes(scenario.mission)) throw new Error('mission must be stapler or vendor');
-if (scenario.approach !== undefined && !['quiet', 'loud', 'auto'].includes(scenario.approach)) throw new Error('approach must be quiet, loud or auto');
+if (scenario.approach !== undefined && !(scenario.mission ? ['quiet', 'loud', 'auto'] : ['hub-only']).includes(scenario.approach)) {
+  throw new Error(scenario.mission ? 'approach must be quiet, loud or auto' : 'a career\'s approach can only be hub-only');
+}
+if (scenario.hubMinutes !== undefined && (!Number.isFinite(scenario.hubMinutes) || scenario.hubMinutes <= 0)) throw new Error('hubMinutes must be positive and finite');
+const hubOnly = !scenario.mission && scenario.approach === 'hub-only';
 if (scenario.wallMinutes !== undefined && (!Number.isFinite(scenario.wallMinutes) || scenario.wallMinutes <= 0)) throw new Error('wallMinutes must be positive and finite');
 const name = scenario.name ?? 'run';
 const browser = await chromium.launch({ ...(process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {}), args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
@@ -84,7 +92,7 @@ await G((sc) => {
   g.screen = 'play';
   g.input.enabled = true;
   g.input.locked = true;
-  Object.assign(window.__bot.policy, sc.policy ?? {});
+  Object.assign(window.__bot.policy, sc.policy ?? {}, sc.approach === 'hub-only' ? { approach: 'hub-only', hubMinutes: sc.hubMinutes ?? 20 } : {});
   if (sc.seed !== undefined) window.__bot.seed(sc.seed);
   if (sc.rung !== undefined) {
     const s = g.save;
@@ -98,8 +106,10 @@ await G((sc) => {
     g.refreshDerived();
   }
   if (sc.workplace) g.save.workplace = sc.workplace;
-  // Spawn the starting enemies at the scenario's rung and employer too.
-  g.loadFloor(g.save.floor, false);
+  // Build the starting world again at the scenario's rung and employer: the week's P1 floor for a career
+  // measured floor by floor, the hub (where a new career starts) for a hub-only week.
+  if (sc.approach === 'hub-only') g.loadHub(false, true);
+  else g.loadFloor(g.save.floor, false);
 }, scenario);
 const out = { name, scenario, floors: [], errors, snaps: [] };
 const t0 = Date.now();
@@ -120,6 +130,15 @@ out.wallSec = Math.round((Date.now() - t0) / 1000);
 writeFileSync(process.env.OUT ?? `bal-${name}.json`, JSON.stringify(out, null, 1));
 console.log(`== ${name} (${out.wallSec}s wall)`);
 for (const f of out.floors) console.log(JSON.stringify(f));
+if (hubOnly) {
+  // The hub's own gate (docs/SPEC_HELLDESK_030_S1.md, S1a): a hub-only week is at most 5% combat.
+  const week = out.floors.find((f) => f.where === 'hub');
+  out.hubWeek = week ? { combatShare: week.combatShare, floorSec: week.floorSec, pass: week.combatShare <= 0.05 } : null;
+  if (!out.hubWeek) errors.push('hub-only week did not finish within wall-time cap');
+  console.log(`hub-only combatShare ${week ? week.combatShare.toFixed(4) : 'n/a'} over ${week ? week.floorSec.toFixed(0) : 0} s (gate <= 0.05): ${out.hubWeek?.pass ? 'PASS' : 'FAIL'}`);
+  writeFileSync(process.env.OUT ?? `bal-${name}.json`, JSON.stringify(out, null, 1));
+  if (!out.hubWeek?.pass) process.exitCode = 1;
+}
 console.log('final', JSON.stringify(out.final));
 console.log('events', out.events.slice(0, 12).join(' | '));
 for (const d of out.deaths.slice(0, 40)) console.log('death', JSON.stringify(d));

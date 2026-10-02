@@ -12,7 +12,7 @@ const source = readFileSync('scripts/helldesk-balance/bot.js', 'utf8');
 const DT = 1 / 30;
 
 interface Floor {
-  floor: number; reason: string;
+  where: string; floor: number; reason: string;
   floorSec: number; combatSec: number; combatShare: number; aggroEpisodes: number;
   aggroSec: number; aggroShare: number;
   activitySec: Record<'fighting' | 'walking' | 'terminal' | 'dialogue' | 'staffing' | 'idle' | 'other', number>;
@@ -24,7 +24,8 @@ interface Bot {
   seed: (seed: number) => void;
   floors: Floor[];
   cur: Floor | null;
-  policy: { buy: boolean; approach?: string };
+  policy: { buy: boolean; approach?: string; talk?: number; hubMinutes?: number };
+  ended?: boolean;
   quiet?: boolean;
 }
 
@@ -102,7 +103,7 @@ function career(mode = false) {
     onStep = () => undefined;
     return bot.floors.at(-1);
   };
-  return { game, actor, bot, tick, finish, mission, lock, openDialogue, answers, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
+  return { game, actor, bot, tick, finish, mission, lock, openDialogue, answers, helldesk: window.__helldesk as Record<string, unknown>, onStep: (fn: () => undefined) => { onStep = fn; }, overlay: (fn: () => undefined) => { onOverlay = fn; } };
 }
 
 describe('work-floor dialogues', () => {
@@ -644,5 +645,106 @@ describe('quiet policy honesty', () => {
       c.tick();
       expect(c.game.input.keys.has('w')).toBe(true);
     }
+  });
+});
+
+
+describe('the hub', () => {
+  /** The lift's buttons as the game offers them (interact.ts liftNode), each recording what it did. */
+  function liftNode(labels: string[], did: string[]): DialogueNode {
+    return { speaker: 'The lift', subtitle: 'The hub', text: '', options: labels.map((label) => ({ label, ...(label === 'Not yet.' ? { leave: true } : {}), pick: () => { did.push(label); return null; } })) };
+  }
+
+  it('a career on the hub walks to the lift and goes up; on the P1, with its boss resolved, it takes Friday', () => {
+    const c = career();
+    const did: string[] = [];
+    const lift = { id: 90, kind: 'elevator', x: 2, z: 0 };
+    c.game.level.interactables.push(lift);
+    c.game.actors = [];
+    c.game.save.sanity = 100;
+    c.game.save.location = 'hub';
+    c.game.promptTarget = { kind: 'interact', it: lift };
+    c.onStep(() => {
+      if (c.game.input.pressed.delete('e')) c.openDialogue(liftNode(c.game.save.location === 'hub' ? ['Floor B1: the major incident', 'Not yet.'] : ['Back to the hub', 'Friday: to the mökki', 'Not yet.'], did));
+      return undefined;
+    });
+    for (let i = 0; i < 60 && did.length === 0; i++) c.tick();
+    expect(did, 'up to the major incident').toEqual(['Floor B1: the major incident']);
+    expect(c.bot.floors, 'nothing measured on the hub').toEqual([]);
+    // Upstairs, its boss resolved: the lift is for Friday.
+    c.game.save.location = 'office';
+    Object.assign(c.game, { elevatorOpen: true });
+    for (let i = 0; i < 60 && did.length === 1; i++) c.tick();
+    expect(did).toEqual(['Floor B1: the major incident', 'Friday: to the mökki']);
+  });
+
+  it('a hub-only week answers walk-ups, never takes the lift, and ends with the hub\'s combat share', () => {
+    const c = career();
+    const did: string[] = [];
+    const lift = { id: 90, kind: 'elevator', x: 2, z: 0 };
+    c.game.level.interactables.push(lift);
+    const walker = { id: 7, name: 'Pia from Sales', kind: 'user', colleague: true, hostile: false, resolved: false, aggro: false, talked: false, enragedT: 0, memo: {}, pos: { x: 1, z: 0 } };
+    c.game.actors = [walker];
+    c.game.save.sanity = 100;
+    c.game.save.location = 'hub';
+    // Even with Friday's lift lit, a hub-only week never takes it.
+    Object.assign(c.game, { elevatorOpen: true });
+    const hub = { clock: 0, walker: 7 as number | null, reached: true, ignores: [], hostile: [] };
+    c.helldesk.hub = () => hub;
+    Object.assign(c.bot.policy, { approach: 'hub-only', hubMinutes: 0.1, talk: 0 });
+    c.onStep(() => {
+      c.game.save.hub.clock += DT;
+      hub.clock = c.game.save.hub.clock;
+      const t = c.game.promptTarget;
+      if (c.game.input.pressed.delete('e')) {
+        if (t?.kind === 'interact') c.openDialogue(liftNode(['Floor B1: the major incident', 'Not yet.'], did));
+        else if (t?.kind === 'actor' && t.a === walker) {
+          c.openDialogue({ speaker: walker.name, subtitle: 'A walk-up', text: '', options: [
+            { label: 'Walk them through it: "Reboot"', tag: '+₡8', pick: () => { did.push('walk-up'); hub.walker = null; c.game.promptTarget = { kind: 'interact', it: lift }; return null; } },
+            { label: 'Could you raise a ticket for that?', pick: () => { did.push('ticket'); hub.walker = null; return null; } },
+          ] });
+        }
+      }
+      return undefined;
+    });
+    c.game.promptTarget = { kind: 'actor', a: walker };
+    for (let i = 0; i < 600 && !c.bot.ended; i++) c.tick();
+    expect(did, 'the walk-up talked to, the lift never taken').toEqual(['walk-up']);
+    expect(c.bot.ended).toBe(true);
+    expect(c.bot.floors).toHaveLength(1);
+    expect(c.bot.floors[0]).toMatchObject({ where: 'hub', reason: 'hub-week', combatSec: 0, combatShare: 0 });
+    expect(c.bot.floors[0]?.floorSec).toBeGreaterThan(5.9);
+  });
+
+  it('counts a hub fight in the hub week\'s combat share', () => {
+    const c = career();
+    c.game.save.location = 'hub';
+    c.game.save.sanity = 100;
+    Object.assign(c.bot.policy, { approach: 'hub-only', hubMinutes: 0.05, talk: 0 });
+    c.helldesk.hub = () => ({ walker: null, reached: false });
+    c.onStep(() => { c.game.save.hub.clock += DT; return undefined; });
+    for (let i = 0; i < 400 && !c.bot.ended; i++) c.tick();
+    // The career's hostile (14 m off, after you) was there the whole week.
+    expect(c.bot.floors[0]).toMatchObject({ where: 'hub', reason: 'hub-week' });
+    expect(c.bot.floors[0]?.combatShare).toBeGreaterThan(0.9);
+  });
+
+  it('does not swing while a colleague is in the arc: it steps round them', () => {
+    const swings = (withColleague: boolean): number => {
+      const c = career();
+      let taps = 0;
+      (c.game.input as unknown as { tapAttack: () => void }).tapAttack = () => { taps++; };
+      c.game.save.sanity = 100;
+      c.game.save.location = 'hub';
+      Object.assign(c.bot.policy, { approach: 'hub-only', hubMinutes: 10, talk: 0 });
+      c.helldesk.hub = () => ({ walker: null, reached: false });
+      Object.assign(c.actor, { id: 3, pos: { x: 1, z: 0 }, aggro: true, talked: true });
+      const bystander = { id: 4, kind: 'user', colleague: true, hostile: false, resolved: false, pos: { x: 1.6, z: 0.2 } };
+      c.game.actors = (withColleague ? [c.actor, bystander] : [c.actor]) as unknown as typeof c.game.actors;
+      c.tick(20);
+      return taps;
+    };
+    expect(swings(false), 'the control: it swings').toBeGreaterThan(0);
+    expect(swings(true), 'a colleague in the way: no swing').toBe(0);
   });
 });
