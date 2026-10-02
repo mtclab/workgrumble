@@ -7,6 +7,8 @@ import { type Actor } from '../../src/crawler/entities';
 import { type StoryHost, talkHealer, talkHelper, talkTonttu } from '../../src/crawler/story';
 import { type QuestHost, talkGiver } from '../../src/crawler/quests';
 import { teamNote } from '../../src/crawler/teamwork';
+import type { MissionCard } from '../../src/crawler/mission';
+import { POOL } from '../../src/crawler/missions';
 
 const source = readFileSync('scripts/helldesk-balance/bot.js', 'utf8');
 const DT = 1 / 30;
@@ -20,7 +22,7 @@ interface Floor {
   longestDialogue: { speaker: string; title: string; seconds: number } | null;
 }
 interface Bot {
-  run: (sec: number, floors?: number) => { steps: number; longestDialogue: Floor['longestDialogue'] };
+  run: (sec: number, floors?: number) => { steps: number; longestDialogue: Floor['longestDialogue']; target: string | null };
   seed: (seed: number) => void;
   floors: Floor[];
   cur: Floor | null;
@@ -642,6 +644,7 @@ describe('every card of the S1b pool', () => {
   it('quiet, somebody to talk round (a debrief): walks up and presses E on them, no swing', () => {
     const c = card();
     c.bot.policy.approach = 'quiet';
+    Object.assign(c.actor, { name: 'Dean from Sales' });
     c.actor.pos.x = 6; c.actor.pos.z = 1;
     c.game.markers = [gold(6, 1, 'Dean from Sales')];
     let swings = 0;
@@ -704,6 +707,7 @@ describe('every card of the S1b pool', () => {
     c.bot.policy.approach = 'loud';
     c.bot.policy.talk = 0;
     c.bot.seed(3);
+    Object.assign(c.actor, { name: 'Hercules 400' });
     c.actor.hostile = true; c.actor.pos.x = 2; c.actor.pos.z = 1;
     c.game.markers = [gold(2, 1, 'Hercules 400')];
     let swings = 0;
@@ -857,5 +861,111 @@ describe('the hub', () => {
     };
     expect(swings(false), 'the control: it swings').toBeGreaterThan(0);
     expect(swings(true), 'a colleague in the way: no swing').toBe(0);
+  });
+});
+
+describe('every objective of the pool gives the bot something to go for, quiet and loud', () => {
+  type Goal = { kind: string; it?: { kind: string }; actor?: { name?: string } } | null;
+  const gold = (x: number, z: number, label: string) => ({ x, z, icon: '◆', color: '#ffd54a', label });
+
+  /**
+   * A card's map as the player sees it, by the card's real objective: its
+   * compass diamonds and what stands at them, the way the game marks them
+   * (missionplay.ts `markers`). The copies of a collect card lie by
+   * somebody's desk and a computer: what is on the floor is the copy.
+   */
+  function seen(card: MissionCard, approach: string) {
+    const c = career(true);
+    const g = c.game as typeof c.game & { pickups: { mesh: { position: { x: number; z: number } } }[] };
+    g.save.sanity = 100;
+    g.player.pos.x = 1; g.player.pos.z = 1;
+    g.pickups = [];
+    g.level.interactables = [{ id: 2, kind: 'elevator', x: 1, z: 1 }];
+    const person = (name: string, kind: string, x: number, hostile = true) => ({ id: 40 + x, name, kind, hostile, aggro: false, resolved: false, pos: { x, z: 1 } });
+    c.game.actors = [];
+    Object.assign(c.mission, { card: card.id, objectiveDone: false, spine: [] });
+    c.mission.hud.tier = card.style === 'loud' ? 3 : 0;
+    c.bot.policy.approach = approach;
+    const ob = card.objective;
+    switch (ob.kind) {
+      case 'take':
+        g.level.interactables.push({ id: 7, kind: 'locker', x: 10, z: 1 });
+        g.markers = [gold(10, 1, 'HR\'s closet')];
+        break;
+      case 'collect':
+        g.markers = [gold(9, 1, 'Password Sticky Notes'), gold(17, 1, 'Password Sticky Notes')];
+        g.pickups = [{ mesh: { position: { x: 9, z: 1 } } }, { mesh: { position: { x: 17, z: 1 } } }];
+        (c.game.actors as object[]).push(person('Megan from Legal', 'user', 9.6, true));
+        g.level.interactables.push({ id: 8, kind: 'terminal', x: 17.5, z: 1 });
+        break;
+      case 'resolve': {
+        const name = ob.who === 'jam' ? 'Hercules 400' : ob.who === 'vendor' ? 'Dev (VendorLock Inc)' : 'Dean from Sales';
+        (c.game.actors as object[]).push(person(name, ob.who, 12));
+        g.markers = [gold(12, 1, name)];
+        break;
+      }
+      case 'escort':
+        g.level.interactables.push({ id: 9, kind: 'itdesk', x: 30, z: 1 });
+        g.markers = [gold(30, 1, 'Internal IT'), { x: 3, z: 1, icon: '◇', color: '#ffd54a', label: 'Josh (Intern)' }];
+        break;
+      case 'fix':
+        g.level.interactables.push({ id: 10, kind: 'terminal', x: 14, z: 1 });
+        (c.game.actors as object[]).push(person('Marcus from Sales', 'user', 14.6, true));
+        g.markers = [gold(14, 1, 'Marcus\'s computer')];
+        break;
+    }
+    return c;
+  }
+
+  // What each objective is, to the bot, quiet and loud.
+  const want: Record<MissionCard['objective']['kind'], { quiet: string; loud: string }> = {
+    take: { quiet: 'use:locker', loud: 'use:locker' },
+    collect: { quiet: 'collect', loud: 'goto' },
+    resolve: { quiet: 'person', loud: 'fight' },
+    escort: { quiet: 'escort:itdesk', loud: 'escort:itdesk' },
+    fix: { quiet: 'use:terminal', loud: 'use:terminal' },
+  };
+  const plan = POOL.flatMap((card) => [...(card.style === 'loud' ? [] : ['quiet']), 'loud'].map((approach) => [card.id, approach, card] as const));
+
+  it('covers every card of the pool, quiet where its style allows and loud', () => {
+    expect(plan.map(([id, approach]) => `${id}-${approach}`)).toEqual([
+      'stapler-quiet', 'stapler-loud', 'vendor-loud', 'postits-quiet', 'postits-loud', 'phishing-quiet', 'phishing-loud',
+      'josh-quiet', 'josh-loud', 'marcus-quiet', 'marcus-loud', 'printer-loud',
+    ]);
+  });
+
+  it.each(plan)('%s, %s: a target from what the player sees', (_id, approach, card) => {
+    const c = seen(card, approach);
+    const goal = (c.bot as unknown as { missionGoal: (m: unknown) => Goal }).missionGoal(c.mission);
+    expect(goal, 'something to go for').not.toBeNull();
+    const kind = `${goal!.kind}${goal!.it ? `:${goal!.it.kind}` : ''}`;
+    expect(kind).toBe(want[card.objective.kind][approach as 'quiet' | 'loud']);
+    if (goal!.actor) expect(goal!.actor.name, 'the person the compass names').toBe(c.game.markers[0]!.label);
+  });
+
+  it('quiet, many copies: it keeps to the one it chose until that one is picked up, not whichever is nearest at each step', () => {
+    const c = seen(POOL.find((x) => x.id === 'postits')!, 'quiet');
+    const goal = (m: unknown): Goal & { x?: number } => (c.bot as unknown as { missionGoal: (m: unknown) => Goal & { x?: number } }).missionGoal(m);
+    expect(goal(c.mission)?.x, 'the nearer copy first').toBe(9);
+    // Walked on past it (round a desk, say): the other copy is nearer now, and the bot still goes for the one it chose.
+    c.game.player.pos.x = 15;
+    expect(goal(c.mission)?.x).toBe(9);
+    // Picked up: its diamond is gone, and the next one is the goal.
+    c.game.markers = c.game.markers.filter((mk) => mk.x !== 9);
+    expect(goal(c.mission)?.x).toBe(17);
+  });
+
+  it('the week\'s P1 floor in a career: up the lift from the hub, and the boss on the floor', () => {
+    const c = career();
+    c.game.save.sanity = 100;
+    c.game.save.location = 'hub';
+    c.game.level.interactables = [{ id: 2, kind: 'elevator', x: 5, z: 1 }];
+    c.game.actors = [];
+    expect(c.bot.run(DT / 2).target).toBe('use:elevator');
+    const floor = career();
+    floor.game.save.sanity = 100;
+    Object.assign(floor.actor, { kind: 'boss', name: 'Derek', aggro: false, bossActive: false, docile: false, pos: { x: 10, z: 0 } });
+    (floor.game as { boss: unknown }).boss = floor.actor;
+    expect(floor.bot.run(DT / 2).target).toBe('fight:boss');
   });
 });

@@ -118,6 +118,18 @@
     }
   }
   function press(code) { inp.pressed.add(code); }
+  /** The open cells round something you use, in a fixed order: the `k`th (round and round), or null if none. */
+  function sideOf(it, k) {
+    const L = g.level, W = L.w;
+    const cx = cell(it.x), cz = cell(it.z);
+    const spots = [];
+    for (const [ox, oz] of [[0, 1], [1, 0], [0, -1], [-1, 0], [1, 1], [-1, 1], [1, -1], [-1, -1]]) {
+      const x = cx + ox, z = cz + oz;
+      if (x < 0 || z < 0 || x >= W || z >= L.h || L.solid[z * W + x] === 1 || !reachable(cc(x), cc(z))) continue;
+      spots.push({ x: cc(x), z: cc(z) });
+    }
+    return spots.length === 0 ? null : spots[k % spots.length];
+  }
 
   // ---------------------------------------------------------------- dialogue policy
   let conversation = null;
@@ -295,12 +307,56 @@
     return marks.find((mk) => reachable(mk.x, mk.z)) ?? marks[0] ?? null;
   }
 
-  /** What stands at a diamond: a closet, a computer, the counter or the lift; somebody; or (neither) something lying on the floor. */
+  /**
+   * What a diamond is on, as the player sees it: something lying on the floor
+   * there (a copy to walk over, even beside somebody's desk); else the person
+   * the compass names; else a closet, a computer, the counter or the lift;
+   * else (nothing to see) the spot itself.
+   */
   function objectiveAt(mark) {
+    if ((g.pickups ?? []).some((q) => q.mesh && Math.hypot(q.mesh.position.x - mark.x, q.mesh.position.z - mark.z) < 0.6)) return {};
+    const actor = g.actors.find((a) => !a.resolved && a.name === mark.label && Math.hypot(a.pos.x - mark.x, a.pos.z - mark.z) < 1);
+    if (actor) return { actor };
     const it = g.level.interactables.find((i) => ['locker', 'terminal', 'itdesk', 'elevator'].includes(i.kind) && Math.hypot(i.x - mark.x, i.z - mark.z) < 1);
-    if (it) return { it };
-    const actor = g.actors.find((a) => !a.resolved && Math.hypot(a.pos.x - mark.x, a.pos.z - mark.z) < 1);
-    return actor ? { actor } : {};
+    return it ? { it } : {};
+  }
+
+  /**
+   * The card's objective as the player sees it, every kind the pool has: the
+   * nearest gold diamond the compass shows and what stands at it. The escort's
+   * counter (get there, and the one escorted catches up); a closet, a computer
+   * or the lift to use (take, fix, and the lift once done); somebody to deal
+   * with (resolve, a debrief's talk-down); or, with nothing standing there,
+   * something lying on the floor to walk over (collect). Null with no diamond.
+   */
+  function objectiveGoal() {
+    const mark = objectiveMark();
+    if (!mark) return null;
+    const at = objectiveAt(mark);
+    if (at.it && at.it.kind === 'itdesk') return { kind: 'escort', it: at.it, ...escortSpot(at.it) };
+    if (at.it) return { kind: 'use', it: at.it, x: at.it.x, z: at.it.z };
+    if (at.actor) return { kind: 'person', actor: at.actor, x: at.actor.pos.x, z: at.actor.pos.z };
+    return { kind: 'collect', x: mark.x, z: mark.z };
+  }
+
+  /**
+   * Where to stand to bring the one you are escorting to the counter: an
+   * open spot in the counter's own room, within 4 m of it, as far from them
+   * (their marker on the compass) as there is, so that following you they
+   * come all the way in rather than stopping in the doorway.
+   */
+  function escortSpot(it) {
+    const L = g.level, W = L.w;
+    const e = g.markers.find((mk) => mk.icon === '◇');
+    let best = null, bestD = -Infinity;
+    for (let c = 0; c < W * L.h; c++) {
+      if (L.roomOf[c] !== it.room || L.solid[c] === 1 || (L.floor !== undefined && L.floor[c] !== 1)) continue;
+      const x = cc(c % W), z = cc(Math.floor(c / W));
+      if (Math.hypot(x - it.x, z - it.z) > 4) continue;
+      const d = e === undefined ? -Math.hypot(x - it.x, z - it.z) : Math.hypot(x - e.x, z - e.z);
+      if (d > bestD) { best = { x, z }; bestD = d; }
+    }
+    return best ?? { x: it.x, z: it.z + 2.2 };
   }
 
   function missionTarget(m) {
@@ -317,14 +373,28 @@
       return actor ? { kind: 'fight', actor } : null;
     }
     // Every other card, loud: straight at whatever the compass marks.
-    const mark = objectiveMark();
-    if (!mark) return null;
-    const at = objectiveAt(mark);
-    // The escort's counter: get there, and the one you are escorting catches up.
-    if (at.it && at.it.kind === 'itdesk') return { kind: 'goto', x: at.it.x, z: at.it.z + 2.2, near: 1.2, wait: 2 };
-    if (at.it) return { kind: 'use', it: at.it, x: at.it.x, z: at.it.z };
-    if (at.actor) return { kind: 'fight', actor: at.actor };
-    return { kind: 'goto', x: mark.x, z: mark.z, near: 0.4, wait: 0.2 };
+    const goal = objectiveGoal();
+    if (!goal) return null;
+    if (goal.kind === 'escort') return { kind: 'goto', ...escortSpot(goal.it), near: 0.5, wait: 2 };
+    if (goal.kind === 'use') return { kind: 'use', it: goal.it, x: goal.x, z: goal.z };
+    if (goal.kind === 'person') return { kind: 'fight', actor: goal.actor };
+    return { kind: 'goto', x: goal.x, z: goal.z, near: 0.4, wait: 0.2 };
+  }
+
+  // The objective the quiet policy is on, kept until it is done or no longer shown: a map with
+  // many diamonds (the post-its) is not planned afresh at every step toward whichever is nearest.
+  let quietGoal = null;
+  function stillShown(goal) {
+    if (goal.actor && goal.actor.resolved) return false;
+    const x = goal.actor ? goal.actor.pos.x : goal.it ? goal.it.x : goal.x;
+    const z = goal.actor ? goal.actor.pos.z : goal.it ? goal.it.z : goal.z;
+    return g.markers.some((mk) => mk.icon === '◆' && Math.hypot(mk.x - x, mk.z - z) < 1.5);
+  }
+  function quietTarget(m) {
+    if (quietGoal && quietGoal.done === m.objectiveDone && stillShown(quietGoal)) return quietGoal;
+    const goal = objectiveGoal();
+    quietGoal = goal && { ...goal, done: m.objectiveDone, key: `${m.objectiveDone}|${Math.round(goal.x)},${Math.round(goal.z)}` };
+    return quietGoal;
   }
 
   function routeAlongSpine(m, goal) {
@@ -407,11 +477,11 @@
     inp.keys.delete(K.sprint);
     if (!g.player.crouching) press(K.sneak);
     for (const a of m.hud.actors) if (a.visible) seenPeople.set(a.id, { x: a.x, z: a.z });
-    const mark = objectiveMark();
-    if (!mark) { release(); return; }
-    const key = `${m.objectiveDone}|${Math.round(mark.x)},${Math.round(mark.z)}`;
-    if (routeReturning !== key) {
-      routeReturning = key;
+    const goal = quietTarget(m);
+    if (!goal) { release(); return; }
+    const mark = { x: goal.x, z: goal.z };
+    if (routeReturning !== goal.key) {
+      routeReturning = goal.key;
       spineRoute = m.spine.length > 0 ? routeAlongSpine(m, mark) : []; spineIndex = 0;
     }
     let node = spineRoute[spineIndex];
@@ -428,26 +498,49 @@
       node = spineRoute[++spineIndex];
     }
     if (node) { goTo(node.x, node.z, 0.6); checkStuck(true); return; }
-    const at = objectiveAt(mark);
-    if (at.it && at.it.kind === 'itdesk') {
+    if (goal.kind === 'escort') {
       // The escort: to the counter round everyone the HUD has shown, the one you are escorting behind.
-      const tx = at.it.x, tz = at.it.z + 2.2;
-      const f = quietField(tx, tz);
-      if (f) quietStep(f, tx, tz, 1.2);
-      else if (goTo(tx, tz, 1.2)) release(); else checkStuck(true);
+      const at = escortSpot(goal.it);
+      const f = quietField(at.x, at.z);
+      if (f) quietStep(f, at.x, at.z, 0.5);
+      else if (goTo(at.x, at.z, 0.5)) release(); else checkStuck(true);
       return;
     }
-    if (at.it) { useMissionObjective(at.it); return; }
-    if (at.actor) {
+    if (goal.kind === 'use') { useMissionObjective(goal.it); return; }
+    if (goal.kind === 'person') {
       // Somebody the card is about (a debrief): go and talk to them.
-      const p = g.player.pos;
-      if (Math.hypot(at.actor.pos.x - p.x, at.actor.pos.z - p.z) > 1.9) { goTo(at.actor.pos.x, at.actor.pos.z, 1.7); checkStuck(true); return; }
-      release(); face(at.actor.pos.x, at.actor.pos.z); H.findPrompt();
-      if (g.promptTarget && g.promptTarget.kind === 'actor' && g.promptTarget.a === at.actor) press(K.interact);
+      const a = goal.actor;
+      if (Math.hypot(a.pos.x - p.x, a.pos.z - p.z) > 1.9) { goTo(a.pos.x, a.pos.z, 1.7); checkStuck(true); return; }
+      release(); face(a.pos.x, a.pos.z); H.findPrompt();
+      if (g.promptTarget && g.promptTarget.kind === 'actor' && g.promptTarget.a === a) press(K.interact);
       return;
     }
-    // Something lying on the floor: walk over it.
-    if (!goTo(mark.x, mark.z, 0.4)) checkStuck(true);
+    // Something lying on the floor (collect): walk over it.
+    if (!goTo(goal.x, goal.z, 0.4)) checkStuck(true);
+  }
+
+  /**
+   * An escort played loud: on your feet, the long way round everyone the HUD
+   * has shown (the card says the loop goes round the pitch), and a fight only
+   * with whoever is on you; the one you are escorting comes too.
+   */
+  function loudEscort(m) {
+    for (const a of m.hud.actors) if (a.visible) seenPeople.set(a.id, { x: a.x, z: a.z });
+    const threat = nearestOf(g.actors.filter((a) => a.hostile && a.aggro && !a.resolved), 5);
+    if (threat) {
+      if (!target || target.actor !== threat) { target = { kind: 'fight', actor: threat }; targetT = 0; }
+      act();
+      return;
+    }
+    target = null;
+    inp.holdAttack(false); inp.holdBlock(false);
+    activity = 'walking';
+    const goal = objectiveGoal();
+    if (!goal) { release(); return; }
+    const at = escortSpot(goal.it);
+    const f = quietField(at.x, at.z);
+    if (f) quietStep(f, at.x, at.z, 0.5);
+    else if (goTo(at.x, at.z, 0.5)) release(); else checkStuck(true);
   }
 
   function useMissionObjective(it) {
@@ -458,16 +551,34 @@
     else { goTo(it.x, it.z, 0.8); checkStuck(true); }
   }
 
+  /**
+   * What the bot is going for on a card right now, the way `missionPolicy`
+   * plays it (quiet, a loud escort, or loud): from what the player can see
+   * (the compass's diamonds, the map, the HUD). For the runner's snapshots
+   * and the tests; null only when the card shows nothing to go for.
+   */
+  function missionGoal(m) {
+    const quiet = B.policy.approach !== 'loud' && m.hud.tier < 2;
+    if (quiet) return quietTarget(m);
+    const goal = m.objectiveDone ? null : objectiveGoal();
+    if (goal && goal.kind === 'escort') return goal;
+    return missionTarget(m);
+  }
+  B.missionGoal = missionGoal;
+  let shownGoal = null;
+
   function missionPolicy(m) {
     // Another card (a career's next one): nothing remembered from the last map.
-    if (mission && (mission.card !== m.card || mission.seed !== m.seed)) { seenPeople.clear(); routeReturning = null; spineRoute = []; }
+    if (mission && (mission.card !== m.card || mission.seed !== m.seed)) { seenPeople.clear(); routeReturning = null; spineRoute = []; quietGoal = null; }
     mission = m;
     const quiet = B.policy.approach !== 'loud' && m.hud.tier < 2;
     if (quiet !== B.quiet) { target = null; targetT = 0; }
     B.quiet = quiet;
     if (!quiet && g.player.crouching) press(K.sneak);
     if (quiet) quietAct(m);
+    else if (!m.objectiveDone && objectiveGoal()?.kind === 'escort') loudEscort(m);
     else act();
+    shownGoal = quiet ? quietGoal : target;
     for (const a of m.hud.actors) if (a.visible) patrolLast.set(a.id, { x: a.x, z: a.z });
   }
 
@@ -678,12 +789,16 @@
       // Things set into a wall can be out of reach of the path's end: stop when the prompt appears.
       if (Math.hypot(it.x - p.x, it.z - p.z) < 3.4) { face(it.x, it.z); H.findPrompt(); }
       const inPrompt = g.promptTarget && g.promptTarget.kind === 'interact' && g.promptTarget.it === it;
-      if (!inPrompt && !goTo(it.x, it.z, reach)) { checkStuck(true); return; }
+      // Somebody in the way takes the prompt (Marcus at his own desk): come at it from another side.
+      const side = target.side === undefined ? null : sideOf(it, target.side);
+      if (!inPrompt && side !== null && !goTo(side.x, side.z, 0.35)) { checkStuck(true); return; }
+      if (!inPrompt && side === null && !goTo(it.x, it.z, reach)) { checkStuck(true); return; }
       activity = target.staffing ? 'staffing' : it.kind === 'terminal' ? 'terminal' : 'other';
       release();
       face(it.x, it.z);
       H.findPrompt();
       if (g.promptTarget && g.promptTarget.kind === 'interact' && g.promptTarget.it === it) { press(K.interact); target = null; }
+      else if (g.promptTarget && g.promptTarget.kind === 'actor' && (target.sideT = (target.sideT ?? 0) + DT) > 1) { target.side = (target.side ?? -1) + 1; target.sideT = 0; }
       else if (targetT > 6) { ignored.add(it.id); target = null; }
       return;
     }
@@ -946,6 +1061,6 @@
       // A career's floor record ends when the lift takes the bot down to the hub too (only Friday does, today).
       if (s.location === 'hub' && wasMokki === 'office' && B.policy.approach !== 'hub-only') endFloor('hub');
     }
-    return { steps, lockpick: g.lockpick.open, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, longestDialogue: B.cur?.longestDialogue ?? null, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: target ? target.kind + (target.actor ? ':' + target.actor.kind : target.it ? ':' + target.it.kind : '') : null, ms: Math.round(performance.now() - t0) };
+    return { steps, lockpick: g.lockpick.open, time: +g.time.toFixed(1), floor: s.floor, loc: s.location, screen: g.screen, longestDialogue: B.cur?.longestDialogue ?? null, rep: s.rep, sanity: Math.round(s.sanity), level: s.level, rung: s.rung, queue: s.queue.length, target: ((t) => (t ? t.kind + (t.actor ? ':' + t.actor.kind : t.it ? ':' + t.it.kind : '') : null))(H.mission?.() ? shownGoal ?? target : target), ms: Math.round(performance.now() - t0) };
   };
 })();
