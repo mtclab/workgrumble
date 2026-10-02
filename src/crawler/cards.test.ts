@@ -228,6 +228,16 @@ describe('#3 Josh\'s First Day, Again', () => {
     h.run(3, () => { g.save.sanity = 100; });
     expect(m.run.objectiveDone, 'Josh at the counter').toBe(true);
     expect(m.nerve).toBeGreaterThan(0);
+    // Delivered: he stays at the counter with his badge while you go back to the lift, and a fight on the
+    // way back is not his to panic at: the card is done, not failed.
+    const at = { x: josh.pos.x, z: josh.pos.z };
+    expect(josh.recruited, 'not following you any more').toBe(false);
+    g.player.pos.set(lv.start.x, 0, lv.start.z);
+    const vendor = m.crowd.find((a) => a.kind === 'vendor')!;
+    vendor.aggro = true;
+    h.run(10, () => { g.save.sanity = 100; vendor.pos.set(josh.pos.x + 1, 0, josh.pos.z); });
+    expect(m.run.over, 'the card is not failed').toBe(false);
+    expect(Math.hypot(josh.pos.x - at.x, josh.pos.z - at.z), 'still at the counter').toBeLessThan(1.5);
   });
 });
 

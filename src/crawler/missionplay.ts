@@ -170,6 +170,7 @@ export class MissionPlay {
     this.placeScatter();
     if (from !== null) this.resume(from);
     this.doneSaid = this.run.objectiveDone;
+    if (this.escortee !== null && this.run.objectiveDone) this.settle(this.escortee);
     this.dropScatter();
     g.markers = this.markers();
     g.markersIn = 0;
@@ -439,7 +440,8 @@ export class MissionPlay {
    */
   private escort(dt: number): boolean {
     const j = this.escortee;
-    if (j === null) return true;
+    // Delivered: they stay at the counter with their badge, and nothing on the way back is theirs to panic at.
+    if (j === null || this.run.objectiveDone) return true;
     const g = this.g;
     const scared = g.actors.some((a) => a.hostile && a.aggro && !a.resolved && Math.hypot(a.pos.x - j.pos.x, a.pos.z - j.pos.z) < ESCORT_FRIGHT);
     const before = this.nerve;
@@ -456,8 +458,17 @@ export class MissionPlay {
     const lv = this.g.level;
     const desk = lv.interactables.find((it) => it.kind === 'itdesk');
     const inRoom = desk !== undefined && lv.roomOf[toCell(j.pos.z) * lv.w + toCell(j.pos.x)] === desk.room;
-    if (!this.run.objectiveDone && desk !== undefined && inRoom && Math.hypot(desk.x - j.pos.x, desk.z - j.pos.z) <= ESCORT_REACH) this.run.reached();
+    if (desk !== undefined && inRoom && Math.hypot(desk.x - j.pos.x, desk.z - j.pos.z) <= ESCORT_REACH) {
+      this.run.reached();
+      this.settle(j);
+    }
     return true;
+  }
+
+  /** The one escorted, delivered: they stop following you and stay where they are, at the counter. */
+  private settle(j: Actor): void {
+    j.recruited = false;
+    setMarker(j, null);
   }
 
   /**
