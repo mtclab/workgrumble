@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dropGear, resolveActor } from './combat';
+import { dropGear, lastStand, resolveActor } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
 import { ARRIVAL_LIFT_ID, type Game } from './game';
@@ -10,7 +10,7 @@ import { HUB_EXTRA_BASE } from './hub';
 import { interact, standAt } from './interact';
 import * as host from './hosts';
 import { generateLevel, type LevelRecipe } from './level';
-import { plainInstance } from './loot';
+import { plainInstance, uniqueInstance } from './loot';
 import { generateMokki } from './mokki';
 import { Rng } from './rng';
 import { readSlot } from './saves';
@@ -25,6 +25,8 @@ vi.mock('./mokki', async (orig) => {
   const mod = await orig<typeof import('./mokki')>();
   return { ...mod, generateMokki: (seed: number, _headless?: boolean, upgrades?: readonly string[]) => mod.generateMokki(seed, true, upgrades) };
 });
+// Under the steam needs a screen to draw on: here it is only the moment it starts that matters.
+vi.mock('./vision', async (orig) => ({ ...await orig<typeof import('./vision')>(), Vision: class { update(): null { return null; } } }));
 // The loading card and the lift's card go straight on (they wait for a painted frame on a screen).
 vi.mock('./screens', async (orig) => ({
   ...await orig<typeof import('./screens')>(),
@@ -418,6 +420,68 @@ describe('S1a: hub tickets and breaches', () => {
     expect(h.toasts.some((t) => t.includes(`${w.name} is on the way up`)), 'announced on arrival').toBe(true);
     expect(g.save.hub.hostile).toEqual([{ spawnIndex: r.spawnIndex, reason: 'breach' }]);
     expect(g.save.hub.breaches).toEqual([]);
+  });
+});
+
+describe('S1a: the hub and the P1 floor each have their own once-a-floor saves and steam', () => {
+  /** Burnt out at zero: did a once-a-floor save hold you up (and which line said so)? */
+  function zero(h: Headless): string | null {
+    h.toasts.length = 0;
+    h.g.save.sanity = 0;
+    h.g.sisuT = 0;
+    const held = lastStand(h.g);
+    return held ? h.toasts.at(-1) ?? '' : null;
+  }
+  function withNokia(h: Headless): void {
+    const nokia = uniqueInstance('nokia', new Rng(2))!;
+    h.g.save.gear.push(nokia);
+    h.g.equipGear(nokia.uid);
+    expect(h.g.derived().specials.has('nokia')).toBe(true);
+  }
+  /** A full Löyly meter, and a sauna's worth more: does the steam take you under? */
+  function steam(h: Headless): boolean {
+    const g = h.g;
+    g.visionDue = false;
+    const max = g.derived().maxLoyly;
+    g.save.loyly = max;
+    g.steamOverflow('sauna', max, max);
+    return g.visionDue;
+  }
+
+  for (const first of ['hub', 'P1'] as const) {
+    it(`Unbreakable, the Nokia and the SUO used on the ${first === 'hub' ? 'hub do not spend the P1 floor\'s' : 'P1 floor do not spend the hub\'s'}`, () => {
+      const h = newCareer();
+      const g = h.g;
+      g.save.perks.unbreakable = 1;
+      withNokia(h);
+      const up = (): void => { press(h, lift(g)); h.pick('Floor B1: the major incident'); };
+      const down = (): void => { press(h, lift(g, ARRIVAL_LIFT_ID)); h.pick('Back to the hub'); };
+      if (first === 'P1') up();
+      // Spent here: Unbreakable, then the Nokia, then nothing; and the steam once.
+      expect(zero(h)).toContain('UNBREAKABLE');
+      expect(zero(h)).toContain('Nokia');
+      expect(zero(h), 'both spent here').toBeNull();
+      expect(steam(h), 'the steam takes you under').toBe(true);
+      (g as unknown as { startVision(): void }).startVision();
+      g.vision = null;
+      expect(steam(h), 'once a floor').toBe(false);
+      // The other place still has its own.
+      if (first === 'P1') down();
+      else up();
+      expect(zero(h), 'Unbreakable still there').toContain('UNBREAKABLE');
+      expect(zero(h), 'the Nokia still there').toContain('Nokia');
+      expect(zero(h)).toBeNull();
+      expect(steam(h), 'and the steam').toBe(true);
+    });
+  }
+
+  it('the hub\'s are fresh each Monday', () => {
+    const h = newCareer();
+    h.g.save.hub.once = { unbreakableUsed: true, nokiaUsed: true, suo: true, coldSteam: true };
+    h.g.save.week = 2;
+    h.g.startWeek(1);
+    h.g.loadHub(false, true);
+    expect(h.g.save.hub.once).toEqual({ unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false });
   });
 });
 

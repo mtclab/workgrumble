@@ -128,6 +128,7 @@ import {
   loadLegacy,
   newSave,
   normalizeSave,
+  onceHere,
   perk,
   type QueuedTicket,
   raiseSkill,
@@ -1822,7 +1823,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       if (!a.hostile || a.resolved || !a.aggro) continue;
       hostileAt = Math.min(hostileAt, Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z));
     }
-    const spent = s.location === 'mokki' ? s.weekend.suo : s.floorState.suo;
+    const spent = s.location === 'mokki' ? s.weekend.suo : onceHere(s).suo;
     const r = overflowDecision({ source, before, gain, max: this.derivedCache.maxLoyly, spent, hostileAt });
     if (r === 'wait') this.hud.toast(SUO_LINES.wait, 'info');
     if (r === 'go') this.visionDue = true;
@@ -1832,7 +1833,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     this.visionDue = false;
     const s = this.save;
     if (s.location === 'mokki') s.weekend.suo = true;
-    else s.floorState.suo = true;
+    else onceHere(s).suo = true;
     this.prompt = '';
     this.promptTarget = null;
     this.hud.mapOpen = false;

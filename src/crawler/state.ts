@@ -97,7 +97,20 @@ export interface CharacterSetup {
 }
 
 /** What has already happened on the floor you are on, so a reload keeps it. */
-export interface FloorState {
+/**
+ * Once-a-floor things: the saves that hold you up once (Unbreakable, the
+ * Nokia), the steam taking you under (SUO), the cold-steam line. The P1
+ * floor keeps its own (`FloorState`) and the hub its own (`HubState.once`,
+ * fresh each Monday): using one on the hub does not spend the P1's.
+ */
+export interface OncePerFloor {
+  unbreakableUsed: boolean;
+  nokiaUsed: boolean;
+  suo: boolean;
+  coldSteam: boolean;
+}
+
+export interface FloorState extends OncePerFloor {
   floor: number;
   bossDone: boolean;
   boss?: { hp: number; phase: 1 | 2 };
@@ -178,6 +191,13 @@ export interface HubState {
   arrivals: HubArrival[];
   /** The next arrival's index: it only ever counts up, across weeks. */
   nextArrival: number;
+  /** The hub's own once-a-floor things, this week. */
+  once: OncePerFloor;
+}
+
+/** The once-a-floor things of where you are at work: the hub's, or the P1 floor's. */
+export function onceHere(s: SaveState): OncePerFloor {
+  return s.location === 'hub' ? s.hub.once : s.floorState;
 }
 
 export interface WeekendState {
@@ -293,7 +313,7 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE };
+  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false } };
 }
 
 /** Monday on the hub: the week's people and props start again; the gear on the floor is still there, and arrivals' indices go on counting. */
@@ -331,7 +351,12 @@ export function normalizeHub(raw: unknown, week: number): HubState {
         && ARRIVAL_KINDS.includes(r.kind as HubArrivalKind) && (r.why === 'breach' || r.why === 'story' || r.why === 'visit');
     }).map((r) => ({ index: r.index, kind: r.kind, name: r.name, why: r.why })) : [],
     nextArrival: HUB_EXTRA_BASE,
+    once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false },
   };
+  if (typeof o.once === 'object' && o.once !== null) {
+    const once = o.once as Partial<Record<keyof OncePerFloor, unknown>>;
+    for (const k of ['unbreakableUsed', 'nokiaUsed', 'suo', 'coldSteam'] as const) h.once[k] = once[k] === true;
+  }
   if (Array.isArray(o.hostile)) {
     for (const x of o.hostile as unknown[]) {
       const e = x as { spawnIndex?: unknown; reason?: unknown; name?: unknown } | null;

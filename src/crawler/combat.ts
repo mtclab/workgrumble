@@ -27,7 +27,7 @@ import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, RARITY_SHAPE, rollGear, u
 import { questItemMesh } from './meshes';
 import { MAIN, TRANSIENT_ITEMS } from './quests';
 import { fx } from './rng';
-import { adjustStanding, gearDropsHere, noteResolved, perk, skill } from './state';
+import { adjustStanding, gearDropsHere, noteResolved, onceHere, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
 import { questEvent } from './questing';
 import { questProgress } from './desk';
@@ -699,7 +699,8 @@ export function hurtPlayer(g: Game, amount: number, from: Actor | null, kind: 'm
  */
 export function lastStand(g: Game): boolean {
   const s = g.save;
-  const fs = s.floorState;
+  // Once a floor: the hub's and the P1 floor's are separate.
+  const fs = onceHere(s);
   if (g.sisuT > 0) {
     s.sanity = 1;
     return true;

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { TICKETS } from './content/tickets';
 import { Game } from './game';
-import { derive, newSave, type QueuedTicket } from './state';
+import { derive, newSave, onceHere, type QueuedTicket } from './state';
 
 vi.mock('./audio', () => ({ sfx: { error: () => undefined } }));
 
@@ -46,7 +46,8 @@ describe('burnout at a terminal', () => {
     g.save.perks.unbreakable = 1;
     g.resolve(q, 'Wrong fix');
     expect(g.save.sanity).toBe(1);
-    expect(g.save.floorState.unbreakableUsed).toBe(true);
+    // Spent where you are (a new career is on the hub).
+    expect(onceHere(g.save).unbreakableUsed).toBe(true);
     expect(g.save.stats.burnouts).toBe(0);
     expect(g.screen).toBe('os');
     expect(events).toEqual([]);

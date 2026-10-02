@@ -6,7 +6,7 @@ import type { Game } from './game';
 import { lineOfSight, toCell } from './level';
 import { castChance, type SpellDef, spellById } from './magic';
 import { fx } from './rng';
-import { perk, skill } from './state';
+import { onceHere, perk, skill } from './state';
 import { castPlan, type CastPlan, SUO_LINES } from './suo';
 
 /** Mökki magic and the domain abilities (G). */
@@ -66,8 +66,8 @@ export function castSpell(g: Game): void {
     return;
   }
   // The first cold-steam cast on a floor says so; after that, just the price.
-  if (plan.kind === 'sisu' && !s.floorState.coldSteam) {
-    s.floorState.coldSteam = true;
+  if (plan.kind === 'sisu' && !onceHere(s).coldSteam) {
+    onceHere(s).coldSteam = true;
     g.hud.toast(SUO_LINES.dry, 'bad');
   }
   if (plan.kind === 'blessed') {
