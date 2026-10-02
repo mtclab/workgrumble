@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { DialogueNode } from './dialogue';
+import type { MissionView } from './missionplay';
+import type { Tier } from './stealth';
 import { Game } from './game';
 import { Input } from './input';
 import { interact } from './interact';
@@ -27,6 +29,9 @@ export interface Headless {
   readonly dialogues: DialogueNode[];
   /** Sanity lost, by the game time it was lost at (`run` records it). */
   readonly hurts: { readonly t: number; readonly lost: number }[];
+  /** A mission's HUD as last drawn (the eye's tier, the objective line, the alarm rule's words), and its results card when up. */
+  readonly missionHud: { tier: Tier; goal: string; rule: string } | null;
+  readonly results: { head: string; rows: Map<string, string>; buttons: Map<string, () => void> } | null;
   /**
    * Run `seconds` worth of frames of the production loop (`Game.step`, the
    * balance bot's loop). Calls `each` after every frame. Like the game, a
@@ -46,6 +51,17 @@ export function headless(save: SaveState): Headless {
   const toasts: string[] = [];
   const dialogues: DialogueNode[] = [];
   const hurts: { t: number; lost: number }[] = [];
+  const shown: { hud: Headless['missionHud']; results: Headless['results'] } = { hud: null, results: null };
+  // A mission's HUD and results card, recorded instead of drawn.
+  const view = (): MissionView => ({
+    draw: (tier, goal, rule) => { shown.hud = { tier, goal, rule }; },
+    show: () => undefined,
+    result: (head, _dead, rows, buttons) => {
+      g.screen = 'ending';
+      shown.results = { head, rows: new Map(rows), buttons: new Map(buttons) };
+    },
+    dispose: () => { shown.results = null; },
+  });
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera();
   const element = { style: {}, classList: { add: noop, remove: noop, toggle: noop }, append: noop, replaceChildren: noop };
@@ -85,7 +101,7 @@ export function headless(save: SaveState): Headless {
     lockerItems: new Map<number, string>(), slackedTerminals: new Set<number>(), loggedOn: new Set<number>(),
     markers: [], markersIn: 0, history: [], historyIn: 0, projGeo: new Map(),
     fixCache: new WeakMap(), levelRng: new Rng(1), lootRng: new Rng(2),
-    boss: null, bossMult: 1, elevatorOpen: false, mission: null, hub: null, inductionDay: null, vision: null, visionDue: false,
+    boss: null, bossMult: 1, elevatorOpen: false, mission: null, missionView: view, hub: null, inductionDay: null, vision: null, visionDue: false,
     mentorAsk: null, pendingStaff: null, staffIn: 0, staffFirst: false, mentorIn: 0, afterDialogue: null, currentTerminal: null,
     prompt: '', promptTarget: null, caughtPending: false, caughtCd: 0, rootT: 0, rootMax: 0, rootImmuneUntil: 0,
     sisuT: 0, invisT: 0, saunaT: 0, slowT: 0, hitStop: 0, hurtFlash: 0, faceT: 0, faceMood: 'normal', shakeAmt: 0,
@@ -129,7 +145,11 @@ export function headless(save: SaveState): Headless {
     then?.();
     return null;
   };
-  return { g, toasts, dialogues, hurts, run, pick };
+  return {
+    g, toasts, dialogues, hurts, run, pick,
+    get missionHud() { return shown.hud; },
+    get results() { return shown.results; },
+  };
 }
 
 /**
