@@ -125,6 +125,20 @@ describe('#4 Password Hygiene Week', () => {
     h.run(DT * 3);
     expect(m.run.objectiveDone).toBe(true);
   });
+
+  it('a step from a copy, facing it (the browser test\'s placement): W walks onto it, and that is the pickup', () => {
+    const h = play(POSTITS);
+    const g = h.g;
+    const m = g.mission!;
+    g.player.crouching = true;
+    for (let n = 1; n <= 3; n++) {
+      expect(m.toCopy(2.2)).toBe(true);
+      g.input.keys.add(g.settings.keys.forward);
+      for (let t = 0; t < 5 && m.run.progress < n; t += DT) h.run(DT);
+      g.input.keys.clear();
+      expect(m.run.progress, `copy ${n}, walked onto`).toBe(n);
+    }
+  });
 });
 
 describe('#5 Phishing Test Debrief', () => {

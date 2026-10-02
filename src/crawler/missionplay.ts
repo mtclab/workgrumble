@@ -929,6 +929,33 @@ export class MissionPlay {
   }
 
   /**
+   * Stand the player `dist` m from the nearest copy still lying on the
+   * floor (a collect card), facing it, with a clear step onto it. It only
+   * moves the player: walking over it (the W key) is the player's.
+   */
+  toCopy(dist: number): boolean {
+    const g = this.g;
+    const lv = g.level;
+    const pp = g.player.pos;
+    const left = this.scatter.filter((c) => !c.picked).sort((p, q) => Math.hypot(p.x - pp.x, p.z - pp.z) - Math.hypot(q.x - pp.x, q.z - pp.z));
+    for (const c of left) {
+      for (let k = 0; k < 16; k++) {
+        const ang = (k / 16) * Math.PI * 2;
+        const x = c.x + Math.sin(ang) * dist;
+        const z = c.z + Math.cos(ang) * dist;
+        const cell = toCell(z) * lv.w + toCell(x);
+        if (lv.floor[cell] !== 1 || lv.solid[cell] !== 0 || !walkClear(lv, x, z, c.x, c.z)) continue;
+        g.player.pos.set(x, 0, z);
+        // The player faces -sin(yaw), -cos(yaw): toward the copy.
+        g.player.yaw = Math.atan2(x - c.x, z - c.z);
+        g.player.pitch = 0;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Stand the player two cells into the service spine from the lobby's back
    * door, facing straight down it (along its row, to its far end). It only
    * moves the player. False on a card with no spine.

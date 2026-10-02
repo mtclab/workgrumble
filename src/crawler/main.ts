@@ -95,6 +95,8 @@ try {
     mission: (): MissionDebug | null => game.mission?.debug() ?? null,
     missionStandInView: (id: number, dist: number): boolean => game.mission?.standInView(id, dist) ?? false,
     missionToSpine: (): boolean => game.mission?.toSpine() ?? false,
+    // A step from the nearest of a collect card's copies, facing it (S1b, e2e/helldesk-deck.spec.ts): the W key walks onto it.
+    missionToCopy: (dist: number): boolean => game.mission?.toCopy(dist) ?? false,
     // The hub (0.3.0 S1a, e2e/helldesk-hub.spec.ts and the bot's hub-only week): read-only state, and one that only skips the wait for a walk-up.
     hub: (): HubDebug | null => game.hub?.debug() ?? null,
     hubWalkUpNow: (): void => game.hub?.walkUpNow(),
