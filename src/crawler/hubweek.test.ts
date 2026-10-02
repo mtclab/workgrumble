@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dropGear, lastStand, resolveActor } from './combat';
+import { dropGear, EXIT_LIT, lastStand, resolveActor } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
 import { ARRIVAL_LIFT_ID, type Game } from './game';
@@ -11,7 +11,7 @@ import { interact, standAt } from './interact';
 import * as host from './hosts';
 import { isPracticeTicket } from './induction';
 import { requestMentoring } from './teamwork';
-import { generateLevel, type LevelRecipe } from './level';
+import { generateLevel, type Interactable, type LevelRecipe } from './level';
 import { plainInstance, uniqueInstance } from './loot';
 import { generateMokki } from './mokki';
 import { Rng } from './rng';
@@ -627,6 +627,37 @@ describe('S1a: computers are counted by where they are', () => {
     g.questEvent({ type: 'use', what: 'terminal', terminal: id });
     expect(st.progress, 'a P1 computer is not the hub\'s').toBe(2);
     expect(st.terminals).toEqual([`hub:${id}`, `1:${id}`]);
+  });
+});
+
+describe('S1a: the way out is the lift that lights up', () => {
+  /** The colour of a lift's lamp. */
+  const lamp = (it: Interactable): number => {
+    let c = -1;
+    it.mesh?.traverse((o) => { if (o.name === 'lamp' && o instanceof THREE.Mesh) c = (o.material as THREE.MeshBasicMaterial).color.getHex(); });
+    return c;
+  };
+
+  it('resolving the boss lights the corner office\'s lift, not the one you came up in; and it is still lit when you come back up', () => {
+    const h = newCareer();
+    const g = h.g;
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    const exit = g.level.interactables.find((x) => x.kind === 'elevator' && x.id !== ARRIVAL_LIFT_ID)!;
+    const arrival = lift(g, ARRIVAL_LIFT_ID);
+    expect(lamp(exit), 'red while the incident is open').toBe(0xff3030);
+    g.boss!.hp = 0;
+    resolveActor(g, g.boss!);
+    expect(lamp(exit), 'the corner office\'s lift is lit').toBe(EXIT_LIT);
+    expect(lamp(arrival), 'the arrival lift is not').toBe(0xff3030);
+    while (g.screen === 'dialogue') h.pick(/./);
+    press(h, lift(g, ARRIVAL_LIFT_ID));
+    h.pick('Back to the hub');
+    press(h, lift(g));
+    h.pick('Floor B1: the major incident');
+    const again = g.level.interactables.find((x) => x.kind === 'elevator' && x.id !== ARRIVAL_LIFT_ID)!;
+    expect(lamp(again), 'still lit, back up').toBe(EXIT_LIT);
+    expect(lamp(lift(g, ARRIVAL_LIFT_ID))).toBe(0xff3030);
   });
 });
 

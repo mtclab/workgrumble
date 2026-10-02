@@ -20,7 +20,7 @@ import {
   type TelegraphSpec,
   walkClear,
 } from './entities';
-import { type Game, POWER_TIME } from './game';
+import { ARRIVAL_LIFT_ID, type Game, POWER_TIME } from './game';
 import { AMMO, type AmmoKind, BOOK_IDS, CONSUMABLES, DRINKS, ENERGY_DRINKS, itemById, RUNES, type WeaponDef } from './items';
 import { lineOfSight, toCell, WALL_H } from './level';
 import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, RARITY_SHAPE, rollGear, uniqueInstance, WORLD_UNIQUES } from './loot';
@@ -803,6 +803,20 @@ export function resolveActor(g: Game, a: Actor): void {
   if (fx.chance(a.kind === 'customer' || a.kind === 'consultant' || a.kind === 'shadowit' ? 0.12 : 0.04)) dropGearFrom(g, a.pos);
 }
 
+/**
+ * The major incident resolved: the lamp over the corner office's lift (the
+ * floor's exit, past the boss) goes green. Not the lift you came up in.
+ */
+export function lightExitLift(g: Game): void {
+  const exit = g.level.interactables.find((i) => i.kind === 'elevator' && i.id !== ARRIVAL_LIFT_ID);
+  exit?.mesh?.traverse((o) => {
+    if (o.name === 'lamp' && o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setHex(EXIT_LIT);
+  });
+}
+
+/** The lift lamp's colour once the way out is open. */
+export const EXIT_LIT = 0x30ff60;
+
 function resolveBoss(g: Game, a: Actor, rep: number): void {
   const s = g.save;
   const def = a.boss;
@@ -819,10 +833,7 @@ function resolveBoss(g: Game, a: Actor, rep: number): void {
   adjustStanding(s, 'management', 6);
   g.journal(`Resolved the major incident: ${a.name}.`);
   g.hud.toast(`MAJOR INCIDENT RESOLVED: ${a.name}. +₡${rep}. The lift is unlocked - the weekend awaits.`, 'epic');
-  const exit = g.level.interactables.find((i) => i.kind === 'elevator');
-  exit?.mesh?.traverse((o) => {
-    if (o.name === 'lamp' && o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setHex(0x30ff60);
-  });
+  lightExitLift(g);
   for (let i = 0; i < 4; i++) dropLoot(g, a.pos, true);
   // Phase two's hazards go out with the boss.
   for (const h of g.hazards) h.ttl = Math.min(h.ttl, 0.4);

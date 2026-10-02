@@ -61,7 +61,7 @@ import { MissionPlay } from './missionplay';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
-import { EXTRA_BASE, lastStand, markResolved, redropBossLoot } from './combat';
+import { EXTRA_BASE, lastStand, lightExitLift, markResolved, redropBossLoot } from './combat';
 import { itemById } from './items';
 import { spellById } from './magic';
 import { FishingUI } from './minigames';
@@ -638,6 +638,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     // It comes first: "the lift" is the one by the start, not the one past the boss.
     const back = this.level.arrival;
     if (back !== undefined) this.level.interactables.unshift({ kind: 'elevator', x: back.x, z: back.z, id: ARRIVAL_LIFT_ID, room: 0, used: false, mesh: back.mesh, lock: 0 });
+    // Back on a floor whose major incident is resolved: its way out is still lit.
+    if (fs.bossDone) lightExitLift(this);
 
     if (fresh && !byLift) {
       s.quests = s.quests.filter((q) => q.kind !== 'boss' && q.kind !== 'printer' && q.kind !== 'deliver');

@@ -1,6 +1,5 @@
-import * as THREE from 'three';
 import { sfx } from './audio';
-import { dropGear, EXTRA_BASE } from './combat';
+import { dropGear, EXTRA_BASE, lightExitLift } from './combat';
 import { questProgress } from './desk';
 import { type Actor, say } from './entities';
 import type { Game } from './game';
@@ -255,10 +254,7 @@ export function auditorParley(g: Game, outcome: 'ally' | 'fight'): void {
   g.journal('I gave the Auditor the Phoenix file. The audit ended with a handshake and a red pen.');
   g.hud.toast('AUDIT RESOLVED WITHOUT A FIGHT. The lift is unlocked.', 'epic');
   g.achieve('auditor');
-  const exit = g.level.interactables.find((i) => i.kind === 'elevator');
-  exit?.mesh?.traverse((o) => {
-    if (o.name === 'lamp' && o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setHex(0x30ff60);
-  });
+  lightExitLift(g);
   if (s.flags.unique_redPen !== true) {
     const pen = uniqueInstance('redPen', g.lootRng);
     if (pen !== null) dropGear(g, a.pos, pen);
@@ -285,6 +281,7 @@ export function bossDeal(g: Game, kind: 'nda' | 'mokki' | 'expose' | 'parachute'
         s.floorState.bossDone = true;
         s.stats.bosses++;
         g.elevatorOpen = true;
+        lightExitLift(g);
         s.quests = s.quests.filter((q) => q.kind !== 'boss');
         for (const h of g.hazards) h.ttl = Math.min(h.ttl, 0.4);
         g.questEvent({ type: 'boss', floor: g.floor });
