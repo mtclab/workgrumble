@@ -3,8 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { strike } from './combat';
 import type { Actor } from './entities';
 import type { Game } from './game';
+import { hide, holdAll } from './deckplay';
 import { DT, type Headless, headless } from './headlessgame';
-import { cellCenter, generateLevel, type LevelRecipe, lineOfSight } from './level';
+import { generateLevel, type LevelRecipe } from './level';
 import type { AlarmRule } from './mission';
 import { STAPLER } from './missions';
 import { newSave } from './state';
@@ -63,33 +64,6 @@ function alert(h: Headless, w: Watcher): void {
   }
   expect(w.mood, `${w.actor.name} is Alert`).toBe('alert');
   holdAll(h)();
-}
-
-/** Out of everyone's sight: the farthest open cell nobody on the card can see. */
-function hide(h: Headless): void {
-  const g = h.g;
-  const lv = g.level;
-  const people = g.mission!.crowd.filter((a) => !a.resolved);
-  let best: { x: number; z: number; d: number } | null = null;
-  for (let i = 0; i < lv.w * lv.h; i++) {
-    if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
-    const x = cellCenter(i % lv.w);
-    const z = cellCenter(Math.floor(i / lv.w));
-    if (people.some((a) => lineOfSight(lv, a.pos.x, a.pos.z, x, z) || Math.hypot(a.pos.x - x, a.pos.z - z) < 6)) continue;
-    const d = Math.min(...people.map((a) => Math.hypot(a.pos.x - x, a.pos.z - z)));
-    if (best === null || d > best.d) best = { x, z, d };
-  }
-  if (best === null) throw new Error('nowhere to hide');
-  g.player.pos.set(best.x, 0, best.z);
-  g.player.crouching = true;
-}
-
-/** Hold everyone where they are (a chase that does not catch up), and keep you on your feet. */
-function holdAll(h: Headless): () => void {
-  return () => {
-    h.g.save.sanity = 100;
-    for (const a of h.g.mission!.crowd) a.stunned = 1e9;
-  };
 }
 
 const freeAll = (h: Headless): void => { for (const a of h.g.mission!.crowd) a.stunned = 0; };

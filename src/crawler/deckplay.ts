@@ -1,7 +1,9 @@
 import { type DealtCard, deckCard, FLOOR_P1 } from './deck';
 import { DT, type Headless, headless, lift, press } from './headlessgame';
+import { cellCenter, lineOfSight } from './level';
 import { readSlot } from './saves';
 import { normalizeSave } from './state';
+import type { Watcher } from './stealth';
 
 /**
  * Test support for the weekly deck on the headless game (headlessgame.ts):
@@ -76,4 +78,54 @@ export function reload(h: Headless): Headless {
   const back = headless(s);
   back.g.loadWorld(true);
   return back;
+}
+
+/** Out of everyone's sight on a card: the farthest open cell nobody on it can see, crouched. */
+export function hide(h: Headless): void {
+  const g = h.g;
+  const lv = g.level;
+  const people = g.mission?.crowd.filter((a) => !a.resolved) ?? [];
+  let best: { x: number; z: number; d: number } | null = null;
+  for (let i = 0; i < lv.w * lv.h; i++) {
+    if (lv.floor[i] !== 1 || lv.solid[i] === 1) continue;
+    const x = cellCenter(i % lv.w);
+    const z = cellCenter(Math.floor(i / lv.w));
+    if (people.some((a) => lineOfSight(lv, a.pos.x, a.pos.z, x, z) || Math.hypot(a.pos.x - x, a.pos.z - z) < 6)) continue;
+    const d = Math.min(...people.map((a) => Math.hypot(a.pos.x - x, a.pos.z - z)));
+    if (best === null || d > best.d) best = { x, z, d };
+  }
+  if (best === null) throw new Error('nowhere to hide');
+  g.player.pos.set(best.x, 0, best.z);
+  g.player.crouching = true;
+}
+
+/** Hold everyone on the card where they are (a chase that does not catch up), and keep you on your feet. */
+export function holdAll(h: Headless): () => void {
+  return () => {
+    h.g.save.sanity = 100;
+    for (const a of h.g.mission?.crowd ?? []) a.stunned = 1e9;
+  };
+}
+
+/**
+ * Stand in a watched person's view, on your feet, until they are Alert;
+ * everyone else is held where they are meanwhile (one person's alarm, not a
+ * crowd's), and then they are all held.
+ */
+export function alertOne(h: Headless, w: Watcher): void {
+  const m = h.g.mission;
+  if (m === null || !m.standInView(w.actor.id, 3)) throw new Error(`no standing in front of ${w.actor.name}`);
+  h.g.player.crouching = false;
+  for (let t = 0; t < 8 && w.mood !== 'alert'; t += DT) {
+    for (const a of m.crowd) if (a !== w.actor) a.stunned = 1e9;
+    h.run(DT, () => { h.g.save.sanity = 100; if (w.mood !== 'alert') m.standInView(w.actor.id, 3); });
+  }
+  if (w.mood !== 'alert') throw new Error(`${w.actor.name} never went Alert`);
+  holdAll(h)();
+}
+
+/** The card's people at desks with no tag of the card's (ordinary staff), as their watchers. */
+export function deskWatchers(h: Headless): Watcher[] {
+  const m = h.g.mission;
+  return m === null ? [] : [...m.watch.watchers.values()].filter((w) => w.sort === 'desk' && w.tag === null && !w.actor.resolved);
 }

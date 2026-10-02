@@ -812,6 +812,7 @@ export class MissionPlay {
       return {
         i, x: a.pos.x, z: a.pos.z, yaw: a.yaw, hp: a.hp, resolved: a.resolved, aggro: a.aggro,
         suspicion: w?.suspicion ?? 0, peak: w?.peak ?? 0, mood: w?.mood ?? 'calm', countdown: w?.countdown ?? 0, spot: w?.spot ?? null,
+        lost: w?.lost ?? 0, lastSeen: w?.lastSeen ?? null,
         stolen: a.stolen, talked: a.talked, enragedT: a.enragedT, memo: lastingMemo(a), gift: a.giftGiven, fleeT: a.fleeT,
         ...(i >= this.placed ? { extra: {
           kind: a.kind, name: a.name, room: a.room, elite: a.elite, rep: a.rep, sort: w?.sort ?? 'wander', tag: w?.tag ?? null,
@@ -821,6 +822,7 @@ export class MissionPlay {
     });
     return {
       run: this.run.save(), tier: this.watch.tier, quietT: this.watch.quietT, people,
+      alerted: this.crowd.flatMap((a, i) => (this.watch.alerted.has(a.id) ? [i] : [])),
       collected: this.scatter.flatMap((c, k) => (c.picked ? [k] : [])), loudDone: this.loudDone, nerve: this.nerve,
       repAtStart: this.repAtStart, managementAtStart: this.standingAtStart.management, staffAtStart: this.standingAtStart.staff,
       detectedAt: this.detectedAt, noticedAt: this.noticedAt, noiseEvents: this.noiseEvents,
@@ -875,6 +877,14 @@ export class MissionPlay {
         a.aggro = true;
         a.docile = false;
         a.cooldown = Math.max(a.cooldown, ALERT_PAUSE);
+      }
+    }
+    // Who has been Alert, the resolved among them too: a second alarm after a reload is still a second alarm.
+    if (from.alerted !== undefined) {
+      this.watch.alerted.clear();
+      for (const k of from.alerted) {
+        const a = this.crowd[k];
+        if (a !== undefined) this.watch.alerted.add(a.id);
       }
     }
     g.actors = g.actors.filter((a) => !(a.expired && this.crowd.includes(a)));

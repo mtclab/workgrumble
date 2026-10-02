@@ -2,7 +2,8 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Game } from './game';
 import { DT, type Headless, lift, newCareer, press } from './headlessgame';
-import { cardIndex, liftTo, reload, withDeck } from './deckplay';
+import { alertOne, cardIndex, deskWatchers, hide, holdAll, liftTo, reload, withDeck } from './deckplay';
+import { SEARCH_AFTER } from './stealth';
 import type { Actor } from './entities';
 import { findPrompt, interact } from './interact';
 import { generateLevel, type LevelRecipe } from './level';
@@ -221,5 +222,58 @@ describe('somebody who came onto the card in play is kept by a save', () => {
     expect(bm.watch.watchers.get(again.id)?.mood).toBe('alert');
     expect(bm.watch.tier).toBe(tier);
     expect(bm.crowd).toHaveLength(m.crowd.length);
+  });
+});
+
+describe('the alarm\'s clocks and memory survive a reload', () => {
+  it('search rule: somebody Alert who lost you 5 s ago, saved and reloaded, starts searching 3 s later, not 8', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits', alarm: 'search' }]);
+    g.acceptCard(cardIndex(h, 'postits'));
+    liftTo(h, 'postits');
+    const m = g.mission!;
+    const w = deskWatchers(h)[0]!;
+    const i = m.crowd.indexOf(w.actor);
+    alertOne(h, w);
+    hide(h);
+    h.run(5, holdAll(h));
+    expect(w.mood).toBe('alert');
+    expect(w.lost).toBeGreaterThan(4.9);
+    const lost = w.lost;
+    const seen = w.lastSeen;
+    const back = reload(h);
+    const bw = back.g.mission!.watch.watchers.get(back.g.mission!.crowd[i]!.id)!;
+    expect(bw.lost, 'the clock as it was').toBeCloseTo(lost, 5);
+    expect(bw.lastSeen, 'and where they last had you').toEqual(seen);
+    hide(back);
+    back.run(SEARCH_AFTER - lost - 0.4, holdAll(back));
+    expect(bw.mood, 'not yet').toBe('alert');
+    back.run(0.8, holdAll(back));
+    expect(bw.mood, '8 s after they lost you, reload or not').toBe('searching');
+    expect(bw.spot, 'looking where they last had you').toEqual(seen);
+  });
+
+  it('one-way: somebody who went Alert and was resolved still counts after a reload: the next one to go Alert is a second alarm', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'stapler', alarm: 'one-way' }]);
+    g.acceptCard(cardIndex(h, 'stapler'));
+    liftTo(h, 'stapler');
+    const m = g.mission!;
+    const [first, second] = deskWatchers(h);
+    const j = m.crowd.indexOf(second!.actor);
+    alertOne(h, first!);
+    expect(m.watch.tier).toBe(2);
+    first!.actor.hp = 0;
+    h.run(DT * 2, holdAll(h));
+    expect(first!.actor.resolved).toBe(true);
+    const back = reload(h);
+    const bm = back.g.mission!;
+    expect(bm.watch.tier).toBe(2);
+    alertOne(back, bm.watch.watchers.get(bm.crowd[j]!.id)!);
+    expect(bm.watch.tier, 'a second person raised the alarm').toBe(3);
   });
 });

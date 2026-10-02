@@ -252,6 +252,9 @@ export interface PersonSave {
   readonly gift?: boolean;
   /** A vendor making off after a grab: seconds of it left. */
   readonly fleeT?: number;
+  /** At Alert: seconds since they last saw you, and where that was (the search rule's clock and spot). */
+  readonly lost?: number;
+  readonly lastSeen?: Point | null;
   /** Not one the card placed: who they were (absent for the card's own people). */
   readonly extra?: ExtraSave;
 }
@@ -262,6 +265,8 @@ export interface PlaySave {
   readonly tier: Tier;
   readonly quietT: number;
   readonly people: readonly PersonSave[];
+  /** Everyone who has been Alert on the card (resolved since or not), by place in the crowd: the second alarm counts them. */
+  readonly alerted?: readonly number[];
   /** The card's scattered copies already picked up, by their place in the scatter. */
   readonly collected: readonly number[];
   /** The card's going-loud already happened (the closet bolted, somebody called). */

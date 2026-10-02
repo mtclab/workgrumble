@@ -217,19 +217,22 @@ export class Watch implements WatchCtx {
    * back after you (the caller makes them so); searching comes back with its
    * countdown; investigating comes back where they were going.
    */
-  restore(w: Watcher, st: { suspicion: number; peak: number; mood: Mood; countdown: number; spot: Point | null }): void {
+  restore(w: Watcher, st: { suspicion: number; peak: number; mood: Mood; countdown: number; spot: Point | null; lost?: number; lastSeen?: Point | null }): void {
     w.suspicion = st.suspicion;
     w.peak = st.peak;
     w.mood = st.mood;
     w.countdown = st.countdown;
     w.spot = st.spot;
     w.searchT = SEARCH_TIME;
+    // The search rule's clock and spot: how long they have been without you, and where they last had you.
+    w.lost = st.lost ?? 0;
+    w.lastSeen = st.lastSeen ?? null;
     if (st.mood === 'alert') {
       if (!w.called) this.alerted.add(w.actor.id);
       this.mark(w, '!', '#ff4030');
     } else if (st.mood === 'searching') {
       if (!w.called) this.alerted.add(w.actor.id);
-      w.lastSeen = st.spot;
+      w.lastSeen ??= st.spot;
       this.mark(w, countdownText(w.countdown), '#ffb020');
     } else if (st.mood === 'investigating') {
       this.mark(w, '?', '#ffb020');
