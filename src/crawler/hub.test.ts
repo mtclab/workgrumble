@@ -313,7 +313,8 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     Object.assign(g, { os: { hide: (): void => undefined } });
     g.close();
     expect(hostiles(h), 'nap and cats turn nobody').toEqual([]);
-    expect(g.actors.filter((a) => a.kind === 'manager' && !a.hostile && a.spawnIndex < 0).length, 'the two managers came, and are colleagues').toBe(2);
+    expect(g.actors.filter((a) => a.kind === 'manager' && a.colleague && !a.hostile && a.spawnIndex >= HUB_EXTRA_BASE).length, 'the two managers came, and are colleagues').toBe(2);
+    expect(g.save.hub.arrivals.map((r) => r.why), 'kept for the week as visitors').toEqual(['visit', 'visit']);
     // A manager turned (a breach) calls for reinforcements every 12-18 s: on the hub, nobody comes.
     const m = neutral(h).find((a) => a.kind === 'manager' && named(h, a));
     if (m === undefined) throw new Error('no manager');

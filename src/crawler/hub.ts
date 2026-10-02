@@ -1,11 +1,11 @@
 import { TICKETS } from './content/tickets';
 import { ticketSla } from './desk';
 import { type DialogueNode, said } from './dialogue';
-import { type Actor, type ActorKind, type HubCtx, say, setMarker } from './entities';
+import { type Actor, type ActorKind, type HubCtx, rollActor, say, setMarker } from './entities';
 import { FINAL_FLOOR, type Game } from './game';
 import { cellCenter, generateLevel, type Interactable, type Level, lineOfSight, toCell } from './level';
 import { Rng } from './rng';
-import { type HubHostile, type HubReason, type QueuedTicket, type SaveState } from './state';
+import { type HubArrival, type HubArrivalKind, type HubReason, type QueuedTicket, type SaveState } from './state';
 import { storyBeatDone, storyNpcFor } from './story';
 import { THEMES, type Theme } from './textures';
 import { caughtCheck } from './vices';
@@ -69,8 +69,7 @@ export const FIGHT_MEMORY = 10;
 /** Below this Staff standing, somebody on the hub has been waiting all weekend. */
 const GRUDGE_STAFF = -40;
 
-/** Spawn indices of people who came up in the lift (an SLA breach's reporter). */
-export const HUB_EXTRA_BASE = 200000;
+export { HUB_EXTRA_BASE } from './state';
 
 /** Who on the hub can turn: the workers. */
 const WORKERS: readonly ActorKind[] = ['user', 'caller', 'manager'];
@@ -177,8 +176,9 @@ export class Hub implements HubCtx {
   /**
    * Everyone on the hub, from the level's spawns: colleagues (users,
    * callers, managers) neutral, the Kitchen Cabinet, Internal IT's people,
-   * the Saunatonttu, and this week's story NPC. Whoever was resolved this
-   * week stays away; whoever is after you is still after you.
+   * the Saunatonttu, and this week's story NPC; and this week's arrivals
+   * (a story's enemy, a visitor, a breach's reporter), by the lift. Whoever
+   * was resolved this week stays away; whoever is after you is still after you.
    */
   populate(): void {
     const g = this.g;
@@ -198,10 +198,11 @@ export class Hub implements HubCtx {
       const colleague = WORKERS.includes(sp.kind);
       g.spawnAt(sp.kind, at.x, at.z, sp.room, false, { spawnIndex: idx, ...(colleague ? { colleague: true } : {}) }, personRng(s.seed, idx));
     });
+    for (const r of s.hub.arrivals) if (!gone.has(r.index)) this.spawnArrival(r, null);
     let still = 0;
     for (const h of s.hub.hostile) {
-      const a = h.spawnIndex >= HUB_EXTRA_BASE ? this.upTheLift(h.spawnIndex, h.name ?? 'Somebody from upstairs') : g.actors.find((x) => x.colleague && x.spawnIndex === h.spawnIndex);
-      if (a === undefined || a === null || a.resolved) continue;
+      const a = g.actors.find((x) => x.colleague && x.spawnIndex === h.spawnIndex);
+      if (a === undefined || a.resolved) continue;
       this.makeHostile(a, h.reason);
       still++;
     }
@@ -257,20 +258,18 @@ export class Hub implements HubCtx {
 
   /**
    * An SLA breach: the ticket's reporter (by name) comes to find you. If
-   * nobody of that name is on the hub, they come up in the lift.
+   * they were resolved earlier this week, the same person comes back for
+   * this one; only somebody the hub has never had this week comes up in the
+   * lift, as a new arrival.
    */
   breach(q: Pick<QueuedTicket, 't' | 'from'>): void {
     const g = this.g;
     const title = TICKETS[q.t]?.title ?? 'it';
     const toast = `${q.from} is on the way up, and is not happy.`;
     const bark = `"${title}" - STILL broken!`;
-    const who = g.actors.find((a) => a.colleague && !a.resolved && a.name === q.from);
-    if (who !== undefined) {
-      this.turn(who, 'breach', toast, bark);
-      return;
-    }
-    const idx = HUB_EXTRA_BASE + g.save.hub.hostile.filter((x) => x.spawnIndex >= HUB_EXTRA_BASE).length;
-    const a = this.upTheLift(idx, q.from);
+    const a = g.actors.find((x) => x.colleague && !x.resolved && x.name === q.from)
+      ?? this.comeBack(q.from)
+      ?? this.spawnArrival(this.newArrival('user', 'breach', q.from), null);
     if (a !== null) this.turn(a, 'breach', toast, bark);
   }
 
@@ -293,19 +292,16 @@ export class Hub implements HubCtx {
     for (const w of seen) this.turn(w, 'witness', `${w.name} saw you ${what}, and is not letting it go.`, 'I saw that. Everyone will know.');
   }
 
-  /** A story choice that makes an enemy (somebody blamed, a promise broken): they come for you, announced. */
-  arrive(kind: ActorKind, x: number, z: number, name: string, bark: string): Actor | null {
-    const g = this.g;
-    const a = g.spawnAt(kind, x, z, -1, false, { colleague: true });
-    if (a === null) return null;
-    a.name = name;
-    this.turn(a, 'story', `${name} is coming for you.`, bark);
+  /** A story choice that makes an enemy (somebody blamed, a promise broken): they come for you, announced, and stay for the week. */
+  arrive(kind: HubArrivalKind, x: number, z: number, name: string, bark: string): Actor | null {
+    const a = this.spawnArrival(this.newArrival(kind, 'story', name), { x, z });
+    if (a !== null) this.turn(a, 'story', `${name} is coming for you.`, bark);
     return a;
   }
 
-  /** A colleague, for a visit that is not a fight (a manager who caught you napping, or at the cat pictures). */
-  visit(kind: ActorKind, x: number, z: number): Actor | null {
-    return this.g.spawnAt(kind, x, z, -1, false, { colleague: true });
+  /** A colleague, for a visit that is not a fight (a manager who caught you napping, or at the cat pictures); here for the week. */
+  visit(kind: HubArrivalKind, x: number, z: number): Actor | null {
+    return this.spawnArrival(this.newArrival(kind, 'visit', null), { x, z });
   }
 
   /** E on a colleague who is not after you: a walk-up's problem, or the time of day. */
@@ -387,22 +383,71 @@ export class Hub implements HubCtx {
     setMarker(a, '!', '#ff5a3a');
     if (this.walker === a) this.walker = null;
     const list = this.g.save.hub.hostile;
-    if (a.spawnIndex >= 0 && !list.some((h) => h.spawnIndex === a.spawnIndex)) {
-      const entry: HubHostile = a.spawnIndex >= HUB_EXTRA_BASE ? { spawnIndex: a.spawnIndex, reason, name: a.name } : { spawnIndex: a.spawnIndex, reason };
-      list.push(entry);
-    }
+    if (a.spawnIndex >= 0 && !list.some((h) => h.spawnIndex === a.spawnIndex)) list.push({ spawnIndex: a.spawnIndex, reason });
   }
 
-  /** Somebody stepping out of the lift into the lobby. */
-  private upTheLift(idx: number, name: string): Actor | null {
+  /** A new arrival's record, with the next index (never one handed out before), kept for the week. `name` null: whoever they roll as. */
+  private newArrival(kind: HubArrivalKind, why: HubArrival['why'], name: string | null): HubArrival {
+    const h = this.g.save.hub;
+    const r: HubArrival = { index: h.nextArrival, kind, name: name ?? '', why };
+    h.nextArrival++;
+    h.arrivals.push(r);
+    return r;
+  }
+
+  /**
+   * An arrival on the floor: at `at`, or stepping out of the lift into the
+   * lobby. Their looks are seeded by their index, their name is the record's
+   * (a visitor's record takes the name they rolled).
+   */
+  private spawnArrival(r: HubArrival, at: { x: number; z: number } | null): Actor | null {
     const g = this.g;
-    const lift = this.lift();
-    const x = lift === undefined ? g.level.start.x : lift.x + Math.sign(g.level.start.x - lift.x) * 1.5;
-    const z = lift === undefined ? g.level.start.z : lift.z + Math.sign(g.level.start.z - lift.z) * 1.5;
-    const at = freeNear(g.level, x, z) ?? g.level.start;
-    const a = g.spawnAt('user', at.x, at.z, 0, false, { colleague: true, spawnIndex: idx }, personRng(g.save.seed, idx));
-    if (a !== null) a.name = name;
+    let spot = at;
+    if (spot === null) {
+      const lift = this.lift();
+      const x = lift === undefined ? g.level.start.x : lift.x + Math.sign(g.level.start.x - lift.x) * 1.5;
+      const z = lift === undefined ? g.level.start.z : lift.z + Math.sign(g.level.start.z - lift.z) * 1.5;
+      spot = freeNear(g.level, x, z) ?? g.level.start;
+    }
+    const a = g.spawnAt(r.kind, spot.x, spot.z, at === null ? 0 : -1, false, { colleague: true, spawnIndex: r.index }, personRng(g.save.seed, r.index));
+    if (a === null) return null;
+    if (r.name === '') {
+      const list = g.save.hub.arrivals;
+      list[list.indexOf(r)] = { ...r, name: a.name };
+    } else {
+      a.name = r.name;
+    }
     return a;
+  }
+
+  /**
+   * Somebody of this name resolved earlier this week (one of the hub's own
+   * people, or an arrival): the same person, back for more, at their desk or
+   * out of the lift. Null if the hub has had nobody of that name this week.
+   */
+  private comeBack(name: string): Actor | null {
+    const g = this.g;
+    const s = g.save;
+    const resolved = new Set(s.hub.resolved);
+    const back = (idx: number): void => {
+      s.hub.resolved = s.hub.resolved.filter((x) => x !== idx);
+    };
+    const r = s.hub.arrivals.find((x) => x.name === name && resolved.has(x.index));
+    if (r !== undefined) {
+      back(r.index);
+      return this.spawnArrival(r, null);
+    }
+    for (let k = 0; k < g.level.spawns.length; k++) {
+      const sp = g.level.spawns[k];
+      const idx = k * 4;
+      if (sp === undefined || !resolved.has(idx) || !WORKERS.includes(sp.kind)) continue;
+      if (rollActor(sp.kind, g.floor, personRng(s.seed, idx), TICKETS.length).name !== name) continue;
+      const at = freeNear(g.level, sp.x, sp.z);
+      if (at === null) continue;
+      back(idx);
+      return g.spawnAt(sp.kind, at.x, at.z, sp.room, false, { spawnIndex: idx, colleague: true }, personRng(s.seed, idx));
+    }
+    return null;
   }
 
   /** A manager close by who is not after you can still smell the lonkero: caught, they are. */

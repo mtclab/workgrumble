@@ -126,11 +126,29 @@ export type HubReason = 'breach' | 'ignored' | 'assault' | 'witness' | 'caught' 
 
 /** Somebody on the hub who is after you, until they are resolved or Monday comes. */
 export interface HubHostile {
-  /** Their level spawn's index, or HUB_EXTRA_BASE and up for somebody who came up in the lift. */
+  /** Their level spawn's index, or an arrival's (HUB_EXTRA_BASE and up). */
   readonly spawnIndex: number;
   readonly reason: HubReason;
-  /** Who came up in the lift (an SLA breach's reporter), so a reload brings the same person back. */
-  readonly name?: string;
+}
+
+/** Arrivals' indices start here, above every level spawn's. */
+export const HUB_EXTRA_BASE = 200000;
+
+/** What somebody new on the hub can be. */
+export type HubArrivalKind = 'user' | 'manager' | 'reply' | 'customer';
+
+/**
+ * Somebody new on the hub this week, not one of the level's own people: a
+ * story choice's enemy, a manager who caught you napping, an SLA breach's
+ * reporter up the lift. Kept until they are resolved or Monday comes, so a
+ * reload and the lift bring back the same person.
+ */
+export interface HubArrival {
+  /** Unique for the career: taken from `HubState.nextArrival`, never handed out twice. */
+  readonly index: number;
+  readonly kind: HubArrivalKind;
+  readonly name: string;
+  readonly why: 'breach' | 'story' | 'visit';
 }
 
 /**
@@ -156,6 +174,10 @@ export interface HubState {
   gearDrops: { gear: GearInstance; x: number; z: number }[];
   /** Hub tickets that breached while you were upstairs: their reporters come for you when you are back (announced then). */
   breaches: { t: number; from: string }[];
+  /** This week's arrivals (resolved ones too: `resolved` says who is gone). */
+  arrivals: HubArrival[];
+  /** The next arrival's index: it only ever counts up, across weeks. */
+  nextArrival: number;
 }
 
 export interface WeekendState {
@@ -271,13 +293,15 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [] };
+  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE };
 }
 
-/** Monday on the hub: the week's people and props start again; the gear on the floor is still there. */
+/** Monday on the hub: the week's people and props start again; the gear on the floor is still there, and arrivals' indices go on counting. */
 export function hubWeek(h: HubState, week: number): HubState {
-  return { ...freshHub(week), gearDrops: h.gearDrops };
+  return { ...freshHub(week), gearDrops: h.gearDrops, nextArrival: h.nextArrival };
 }
+
+const ARRIVAL_KINDS: readonly HubArrivalKind[] = ['user', 'manager', 'reply', 'customer'];
 
 const HUB_REASONS: readonly HubReason[] = ['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story'];
 
@@ -290,11 +314,7 @@ export function normalizeHub(raw: unknown, week: number): HubState {
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const h: HubState = {
     week: num(o.week, week),
-    hostile: Array.isArray(o.hostile) ? (o.hostile as unknown[]).filter((x): x is HubHostile => {
-      const e = x as Partial<HubHostile> | null;
-      return typeof e === 'object' && e !== null && typeof e.spawnIndex === 'number' && HUB_REASONS.includes(e.reason as HubReason)
-        && (e.name === undefined || typeof e.name === 'string');
-    }) : [],
+    hostile: [],
     resolved: nums(o.resolved),
     ignores: {},
     used: nums(o.used),
@@ -305,7 +325,27 @@ export function normalizeHub(raw: unknown, week: number): HubState {
       const b = x as { t?: unknown; from?: unknown } | null;
       return typeof b === 'object' && b !== null && typeof b.t === 'number' && typeof b.from === 'string';
     }).map((b) => ({ t: b.t, from: b.from })) : [],
+    arrivals: Array.isArray(o.arrivals) ? (o.arrivals as unknown[]).filter((x): x is HubArrival => {
+      const r = x as Partial<HubArrival> | null;
+      return typeof r === 'object' && r !== null && typeof r.index === 'number' && r.index >= HUB_EXTRA_BASE && typeof r.name === 'string'
+        && ARRIVAL_KINDS.includes(r.kind as HubArrivalKind) && (r.why === 'breach' || r.why === 'story' || r.why === 'visit');
+    }).map((r) => ({ index: r.index, kind: r.kind, name: r.name, why: r.why })) : [],
+    nextArrival: HUB_EXTRA_BASE,
   };
+  if (Array.isArray(o.hostile)) {
+    for (const x of o.hostile as unknown[]) {
+      const e = x as { spawnIndex?: unknown; reason?: unknown; name?: unknown } | null;
+      if (typeof e !== 'object' || e === null || typeof e.spawnIndex !== 'number' || !HUB_REASONS.includes(e.reason as HubReason)) continue;
+      const reason = e.reason as HubReason;
+      h.hostile.push({ spawnIndex: e.spawnIndex, reason });
+      // An earlier 0.3.0 build kept somebody up the lift by name on the hostile list: they are an arrival now.
+      if (e.spawnIndex >= HUB_EXTRA_BASE && typeof e.name === 'string' && !h.arrivals.some((r) => r.index === e.spawnIndex)) {
+        h.arrivals.push({ index: e.spawnIndex, kind: 'user', name: e.name, why: reason === 'story' ? 'story' : 'breach' });
+      }
+    }
+  }
+  // Never behind an index already handed out.
+  h.nextArrival = Math.max(num(o.nextArrival, HUB_EXTRA_BASE), ...h.arrivals.map((r) => r.index + 1), ...h.hostile.map((e) => (e.spawnIndex >= HUB_EXTRA_BASE ? e.spawnIndex + 1 : HUB_EXTRA_BASE)));
   if (typeof o.ignores === 'object' && o.ignores !== null) {
     for (const [k, v] of Object.entries(o.ignores)) {
       if (!/^\d+$/.test(k)) continue;

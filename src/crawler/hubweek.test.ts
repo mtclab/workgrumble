@@ -8,6 +8,7 @@ import { ARRIVAL_LIFT_ID, type Game } from './game';
 import { answering, DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
 import { HUB_EXTRA_BASE } from './hub';
 import { interact, standAt } from './interact';
+import * as host from './hosts';
 import { generateLevel, type LevelRecipe } from './level';
 import { plainInstance } from './loot';
 import { generateMokki } from './mokki';
@@ -261,7 +262,120 @@ describe('gate 6: saves, v4 and from v3', () => {
     slots();
     const h = newCareer();
     breach(h.g, { t: 1, sla: 0, from: 'Kim from Upstairs', struck: [], gold: false });
-    expect(h.g.save.hub.hostile).toEqual([{ spawnIndex: HUB_EXTRA_BASE, reason: 'breach', name: 'Kim from Upstairs' }]);
+    expect(h.g.save.hub.hostile).toEqual([{ spawnIndex: HUB_EXTRA_BASE, reason: 'breach' }]);
+    expect(h.g.save.hub.arrivals).toEqual([{ index: HUB_EXTRA_BASE, kind: 'user', name: 'Kim from Upstairs', why: 'breach' }]);
+  });
+
+  it('a hub saved by an earlier 0.3.0 build, with somebody up the lift kept by name, loads them as an arrival', () => {
+    const s = JSON.parse(JSON.stringify(newSave(4))) as Record<string, unknown>;
+    s.hub = { week: 1, hostile: [{ spawnIndex: HUB_EXTRA_BASE + 1, reason: 'breach', name: 'Kim from Upstairs' }], resolved: [], ignores: {}, used: [] };
+    const v4 = normalizeSave(s)!;
+    expect(v4.hub.hostile).toEqual([{ spawnIndex: HUB_EXTRA_BASE + 1, reason: 'breach' }]);
+    expect(v4.hub.arrivals).toEqual([{ index: HUB_EXTRA_BASE + 1, kind: 'user', name: 'Kim from Upstairs', why: 'breach' }]);
+    expect(v4.hub.nextArrival, 'the next index is a new one').toBe(HUB_EXTRA_BASE + 2);
+  });
+});
+
+describe('S1a: arrivals keep who they are', () => {
+  /** The save as written and read back, loaded into a fresh game. */
+  function reload(h: Headless): Headless {
+    const back = headless(normalizeSave(JSON.parse(JSON.stringify(h.g.save)))!);
+    back.g.loadWorld(true);
+    return back;
+  }
+  const people = (h: Headless, name: string): Actor[] => h.g.actors.filter((a) => a.name === name && !a.resolved);
+  /** Up to the P1 and back down. */
+  function upAndBack(h: Headless): void {
+    press(h, lift(h.g));
+    h.pick('Floor B1: the major incident');
+    press(h, lift(h.g, ARRIVAL_LIFT_ID));
+    h.pick('Back to the hub');
+  }
+
+  it('Derek, blamed: after a trip up the lift and back, and a reload, he is still there and still after you', () => {
+    const h = newCareer();
+    host.spawnHostile(h.g, 'manager', 1, 'Derek (bitter)');
+    const [d] = people(h, 'Derek (bitter)');
+    expect(d?.hostile).toBe(true);
+    const idx = d!.spawnIndex;
+    expect(idx).toBeGreaterThanOrEqual(HUB_EXTRA_BASE);
+    expect(h.g.save.hub.arrivals).toEqual([{ index: idx, kind: 'manager', name: 'Derek (bitter)', why: 'story' }]);
+    const check = (x: Headless, when: string): void => {
+      const all = people(x, 'Derek (bitter)');
+      expect(all.length, `${when}: Derek, once`).toBe(1);
+      expect(all[0]?.hostile, `${when}: still after you`).toBe(true);
+      expect(all[0]?.marker, `${when}: the "!"`).not.toBeNull();
+      expect(all[0]?.kind).toBe('manager');
+      expect(all[0]?.spawnIndex, `${when}: the same person`).toBe(idx);
+      expect(x.g.save.hub.hostile).toEqual([{ spawnIndex: idx, reason: 'story' }]);
+    };
+    upAndBack(h);
+    check(h, 'after the lift');
+    check(reload(h), 'after a reload');
+  });
+
+  it('a manager who caught you napping is the same manager after a reload (a visit, not a fight)', () => {
+    const h = newCareer();
+    const m = h.g.hub!.visit('manager', h.g.level.start.x + 2, h.g.level.start.z);
+    expect(m?.hostile).toBe(false);
+    const back = reload(h);
+    const again = back.g.actors.filter((a) => a.spawnIndex === m!.spawnIndex);
+    expect(again.map((a) => [a.name, a.kind, a.hostile])).toEqual([[m!.name, 'manager', false]]);
+    expect(back.g.save.hub.arrivals).toEqual([{ index: m!.spawnIndex, kind: 'manager', name: m!.name, why: 'visit' }]);
+  });
+
+  it('breach arrivals: two, the first resolved, a third: three distinct people, the third never takes a resolved one\'s index, all kept through the lift and a reload', () => {
+    const h = newCareer();
+    const g = h.g;
+    const names = ['Ana from Upstairs', 'Ben from Upstairs', 'Cy from Upstairs'];
+    breach(g, { t: 1, sla: 0, from: names[0]!, struck: [], gold: false });
+    breach(g, { t: 2, sla: 0, from: names[1]!, struck: [], gold: false });
+    const first = people(h, names[0]!)[0]!;
+    first.hp = 0;
+    resolveActor(g, first);
+    breach(g, { t: 3, sla: 0, from: names[2]!, struck: [], gold: false });
+    const rec = g.save.hub.arrivals;
+    expect(rec.map((r) => r.name)).toEqual(names);
+    expect(new Set(rec.map((r) => r.index)).size, 'three distinct records').toBe(3);
+    expect(rec.map((r) => r.index), 'counting up, never reused').toEqual([HUB_EXTRA_BASE, HUB_EXTRA_BASE + 1, HUB_EXTRA_BASE + 2]);
+    const after = (x: Headless, when: string): void => {
+      expect(people(x, names[0]!), `${when}: the resolved one stays away`).toEqual([]);
+      for (const n of names.slice(1)) {
+        expect(people(x, n).length, `${when}: ${n}, once`).toBe(1);
+        expect(people(x, n)[0]?.hostile, `${when}: ${n} still after you`).toBe(true);
+      }
+      expect(x.g.save.hub.hostile.map((e) => e.spawnIndex).sort()).toEqual([HUB_EXTRA_BASE + 1, HUB_EXTRA_BASE + 2]);
+    };
+    after(h, 'now');
+    upAndBack(h);
+    after(h, 'after the lift');
+    after(reload(h), 'after a reload');
+  });
+
+  it('a breach on somebody resolved earlier this week: the same person turns again, announced, and nobody new comes up the lift', () => {
+    const h = newCareer();
+    const g = h.g;
+    const c = g.actors.find((a) => a.colleague && a.kind === 'user' && g.actors.filter((x) => x.name === a.name).length === 1)!;
+    const idx = c.spawnIndex;
+    breach(g, { t: c.ticket, sla: 0, from: c.name, struck: [], gold: false });
+    c.hp = 0;
+    resolveActor(g, c);
+    expect(g.save.hub.resolved).toContain(idx);
+    // Gone for the week, as far as the floor goes: not back after the lift.
+    upAndBack(h);
+    expect(people(h, c.name)).toEqual([]);
+    h.toasts.length = 0;
+    breach(g, { t: c.ticket, sla: 0, from: c.name, struck: [], gold: false });
+    const again = people(h, c.name);
+    expect(again.length, 'one of them').toBe(1);
+    expect(again[0]?.spawnIndex, 'the same person').toBe(idx);
+    expect(again[0]?.hostile).toBe(true);
+    expect(again[0]?.marker).not.toBeNull();
+    expect(h.toasts.some((t) => t.includes(`${c.name} is on the way up`)), 'announced').toBe(true);
+    expect(g.save.hub.arrivals, 'nobody new up the lift').toEqual([]);
+    expect(g.save.hub.resolved).not.toContain(idx);
+    expect(g.save.hub.hostile).toEqual([{ spawnIndex: idx, reason: 'breach' }]);
+    expect(people(reload(h), c.name).map((a) => [a.spawnIndex, a.hostile]), 'and after a reload').toEqual([[idx, true]]);
   });
 });
 
