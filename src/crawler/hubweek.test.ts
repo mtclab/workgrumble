@@ -62,7 +62,10 @@ function press(h: Headless, it: Interactable): string[] {
 
 function newCareer(): Headless {
   const h = headless(newSave(1));
+  // A new career seeds itself from the clock: pin it, so every run builds the same hub (one with a coffee machine).
+  const now = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
   h.g.beginCareer({ name: 'Pat Hub', background: 'grad', sign: 'patch', rung: 0, domain: null, track: null }, true);
+  now.mockRestore();
   h.pick(/./);
   return h;
 }
