@@ -45,7 +45,7 @@ interface Bot {
 
 /** One card played by the bot to its results card (or for ten minutes of game time). */
 function play(card: string, approach: string, seed: number): Headless {
-  (fx as unknown as { s: number }).s = seed;
+  fx.reseed(seed);
   const def = POOL.find((c) => c.id === card);
   if (def === undefined) throw new Error(card);
   const h = headless(newSave(1));

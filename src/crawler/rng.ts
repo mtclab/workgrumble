@@ -6,6 +6,11 @@ export class Rng {
     this.s = seed >>> 0 || 0x9e3779b9;
   }
 
+  /** Start the sequence again from `seed` (a test pinning the feel dice, as the balance runner pins the clock). */
+  reseed(seed: number): void {
+    this.s = seed >>> 0 || 0x9e3779b9;
+  }
+
   next(): number {
     this.s = (this.s + 0x6d2b79f5) >>> 0;
     let t = this.s;

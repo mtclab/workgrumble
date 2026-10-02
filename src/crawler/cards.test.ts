@@ -7,6 +7,7 @@ import { interact, standBy } from './interact';
 import { cellCenter, generateLevel, type LevelRecipe, toCell } from './level';
 import type { MissionCard } from './mission';
 import { JOSH, MARCUS, PHISHING, POSTITS, PRINTER, STAPLER } from './missions';
+import { fx } from './rng';
 import { newSave } from './state';
 import { ALERT_PAUSE } from './stealth';
 
@@ -29,6 +30,8 @@ afterEach(() => vi.restoreAllMocks());
 const SEEDS = Array.from({ length: 150 }, (_, i) => (i + 1) * 7331);
 
 function play(card: MissionCard, seed = 4242): Headless {
+  // The feel dice too (who wanders where): the same card plays the same way every run.
+  fx.reseed(seed);
   const h = headless(newSave(1));
   h.g.loadMission(card, seed, true);
   h.g.screen = 'play';
