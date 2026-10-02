@@ -2010,6 +2010,9 @@ function updateDummy(ctx: GameCtx, a: Actor, dt: number): void {
   }
 }
 
+/** How close a walk-up comes before stopping to talk: well inside the hub's reach (hub.ts REACHED_DIST, 1.8 m). */
+export const WALKUP_STOP = 1.3;
+
 /**
  * A colleague on the hub who is not after you: at their desk most of the
  * time, a few steps away and back now and then, and - walking up to you with
@@ -2021,7 +2024,8 @@ function updateColleague(ctx: GameCtx, a: Actor, dt: number): void {
   const dist = Math.hypot(dx, dz);
   cancelWindup(a);
   if (ctx.hub?.seeks(a) === true) {
-    if (dist > 1.8 && approach(ctx, a, dx, dz, tmp2)) moveActor(ctx, a, tmp2.x, tmp2.z, a.speed * 0.8, dt);
+    // Right up to your side (inside the hub's 1.8 m "reached"), where they can say it to your face.
+    if (dist > WALKUP_STOP && approach(ctx, a, dx, dz, tmp2)) moveActor(ctx, a, tmp2.x, tmp2.z, a.speed * 0.8, dt);
     else moveActor(ctx, a, 0, 0, 0, dt);
     if (dist < 12) a.yaw = Math.atan2(dx, dz);
     return;

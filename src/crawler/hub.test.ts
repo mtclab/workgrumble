@@ -5,7 +5,7 @@ import { breach } from './desk';
 import type { Actor } from './entities';
 import { DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
-import { HUB_EXTRA_BASE, HUB_GRACE, IGNORES_TO_TURN, WITNESS_RANGE } from './hub';
+import { HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
 import { flowField, generateLevel, type LevelRecipe, lineOfSight, NEIGHBOURS8, toCell } from './level';
 import { fx } from './rng';
@@ -293,6 +293,26 @@ function spotInView(h: Headless, near: number, far: number): { x: number; z: num
   return null;
 }
 
+/**
+ * A straight run of open floor `cells` long and two lanes wide: its start
+ * (the middle of the first lane cell), its direction (dx, dz), and the side
+ * the second lane is on (sx, sz).
+ */
+function openRun(h: Headless, cells: number): { x0: number; z0: number; dx: number; dz: number; sx: number; sz: number } {
+  const lv = h.g.level;
+  const open = (c: number, r: number): boolean => c >= 0 && r >= 0 && c < lv.w && r < lv.h && lv.floor[r * lv.w + c] === 1 && lv.solid[r * lv.w + c] === 0;
+  for (let r = 0; r < lv.h; r++) {
+    for (let c = 0; c < lv.w; c++) {
+      for (const [dx, dz, sx, sz] of [[1, 0, 0, 1], [0, 1, 1, 0]] as const) {
+        let ok = true;
+        for (let k = 0; k < cells && ok; k++) ok = open(c + dx * k, r + dz * k) && open(c + dx * k + sx, r + dz * k + sz);
+        if (ok) return { x0: c * 2 + 1, z0: r * 2 + 1, dx, dz, sx, sz };
+      }
+    }
+  }
+  throw new Error('no open run');
+}
+
 /** A spot the walker can walk to, 6 to 12 m away from them. */
 function awayFrom(h: Headless, a: Actor): { x: number; z: number } {
   const lv = h.g.level;
@@ -346,7 +366,7 @@ describe('gate 4: walk-ups', () => {
       const p = awayFrom(h, w);
       g.player.pos.set(p.x, 0, p.z);
       h.run(DT, answering(h, watch));
-      expect(g.save.hub.ignores[w.spawnIndex] ?? 0, `ignore ${n}`).toBe(n);
+      expect(g.save.hub.ignores[w.spawnIndex]?.length ?? 0, `ignore ${n}`).toBe(n);
       if (n < IGNORES_TO_TURN) {
         expect(w.hostile, `not yet, after ${n}`).toBe(false);
         expect(h.toasts.at(-1)).toContain(`(${n}/${IGNORES_TO_TURN})`);
@@ -391,6 +411,89 @@ describe('gate 4: walk-ups', () => {
     expect(hub.walkingUp()).toBeNull();
     expect(g.save.queue.map((q) => q.from)).toContain(third.name);
     expect(hostiles(h)).toEqual(w.resolved ? [] : [w]);
+  });
+
+  it('walking past a walk-up without stopping is not ignoring them; nor is a walk-up who gives up without reaching you', () => {
+    const h = hubFor();
+    const g = h.g;
+    const hub = g.hub!;
+    hub.walkUpNow();
+    h.run(DT, answering(h));
+    const w = hub.walkingUp();
+    if (w === null) throw new Error('nobody walked up');
+    // A straight, open run four metres wide: you on one lane, them coming the other way a metre to the side.
+    const run = openRun(h, 9);
+    g.player.pos.set(run.x0, 0, run.z0);
+    g.player.yaw = Math.atan2(-run.dx, -run.dz);
+    w.pos.set(run.x0 + run.dx * 7 + run.sx * 1.1, 0, run.z0 + run.dz * 7 + run.sz * 1.1);
+    // W, the real key, held: past them at a walk, never stopping.
+    g.input.keys.add(g.settings.keys.forward);
+    let closest = Infinity;
+    let inReach = 0;
+    const walk = answering(h, () => {
+      const d = Math.hypot(w.pos.x - g.player.pos.x, w.pos.z - g.player.pos.z);
+      closest = Math.min(closest, d);
+      if (d <= REACHED_DIST) inReach += DT;
+      expect(hub.debug().reached, 'walking past is not stopping for them').toBe(false);
+    });
+    for (let t = 0; t < 4 && Math.hypot(g.player.pos.x - run.x0, g.player.pos.z - run.z0) < 15; t += DT) h.run(DT, walk);
+    g.input.keys.delete(g.settings.keys.forward);
+    expect(closest, 'you went right past them').toBeLessThan(REACHED_DIST);
+    expect(inReach, 'within reach for less than their line takes').toBeLessThan(LINE_TIME);
+    expect(Math.hypot(w.pos.x - g.player.pos.x, w.pos.z - g.player.pos.z), 'and well off past them').toBeGreaterThan(4);
+    expect(hub.walkingUp(), 'they are still after a word').toBe(w);
+    expect(g.save.hub.ignores[w.spawnIndex], 'no ignore counted').toBeUndefined();
+    expect(h.toasts.some((t) => t.includes('walked off on')), 'and nothing said about one').toBe(false);
+
+    // Kept out of reach until they give up: that counts nothing either.
+    h.run(100, answering(h, () => {
+      if (hub.walkingUp() === w && Math.hypot(w.pos.x - g.player.pos.x, w.pos.z - g.player.pos.z) < 6) {
+        const p = awayFrom(h, w);
+        g.player.pos.set(p.x, 0, p.z);
+      }
+    }));
+    expect(hub.walkingUp(), 'they gave up').not.toBe(w);
+    expect(w.marker).toBeNull();
+    expect(g.save.hub.ignores[w.spawnIndex], 'a give-up is not an ignore').toBeUndefined();
+    expect(w.hostile).toBe(false);
+  });
+
+  it('an ignore is forgotten ten minutes of hub time after it was counted', { timeout: 60_000 }, () => {
+    const h = hubFor();
+    const g = h.g;
+    const hub = g.hub!;
+    hub.walkUpNow();
+    h.run(DT, answering(h));
+    const w = hub.walkingUp();
+    if (w === null) throw new Error('nobody walked up');
+    const reach = (): void => {
+      for (let t = 0; t < 40 && !hub.debug().reached; t += 0.5) h.run(0.5, answering(h));
+      expect(hub.debug().reached, 'the walk-up reaches you').toBe(true);
+    };
+    const walkOff = (): void => {
+      const p = awayFrom(h, w);
+      g.player.pos.set(p.x, 0, p.z);
+      h.run(DT, answering(h));
+    };
+    reach();
+    walkOff();
+    reach();
+    walkOff();
+    const at = g.save.hub.clock;
+    expect(g.save.hub.ignores[w.spawnIndex]?.length, 'two ignores').toBe(2);
+    // They catch you up and wait at your side while the clock runs.
+    h.run(IGNORE_MEMORY - 30, answering(h));
+    expect(g.save.hub.ignores[w.spawnIndex]?.length, 'still remembered at nine and a half minutes').toBe(2);
+    h.run(40, answering(h));
+    expect(g.save.hub.clock - at).toBeGreaterThan(IGNORE_MEMORY);
+    expect(g.save.hub.ignores[w.spawnIndex], 'forgotten after ten').toBeUndefined();
+    expect(hub.debug().ignores).toEqual([]);
+    // So the next walk-off is the first again, not the third.
+    reach();
+    walkOff();
+    expect(w.hostile).toBe(false);
+    expect(g.save.hub.ignores[w.spawnIndex]?.length).toBe(1);
+    expect(h.toasts.at(-1)).toContain(`(1/${IGNORES_TO_TURN})`);
   });
 
   it('nobody walks up while the induction runs, even once the floor is awake for its last steps', () => {

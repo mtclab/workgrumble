@@ -41,8 +41,14 @@ export const WITNESS_RANGE = 12;
 /** A walk-up you walk this far away from (once they have reached you) is ignored. */
 const IGNORE_DIST = 4;
 
-/** Close enough to count as reached. */
-const REACHED_DIST = 3;
+/** At your side: a walk-up this close, who can see you, has reached you once they have said their piece. */
+export const REACHED_DIST = 1.8;
+
+/** Seconds their line has to have been up (the bubble over them, at your side) before walking off is ignoring them. */
+export const LINE_TIME = 1;
+
+/** An ignore is forgotten this many seconds of hub time after it was counted. */
+export const IGNORE_MEMORY = 600;
 
 /** The third ignore turns them. */
 export const IGNORES_TO_TURN = 3;
@@ -144,6 +150,8 @@ export class Hub implements HubCtx {
   private walker: Actor | null = null;
   /** The walk-up has reached you (so walking off now is ignoring them). */
   private reached = false;
+  /** Seconds the walk-up has stood at your side, in sight, since saying their line (0: not said yet). */
+  private lineT = 0;
   /** Seconds since the walk-up last reached you (or began). */
   private walkerT = 0;
   /** Seconds of hub time between the last walk-up and the next. */
@@ -220,6 +228,7 @@ export class Hub implements HubCtx {
     if (!g.floorAwake || g.inductionDay !== null) return;
     const h = g.save.hub;
     h.clock += dt;
+    this.forget();
     this.smellTest();
     if (this.walker !== null) this.tickWalkUp(dt);
     else if (h.clock - h.lastWalkUp >= this.gap) this.startWalkUp();
@@ -323,7 +332,7 @@ export class Hub implements HubCtx {
       nextWalkUpIn: this.walker === null ? Math.max(0, h.lastWalkUp + this.gap - h.clock) : null,
       walker: this.walker?.id ?? null,
       reached: this.reached,
-      ignores: Object.entries(h.ignores).map(([idx, n]) => ({ id: id(Number(idx)), n })),
+      ignores: Object.entries(h.ignores).map(([idx, at]) => ({ id: id(Number(idx)), n: at.length })),
       hostile: h.hostile.map((e) => ({ id: id(e.spawnIndex), reason: e.reason })),
     };
   }
@@ -412,11 +421,20 @@ export class Hub implements HubCtx {
     this.gap = this.nextGap();
     this.walker = a;
     this.reached = false;
+    this.lineT = 0;
     this.walkerT = 0;
     setMarker(a, '?', '#7dd3ff');
     say(a, OPENERS[a.id % OPENERS.length] ?? 'Got a minute?', 3);
   }
 
+  /**
+   * The walk-up, frame by frame. They reach you only by standing at your
+   * side (REACHED_DIST), in sight of you, with their line said and up for
+   * LINE_TIME: walking past them is not stopping for them, so it is not
+   * ignoring them either. Once they have reached you, walking off past
+   * IGNORE_DIST counts one ignore. Somebody who never reaches you gives up
+   * after WALKUP_GIVE_UP seconds, and that counts nothing.
+   */
   private tickWalkUp(dt: number): void {
     const g = this.g;
     const a = this.walker;
@@ -426,24 +444,51 @@ export class Hub implements HubCtx {
       return;
     }
     this.walkerT += dt;
-    const dist = Math.hypot(a.pos.x - g.player.pos.x, a.pos.z - g.player.pos.z);
-    if (dist < REACHED_DIST) {
-      this.reached = true;
-      this.walkerT = 0;
-    } else if (this.reached && dist > IGNORE_DIST) {
-      // Walked off on them.
-      this.reached = false;
-      const h = g.save.hub;
-      const n = (h.ignores[a.spawnIndex] ?? 0) + 1;
-      h.ignores[a.spawnIndex] = n;
-      if (n >= IGNORES_TO_TURN) {
-        this.turn(a, 'ignored', `${a.name} has been ignored three times, and has had enough.`, 'RIGHT. I have asked you THREE times.');
-        return;
+    const pp = g.player.pos;
+    const dist = Math.hypot(a.pos.x - pp.x, a.pos.z - pp.z);
+    if (this.reached) {
+      // Waiting at your side is not giving up.
+      if (dist <= IGNORE_DIST) this.walkerT = 0;
+      else this.ignored(a);
+    } else if (dist <= REACHED_DIST && lineOfSight(g.level, a.pos.x, a.pos.z, pp.x, pp.z)) {
+      if (this.lineT === 0) say(a, `"${TICKETS[a.ticket]?.title ?? 'It is broken'}" - can you have a look?`, 3);
+      this.lineT += dt;
+      if (this.lineT >= LINE_TIME) {
+        this.reached = true;
+        this.walkerT = 0;
       }
-      say(a, n === 1 ? 'Hello? I was talking to you.' : 'I am not asking again. Nicely.', 3);
-      g.hud.toast(`You walked off on ${a.name} (${n}/${IGNORES_TO_TURN}). They are still waiting.`, 'info');
+    } else {
+      // Gone past before they could say it: next time they catch you up, they start again.
+      this.lineT = 0;
     }
     if (!this.reached && this.walkerT > WALKUP_GIVE_UP) this.settle(a, false);
+  }
+
+  /** Walked off on them, after they had reached you and said their piece: one ignore, remembered for IGNORE_MEMORY seconds of hub time. */
+  private ignored(a: Actor): void {
+    const g = this.g;
+    this.reached = false;
+    this.lineT = 0;
+    const h = g.save.hub;
+    const at = [...(h.ignores[a.spawnIndex] ?? []), h.clock];
+    h.ignores[a.spawnIndex] = at;
+    const n = at.length;
+    if (n >= IGNORES_TO_TURN) {
+      this.turn(a, 'ignored', `${a.name} has been ignored three times, and has had enough.`, 'RIGHT. I have asked you THREE times.');
+      return;
+    }
+    say(a, n === 1 ? 'Hello? I was talking to you.' : 'I am not asking again. Nicely.', 3);
+    g.hud.toast(`You walked off on ${a.name} (${n}/${IGNORES_TO_TURN}). They are still waiting.`, 'info');
+  }
+
+  /** Ignores older than IGNORE_MEMORY seconds of hub time are forgotten. */
+  private forget(): void {
+    const h = this.g.save.hub;
+    for (const [idx, at] of Object.entries(h.ignores)) {
+      const live = at.filter((t) => h.clock - t < IGNORE_MEMORY);
+      if (live.length === 0) delete h.ignores[Number(idx)];
+      else if (live.length !== at.length) h.ignores[Number(idx)] = live;
+    }
   }
 
   /** The walk-up is over without a fight: talked to (which clears their ignores), or given up on (which does not). */

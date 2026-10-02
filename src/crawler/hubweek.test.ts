@@ -178,7 +178,7 @@ describe('gate 6: saves, v4 and from v3', () => {
     const c = g.actors.find((a) => a.colleague && a.kind === 'user' && g.actors.filter((x) => x.name === a.name).length === 1)!;
     breach(g, { t: c.ticket, sla: 0, from: c.name, struck: [], gold: false });
     expect(c.hostile).toBe(true);
-    g.save.hub.ignores[8] = 2;
+    g.save.hub.ignores[8] = [10, 25];
     expect(standAt(g, 'coffee')).toBe(true);
     interact(g);
     const mug = plainInstance('mug', new Rng(5));
@@ -193,7 +193,7 @@ describe('gate 6: saves, v4 and from v3', () => {
     expect(back.g.actors.filter((a) => a.hostile).map((a) => a.name)).toEqual([c.name]);
     expect(back.g.level.interactables.find((x) => x.kind === 'coffee')?.used).toBe(true);
     expect(back.g.pickups.some((p) => p.gear?.uid === mug.uid)).toBe(true);
-    expect(back.g.save.hub.ignores[8]).toBe(2);
+    expect(back.g.save.hub.ignores[8], 'each ignore, with when it was counted').toEqual([10, 25]);
   });
 
   it('round trip on the P1 floor: the boss fight, the resolved, the floor', () => {
@@ -275,9 +275,11 @@ describe('gate 6: saves, v4 and from v3', () => {
 
   it('a v4 save broken in the hub field loads with a fresh hub, not a crash', () => {
     const s = JSON.parse(JSON.stringify(newSave(4))) as Record<string, unknown>;
-    s.hub = { week: 'x', hostile: [{ spawnIndex: 'nope' }, { spawnIndex: 4, reason: 'breach' }], ignores: { 8: 2, bad: 1 }, used: [1, 'a'] };
+    s.hub = { week: 'x', hostile: [{ spawnIndex: 'nope' }, { spawnIndex: 4, reason: 'breach' }], ignores: { 8: 2, 9: [5, 'x', 7], bad: 1, 10: 'no' }, used: [1, 'a'] };
     const v4 = normalizeSave(s)!;
-    expect(v4.hub).toMatchObject({ week: 1, hostile: [{ spawnIndex: 4, reason: 'breach' }], ignores: { 8: 2 }, used: [1], gearDrops: [] });
+    // A count from an earlier build is that many ignores, counted at the saved clock (0 here).
+    expect(v4.hub).toMatchObject({ week: 1, hostile: [{ spawnIndex: 4, reason: 'breach' }], ignores: { 8: [0, 0], 9: [5, 7] }, used: [1], gearDrops: [] });
+    expect(Object.keys(v4.hub.ignores)).toEqual(['8', '9']);
   });
 
   it('extras who came up the lift are saved by name', () => {

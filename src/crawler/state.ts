@@ -143,8 +143,8 @@ export interface HubState {
   hostile: HubHostile[];
   /** Hub spawns resolved this week (the hostile ones, talked down or beaten): back next Monday. */
   resolved: number[];
-  /** Walk-ups ignored, by spawn index: the third turns them. */
-  ignores: Record<number, number>;
+  /** Walk-ups ignored, by spawn index: the hub clock at each ignore. The third turns them; each is forgotten after ten minutes of hub time. */
+  ignores: Record<number, number[]>;
   /** Interactable ids used this week. */
   used: number[];
   /** Seconds of hub play this week, and that clock at the last walk-up. */
@@ -299,7 +299,12 @@ export function normalizeHub(raw: unknown, week: number): HubState {
     gearDrops: Array.isArray(o.gearDrops) ? o.gearDrops as HubState['gearDrops'] : [],
   };
   if (typeof o.ignores === 'object' && o.ignores !== null) {
-    for (const [k, v] of Object.entries(o.ignores)) if (/^\d+$/.test(k) && typeof v === 'number') h.ignores[Number(k)] = v;
+    for (const [k, v] of Object.entries(o.ignores)) {
+      if (!/^\d+$/.test(k)) continue;
+      // A count from an earlier 0.3.0 build: that many ignores, counted now.
+      const at = typeof v === 'number' && Number.isInteger(v) && v > 0 ? new Array<number>(Math.min(v, 3)).fill(h.clock) : nums(v);
+      if (at.length > 0) h.ignores[Number(k)] = at;
+    }
   }
   // A hub saved in another week is that week's: this one starts fresh.
   return h.week === week ? h : hubWeek(h, week);
