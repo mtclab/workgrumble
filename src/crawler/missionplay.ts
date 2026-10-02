@@ -141,6 +141,8 @@ export class MissionPlay {
   private failedWhy = '';
   /** "Back to the lift" has been said (once, whenever the objective got done: in a frame or between two). */
   private doneSaid = false;
+  /** How many of the crowd the card itself placed; everyone after them joined later (called in, summoned). */
+  private placed = 0;
 
   constructor(private readonly g: Game, readonly card: MissionCard, readonly seed: number, readonly pinned: boolean, private readonly view: MissionView = domView(g, card), opts: PlayOptions = {}) {
     this.rng = new Rng(seed ^ 0x6d697373);
@@ -162,6 +164,7 @@ export class MissionPlay {
     this.standingAtStart = { management: g.save.standing.management, staff: g.save.standing.staff };
     this.tagRooms();
     this.placeCrowd();
+    this.placed = this.crowd.length;
     const closet = this.closet();
     if (card.objective.kind === 'take' && closet !== undefined) g.lockerItems.set(closet.id, card.objective.item);
     this.placeScatter();
@@ -460,35 +463,54 @@ export class MissionPlay {
   /**
    * The card's going-loud (the stapler's tuning): the objective's closet is
    * bolted (a harder lock, a Security check under pressure) and somebody is
-   * called in, already after you. `quiet`: putting it back after a reload.
+   * called in, already after you. `quiet`: putting it back after a reload
+   * (whoever was called is among the people the save kept).
    */
   private goLoud(quiet: boolean): void {
-    const g = this.g;
     const on = this.card.onLoud;
     this.loudDone = true;
     if (on === undefined) return;
     const closet = this.closet();
     if (closet !== undefined && on.lock !== undefined && !closet.used) closet.lock += on.lock;
-    const spec = on.summon;
-    if (spec !== undefined) {
-      const spot = this.spotFor(spec, 0, new Set());
-      const a = spot === null ? null : g.spawnAt(spec.kind, spot.x, spot.z, spot.room, false);
-      if (a !== null) {
-        if (spec.name !== undefined) a.name = spec.name;
-        a.docile = false;
-        this.crowd.push(a);
-        this.specs.push(spec);
-        this.watch.add(a, spec.sort, { tag: spec.tag ?? null, called: true });
-        if (!quiet) {
-          a.cooldown = Math.max(a.cooldown, ALERT_PAUSE);
-          this.watch.aggroed(a, g.time);
-        }
-      }
-    }
+    if (quiet) return;
+    this.callIn();
+    sfx.error();
+    this.g.hud.toast(`${on.summon?.line ?? 'They have bolted the closet.'}${closet !== undefined && on.lock !== undefined ? ` (lock ${closet.lock})` : ''}`, 'bad');
+  }
+
+  /** Whoever the card's going-loud calls in (the Head of People), after you unless `quiet` (a save from before extras were kept). */
+  private callIn(quiet = false): void {
+    const g = this.g;
+    const spec = this.card.onLoud?.summon;
+    if (spec === undefined) return;
+    const spot = this.spotFor(spec, 0, new Set());
+    const a = spot === null ? null : g.spawnAt(spec.kind, spot.x, spot.z, spot.room, false);
+    if (a === null) return;
+    if (spec.name !== undefined) a.name = spec.name;
+    a.docile = false;
+    this.crowd.push(a);
+    this.specs.push(spec);
+    this.watch.add(a, spec.sort, { tag: spec.tag ?? null, called: true });
     if (!quiet) {
-      sfx.error();
-      g.hud.toast(`${on.summon?.line ?? 'They have bolted the closet.'}${closet !== undefined && on.lock !== undefined ? ` (lock ${closet.lock})` : ''}`, 'bad');
+      a.cooldown = Math.max(a.cooldown, ALERT_PAUSE);
+      this.watch.aggroed(a, g.time);
     }
+  }
+
+  /**
+   * Somebody who came onto the card's map in play (a manager's "someone from
+   * my team", a reply-all, a turret: `Game.spawn`): one of the card's people
+   * from now on, watched like the rest, so the card's alarm rule holds for
+   * them (they search, stand down and cool off with everyone), they count
+   * toward the tier, and a save keeps them.
+   */
+  summoned(a: Actor): void {
+    if (this.run.over || this.crowd.includes(a)) return;
+    a.docile = false;
+    this.crowd.push(a);
+    this.specs.push({ kind: a.kind, room: 'summoned', sort: 'wander' });
+    this.watch.add(a, 'wander');
+    if (a.aggro) this.watch.aggroed(a, this.g.time);
   }
 
   /** The card has failed by its own failure (the SLA, the escort bolting). */
@@ -791,6 +813,10 @@ export class MissionPlay {
         i, x: a.pos.x, z: a.pos.z, yaw: a.yaw, hp: a.hp, resolved: a.resolved, aggro: a.aggro,
         suspicion: w?.suspicion ?? 0, peak: w?.peak ?? 0, mood: w?.mood ?? 'calm', countdown: w?.countdown ?? 0, spot: w?.spot ?? null,
         stolen: a.stolen, talked: a.talked, enragedT: a.enragedT, memo: lastingMemo(a), gift: a.giftGiven, fleeT: a.fleeT,
+        ...(i >= this.placed ? { extra: {
+          kind: a.kind, name: a.name, room: a.room, elite: a.elite, rep: a.rep, sort: w?.sort ?? 'wander', tag: w?.tag ?? null,
+          called: w?.called === true, owner: this.crowd.findIndex((o) => o.id === a.owner), ttl: a.ttl,
+        } } : {}),
       };
     });
     return {
@@ -811,6 +837,7 @@ export class MissionPlay {
   private resume(from: PlaySave): void {
     const g = this.g;
     if (from.loudDone) this.goLoud(true);
+    this.rejoin(from);
     this.watch.quietT = from.quietT;
     this.nerve = from.nerve;
     this.repAtStart = from.repAtStart;
@@ -851,6 +878,34 @@ export class MissionPlay {
       }
     }
     g.actors = g.actors.filter((a) => !(a.expired && this.crowd.includes(a)));
+  }
+
+  /**
+   * Everyone a save kept who was not placed by the card (called in, summoned
+   * in play), back in their places in the crowd, in order. A save from
+   * before these were kept has only the card's call-in there, and gets it.
+   */
+  private rejoin(from: PlaySave): void {
+    const g = this.g;
+    const later = from.people.filter((p) => p.i >= this.placed).sort((p, q) => p.i - q.i);
+    for (const p of later) {
+      if (p.i !== this.crowd.length) break;
+      const e = p.extra;
+      if (e === undefined) {
+        if (!from.loudDone || this.crowd.length !== this.placed) break;
+        this.callIn(true);
+        continue;
+      }
+      const a = g.spawnAt(e.kind, p.x, p.z, e.room, false, { elite: e.elite, ...(e.ttl > 0 ? { ttl: e.ttl } : {}) });
+      if (a === null) break;
+      a.name = e.name;
+      a.rep = e.rep;
+      a.docile = false;
+      a.owner = this.crowd[e.owner]?.id ?? 0;
+      this.crowd.push(a);
+      this.specs.push(e.called ? this.card.onLoud?.summon ?? { kind: e.kind, room: 'summoned', sort: e.sort } : { kind: e.kind, room: 'summoned', sort: e.sort });
+      this.watch.add(a, e.sort, { tag: e.tag, called: e.called });
+    }
   }
 
   dispose(): void {

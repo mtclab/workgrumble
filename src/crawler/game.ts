@@ -1278,8 +1278,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (this.actors.filter((a) => !a.resolved && isFoe(a)).length > 70) return null;
     // Summoned trouble arrives after you, unless the floor is still asleep for
     // the induction: then it arrives as calm as everyone else (a breach's
-    // manager, a nap's visitor).
-    return this.spawnAt(kind, x, z, room, spawnsAggro(this));
+    // manager, a nap's visitor). On a card it is one of the card's people from now on.
+    const a = this.spawnAt(kind, x, z, room, spawnsAggro(this));
+    if (a !== null) this.mission?.summoned(a);
+    return a;
   }
 
   // ================================================================== saves & settings

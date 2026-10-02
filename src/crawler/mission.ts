@@ -205,6 +205,27 @@ export interface RunSave {
   readonly counted: readonly number[];
 }
 
+/**
+ * Somebody who joined the card's people after it was dealt (called in by the
+ * card's going-loud, or summoned by somebody on it): who they were, so a
+ * reload brings the same person back in the same place in the crowd.
+ */
+export interface ExtraSave {
+  readonly kind: ActorKind;
+  readonly name: string;
+  readonly room: number;
+  readonly elite: EliteAffix | null;
+  readonly rep: number;
+  readonly sort: Sort;
+  readonly tag: string | null;
+  /** Called in by the card's going-loud: after you, but never a second alarm. */
+  readonly called: boolean;
+  /** Whose they are (a turret's Shadow IT person), by place in the crowd, or -1. */
+  readonly owner: number;
+  /** Seconds left for something temporary (a turret), or -1. */
+  readonly ttl: number;
+}
+
 /** One of the card's people as a save keeps them, by their place in the crowd. */
 export interface PersonSave {
   readonly i: number;
@@ -231,6 +252,8 @@ export interface PersonSave {
   readonly gift?: boolean;
   /** A vendor making off after a grab: seconds of it left. */
   readonly fleeT?: number;
+  /** Not one the card placed: who they were (absent for the card's own people). */
+  readonly extra?: ExtraSave;
 }
 
 /** Everything a mission keeps across a save (S1b "Saves"): the run, the alarm, the people, what was picked up. */

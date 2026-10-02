@@ -193,3 +193,33 @@ describe('what happened with each person survives a reload', () => {
     expect(talksTo(back.g, again), 'no talking Dean round now').toBe(false);
   });
 });
+
+describe('somebody who came onto the card in play is kept by a save', () => {
+  it('saved and reloaded: the same person, where they were, still after you, still counted', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits', alarm: 'search' }]);
+    g.acceptCard(cardIndex(h, 'postits'));
+    liftTo(h, 'postits');
+    const m = g.mission!;
+    const p = g.player.pos;
+    // Somebody who turns up after you (a story's enemy, a manager's "someone from my team": `Game.spawn`).
+    const extra = g.spawn('user', p.x + 1, p.z, -1)!;
+    h.run(DT * 2, keepUp(h));
+    const i = m.crowd.indexOf(extra);
+    expect(i, 'one of the card\'s people').toBeGreaterThanOrEqual(0);
+    expect(m.watch.watchers.get(extra.id)?.mood).toBe('alert');
+    const tier = m.watch.tier;
+    const back = reload(h);
+    const bm = back.g.mission!;
+    const again = bm.crowd[i]!;
+    expect(again, 'back after the reload').toBeDefined();
+    expect({ kind: again.kind, name: again.name, rep: again.rep, x: again.pos.x, z: again.pos.z, hp: again.hp })
+      .toEqual({ kind: extra.kind, name: extra.name, rep: extra.rep, x: extra.pos.x, z: extra.pos.z, hp: extra.hp });
+    expect(again.aggro, 'still after you').toBe(true);
+    expect(bm.watch.watchers.get(again.id)?.mood).toBe('alert');
+    expect(bm.watch.tier).toBe(tier);
+    expect(bm.crowd).toHaveLength(m.crowd.length);
+  });
+});

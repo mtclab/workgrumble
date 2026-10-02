@@ -222,3 +222,75 @@ describe('gate 3: the alarm rule per card', () => {
     expect(m.watch.tier).toBe(2);
   });
 });
+
+/**
+ * A manager at a desk, Alert and on to you, who calls somebody from their
+ * team over (their summon, the real one): the newcomer, once they are there.
+ */
+function summoned(h: Headless): { manager: Actor; extra: Actor } {
+  const m = h.g.mission!;
+  const w = [...m.watch.watchers.values()].find((x) => x.sort === 'desk' && x.actor.kind === 'manager')!;
+  alert(h, w);
+  expect(m.watch.tier, 'one person after you').toBe(2);
+  freeAll(h);
+  const called: Actor[] = [];
+  const spawn = h.g.spawn.bind(h.g);
+  vi.spyOn(h.g, 'spawn').mockImplementation((...args) => {
+    const a = spawn(...args);
+    if (a !== null) called.push(a);
+    return a;
+  });
+  w.actor.summonIn = 0;
+  for (let t = 0; t < 3 && called.length === 0; t += DT) {
+    for (const a of m.crowd) if (a !== w.actor) a.stunned = 1e9;
+    h.run(DT, () => { h.g.save.sanity = 100; m.standInView(w.actor.id, 3); });
+  }
+  expect(called, `${w.actor.name} called somebody over`).toHaveLength(1);
+  return { manager: w.actor, extra: called[0]! };
+}
+
+describe('somebody who comes onto a card in play is one of its people', () => {
+  it('one-way: a manager\'s "someone from my team" is watched like everyone, and is a second person after you: Escalated', () => {
+    const h = play('one-way');
+    const m = h.g.mission!;
+    const { extra } = summoned(h);
+    expect(m.crowd, 'one of the card\'s people').toContain(extra);
+    expect(m.watch.watches(extra)).toBe(true);
+    expect(m.watch.watchers.get(extra.id)?.mood).toBe('alert');
+    expect(m.watch.tier, 'a second person after you').toBe(3);
+    expect(h.toasts.some((t) => t.startsWith('ESCALATED'))).toBe(true);
+  });
+
+  it('cooldown: the one called over stands down with everyone when it blows over', () => {
+    const h = play('cooldown');
+    const m = h.g.mission!;
+    const { extra } = summoned(h);
+    expect(m.watch.tier).toBe(3);
+    h.run(2.1, holdAll(h));
+    hide(h);
+    h.run(COOLDOWN * 2 + 1, holdAll(h));
+    expect(m.watch.tier, 'down to Noticed').toBe(1);
+    expect(extra.aggro, 'they are not after you any more either').toBe(false);
+    expect(m.watch.watchers.get(extra.id)?.mood).toBe('wary');
+  });
+
+  it('search: somebody who turns up after you (a story\'s enemy) loses you, searches with the countdown over their head, and gives up', () => {
+    const h = play('search');
+    const g = h.g;
+    const m = g.mission!;
+    const p = g.player.pos;
+    const extra = g.spawn('user', p.x + 1, p.z, -1)!;
+    expect(extra.aggro, 'they arrive after you').toBe(true);
+    h.run(DT * 2, holdAll(h));
+    expect(m.watch.watchers.get(extra.id)?.mood).toBe('alert');
+    expect(m.watch.tier).toBe(2);
+    hide(h);
+    h.run(SEARCH_AFTER + 0.5, holdAll(h));
+    const w = m.watch.watchers.get(extra.id)!;
+    expect(w.mood, 'searching').toBe('searching');
+    expect(extra.aggro).toBe(false);
+    h.run(SEARCH_COUNTDOWN + 0.5, holdAll(h));
+    expect(w.mood, 'gave up').toBe('wary');
+    expect(m.watch.tier).toBe(1);
+  });
+});
