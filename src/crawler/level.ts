@@ -117,7 +117,28 @@ export interface Level {
   readonly glass?: Uint8Array;
   /** A recipe's floor: what its mission needs to find in it (templates.ts). */
   readonly recipe?: RecipeLayout;
+  /**
+   * An ordinary floor's arrival lift in the lobby, which the generator only
+   * draws: the game makes it the way back to the hub (`loadFloor`). Left out
+   * of the floor's print, so adding it moved no floor.
+   */
+  readonly arrival?: { readonly x: number; readonly z: number; readonly mesh: THREE.Object3D };
 }
+
+/**
+ * What `generateLevel` builds besides the ordinary floor: a mission
+ * template's footprint (templates.ts), or the hub (the career's own office
+ * floor, docs/SPEC_HELLDESK_030_S1.md).
+ */
+export type LevelRecipe = RecipeId | 'hub';
+
+/**
+ * The hub's rooms after the lobby, in the order they are handed out: the
+ * kitchen, Internal IT and two open-plan rooms always (a hub has at least
+ * five rooms), then the rest of the building's kinds. The sauna has today's
+ * odds; whatever is left over is more open plan.
+ */
+const HUB_ROOMS: readonly RoomKind[] = ['kitchen', 'it', 'cubicles', 'cubicles', 'server', 'meeting', 'print', 'office', 'sauna'];
 
 /** Where things are on a floor built from a recipe. */
 export interface RecipeLayout {
@@ -518,16 +539,19 @@ export function repairFloorAccess(level: Pick<Level, 'w' | 'h' | 'floor' | 'soli
 /**
  * A floor. With no `recipe` it is the dungeon it always was: rectangles
  * rejection-sampled and joined by corridors (`levelprint.test.ts` holds it
- * to that, seed for seed). With one, the rooms and corridors are a
- * template's hand-placed footprint instead (templates.ts, the 0.3.0 spike),
- * furnished by room kind the same way, with nobody in it: a mission brings
- * its own people.
+ * to that, seed for seed). With a template's, the rooms and corridors are a
+ * hand-placed footprint instead (templates.ts, the 0.3.0 spike), furnished
+ * by room kind the same way, with nobody in it: a mission brings its own
+ * people. With 'hub' it is the ordinary generator again, made into the
+ * career's own floor: the lobby and its lift, the kitchen, Internal IT and
+ * open plan for certain, no corner office, and nobody rolled to be trouble.
  */
-export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures, recipe?: RecipeId): Level {
+export function generateLevel(floorIndex: number, theme: Theme, seed: number, noTextures = false, withDecor = !noTextures, recipe?: LevelRecipe): Level {
   headless = noTextures;
   decor = withDecor;
   const r = new Rng(seed);
-  const plan: RecipePlan | null = recipe === undefined ? null : layRecipe(recipe, r);
+  const hub = recipe === 'hub';
+  const plan: RecipePlan | null = recipe === undefined || recipe === 'hub' ? null : layRecipe(recipe, r);
   const w = plan?.w ?? 44 + Math.min(floorIndex, 4) * 4;
   const h = plan?.h ?? w;
   const floor = new Uint8Array(w * h);
@@ -644,14 +668,16 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       }
     }
     (rooms[0] as Room).kind = 'lobby';
-    (rooms[bossIdx] as Room).kind = 'boss';
-    const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && rm.id !== bossIdx));
+    // The hub has no corner office: its major incident is upstairs.
+    if (!hub) (rooms[bossIdx] as Room).kind = 'boss';
+    const others = r.shuffle(rooms.filter((rm) => rm.id !== 0 && (hub || rm.id !== bossIdx)));
     // A sauna on most floors: Finnish building regulations, probably.
     const plan: RoomKind[] = ['kitchen', 'it', 'server', 'meeting', 'print', 'office', 'sauna', 'kitchen', 'server', 'meeting'];
     const hasSauna = r.chance(0.7);
     others.forEach((rm, i) => {
-      const k = plan[i];
+      const k = hub ? HUB_ROOMS[i] : plan[i];
       if (k === 'sauna' && !hasSauna) rm.kind = 'cubicles';
+      else if (hub) rm.kind = k ?? 'cubicles';
       else rm.kind = k !== undefined && (i < 7 || r.chance(0.5)) ? k : 'cubicles';
     });
     // The story NPC for this floor waits in an office, meeting room or desk area.
@@ -986,7 +1012,8 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
           group.add(m);
           block(p[0], p[1]);
           addInteract('printer', p[0], p[1], rm.id, m);
-          spawns.push({ kind: 'jam', x: cellCenter(p[0]) + 1.5, z: cellCenter(p[1]), room: rm.id });
+          // The hub's printer is only broken, not possessed.
+          if (!hub) spawns.push({ kind: 'jam', x: cellCenter(p[0]) + 1.5, z: cellCenter(p[1]), room: rm.id });
         }
         const t = wallSpot(rm);
         if (t !== null) addTerminal(t[0], t[1], rm, facingInto(t[0], t[1], rm));
@@ -1003,7 +1030,8 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
           block(s[0], s[1]);
         }
         spawns.push({ kind: 'manager', x: cellCenter(x0 + 1), z: cellCenter(y1 - 1), room: rm.id });
-        spawns.push({ kind: 'customer', x: cellCenter(x1 - 1), z: cellCenter(y1 - 1), room: rm.id });
+        // On the hub the visitor's chair has a colleague in it: clients come with a reason.
+        spawns.push({ kind: hub ? 'user' : 'customer', x: cellCenter(x1 - 1), z: cellCenter(y1 - 1), room: rm.id });
         break;
       }
       case 'lobby': {
@@ -1051,8 +1079,9 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
       if (s !== null) spawns.push({ kind: 'npc', x: cellCenter(s[0]), z: cellCenter(s[1]), room: rm.id });
     }
 
-    // Everyone else: users in whatever room, scaled with the floor.
-    if (rm.kind !== 'lobby' && rm.kind !== 'boss' && rm.kind !== 'it' && rm.kind !== 'sauna') {
+    // Everyone else: users in whatever room, scaled with the floor. Not on
+    // the hub: nobody there is rolled to be trouble (rollHostile is never asked).
+    if (!hub && rm.kind !== 'lobby' && rm.kind !== 'boss' && rm.kind !== 'it' && rm.kind !== 'sauna') {
       // Crowds stop growing after the second floor; the people in them keep getting tougher.
       const extra = r.int(0, 1 + Math.min(floorIndex, 2));
       for (let i = 0; i < extra; i++) {
@@ -1089,12 +1118,13 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   }
 
   // Elevators: arrival in the lobby, exit in the boss room. The doors go on a
-  // stretch of wall with no corridor opening next to it. A recipe's floor has
-  // the one lift, in the lobby: you leave the way you came.
+  // stretch of wall with no corridor opening next to it. A recipe's floor, and
+  // the hub, have the one lift, in the lobby: you leave the way you came.
   const lobby = rooms[0] as Room;
   const start = { x: cellCenter(Math.floor(lobby.x + lobby.w / 2)), z: cellCenter(Math.floor(lobby.y + lobby.h / 2)) };
   const bossRoom = rooms[bossIdx] as Room;
-  const bossSpawn = plan !== null ? start : { x: cellCenter(Math.floor(bossRoom.x + bossRoom.w / 2)), z: cellCenter(Math.floor(bossRoom.y + bossRoom.h / 2)) };
+  const bossSpawn = plan !== null || hub ? start : { x: cellCenter(Math.floor(bossRoom.x + bossRoom.w / 2)), z: cellCenter(Math.floor(bossRoom.y + bossRoom.h / 2)) };
+  let arrivalLift: Level['arrival'];
   const liftSpot = (rm: Room, first: 'top' | 'bottom'): { x: number; y: number; px: number; pz: number; rot: number } => {
     const sides = first === 'bottom' ? ['bottom', 'top', 'left', 'right'] as const : ['top', 'bottom', 'left', 'right'] as const;
     const mid = (a: number, n: number): number[] => {
@@ -1126,7 +1156,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     const y = rm.y + rm.h - 1;
     return { x, y, px: cellCenter(x), pz: cellCenter(y) + TILE / 2 - 0.15, rot: Math.PI };
   };
-  if (plan !== null) {
+  if (plan !== null || hub) {
     const entry = liftSpot(lobby, 'top');
     const doors = elevatorMesh();
     doors.position.set(entry.px, 0, entry.pz);
@@ -1145,6 +1175,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
     arrive.position.set(arrival.px, 0, arrival.pz);
     arrive.rotation.y = arrival.rot;
     group.add(arrive);
+    arrivalLift = { x: cellCenter(arrival.x), z: cellCenter(arrival.y), mesh: arrive };
   }
 
   repairFloorAccess({ w, h, floor, solid, opaque, rooms, spawns, interactables, start }, r, builder);
@@ -1431,6 +1462,7 @@ export function generateLevel(floorIndex: number, theme: Theme, seed: number, no
   const level: Level = {
     w, h, floor, solid, opaque, roomOf, rooms, interactables, spawns, start, bossSpawn,
     lightSpots, group, seen: new Uint8Array(w * h),
+    ...(arrivalLift === undefined ? {} : { arrival: arrivalLift }),
   };
   if (plan === null) return level;
   const tagged: Record<string, number[]> = {};
