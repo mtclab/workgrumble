@@ -7,6 +7,7 @@ import { answering, DT, type Headless, headless } from './headlessgame';
 import * as host from './hosts';
 import { COLD_LINE, FIGHT_MEMORY, FIGHT_RANGE, HUB_EXTRA_BASE, HUB_GRACE, IGNORE_MEMORY, IGNORES_TO_TURN, LINE_TIME, personKey, REACHED_DIST, WITNESS_RANGE } from './hub';
 import { interact, standAt } from './interact';
+import { HOSTILE_DOT, Hud, NEUTRAL_DOT } from './hud';
 import { itemById, type WeaponDef } from './items';
 import { flowField, generateLevel, type LevelRecipe, lineOfSight, NEIGHBOURS8, toCell } from './level';
 import { fx } from './rng';
@@ -400,6 +401,51 @@ describe('gate 3: every source turns exactly the right person, announced, and no
     // Every hostile on the hub's books came from an announced source in the table.
     for (const e of g.save.hub.hostile) expect(['breach', 'ignored', 'assault', 'witness', 'caught', 'grudge', 'story']).toContain(e.reason);
     expect(g.save.hub.hostile.find((e) => e.spawnIndex === d.spawnIndex)?.reason).toBe('story');
+  });
+});
+
+describe('the map: neutral people are not red', () => {
+  /** The minimap as drawn (the real `drawMini`): the colour of each person's dot, by where it is drawn. */
+  function minimapDots(h: Headless): Map<Actor, string> {
+    const g = h.g;
+    const drawn: { x: number; y: number; color: string }[] = [];
+    let fill = '';
+    const ctx = new Proxy<Record<string, unknown>>({}, {
+      get: (_t, k) => (k === 'arc' ? (x: number, y: number): void => { drawn.push({ x, y, color: fill }); } : (): void => undefined),
+      set: (_t, k, v) => { if (k === 'fillStyle') fill = String(v); return true; },
+    });
+    const frame = { level: g.level, px: g.player.pos.x, pz: g.player.pos.z, yaw: 0, actors: g.actors, markers: [], elevatorOpen: false };
+    (Hud.prototype as unknown as { drawMini(this: unknown, f: unknown): void }).drawMini.call({ miniCtx: ctx }, frame);
+    const out = new Map<Actor, string>();
+    for (const a of g.actors) {
+      if (a.resolved) continue;
+      const sx = 90 + (a.pos.x / 2 - g.player.pos.x / 2) * 5;
+      const sy = 90 + (a.pos.z / 2 - g.player.pos.z / 2) * 5;
+      const dot = drawn.find((d) => Math.abs(d.x - sx) < 1e-6 && Math.abs(d.y - sy) < 1e-6);
+      if (dot !== undefined) out.set(a, dot.color);
+    }
+    return out;
+  }
+
+  it('on the hub every neutral colleague is a grey dot, never red; one who turns is red', () => {
+    const h = hubFor();
+    const g = h.g;
+    const c = neutral(h).find((a) => a.kind === 'user' && named(h, a))!;
+    const m = neutral(h).find((a) => a.kind === 'manager' && named(h, a))!;
+    standBeforeActor(g, c, 4);
+    m.pos.set(g.player.pos.x + 1, 0, g.player.pos.z + 1);
+    const before = minimapDots(h);
+    expect(before.size, 'people drawn').toBeGreaterThan(2);
+    for (const [a, color] of before) {
+      if (a.colleague) expect(color, `${a.name} (${a.kind}), neutral`).toBe(NEUTRAL_DOT);
+      expect(color, `${a.name} (${a.kind}) is not after you: not red`).not.toBe(HOSTILE_DOT);
+    }
+    breach(g, { t: c.ticket, sla: 0, from: c.name, struck: [], gold: false });
+    breach(g, { t: m.ticket, sla: 0, from: m.name, struck: [], gold: false });
+    const after = minimapDots(h);
+    expect(after.get(c), 'turned: red').toBe(HOSTILE_DOT);
+    expect(after.get(m), 'a manager who turned is red too').toBe(HOSTILE_DOT);
+    for (const [a, color] of after) if (a !== c && a !== m && !a.hostile) expect(color).not.toBe(HOSTILE_DOT);
   });
 });
 

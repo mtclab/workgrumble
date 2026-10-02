@@ -676,11 +676,19 @@ export class Hud {
   }
 }
 
+/** A hub colleague who is not after you: a calm grey dot, nothing like trouble. */
+export const NEUTRAL_DOT = '#c8d2cc';
+
+/** Somebody after you: red. */
+export const HOSTILE_DOT = '#ff4040';
+
 /** A person's dot on the minimap. Exported for the tests. */
 export function actorColor(a: Actor): string {
   if (a.kind === 'boss') return '#ff00ff';
   // The training dummy is furniture with opinions, not trouble: canvas-coloured, never red.
   if (a.kind === 'dummy') return '#c9b48c';
+  // A colleague on the hub is neutral until they turn (hub.ts): grey, then red whoever they are.
+  if (a.colleague) return a.hostile ? HOSTILE_DOT : NEUTRAL_DOT;
   if (a.elite !== null) return '#ff9a3a';
   switch (a.kind) {
     case 'healer': return '#ff9ad5';
@@ -692,7 +700,7 @@ export function actorColor(a: Actor): string {
     case 'shadowit': case 'turret': return '#c39bd3';
     case 'vendor': return '#f39c12';
     case 'chatbot': return '#8fd0ff';
-    default: return '#ff4040';
+    default: return HOSTILE_DOT;
   }
 }
 
