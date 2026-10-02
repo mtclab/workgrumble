@@ -59,7 +59,7 @@ import { InductionDay } from './inductionday';
 import { type AlarmRule, type MissionCard, type Outcome } from './mission';
 import { AFTER_HOURS_LIGHT, briefing, MissionPlay, type MissionView } from './missionplay';
 import { POOL } from './missions';
-import { type CardView, cardView, coworkerCard, deal, DECLINE_RAPPORT, deckCard, handIds, payRate } from './deck';
+import { type CardView, cardView, coworkerCard, deal, DECLINE_RAPPORT, deckCard, FLOOR_P1, handIds, payRate } from './deck';
 import { Input } from './input';
 import { findPrompt, interact } from './interact';
 import { flowField, generateLevel, type Interactable, isSolidAt, type Level, lineOfSight, TILE, toCell, wallBetween } from './level';
@@ -1008,12 +1008,18 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     return POOL.filter((c) => c.giver.id === npc || (c.sibling !== undefined && s.questLog.some((q) => q.id === c.sibling && isActive(q)))).map((c) => c.id);
   }
 
-  /** A card of the week's deck as the workstation and its giver show it. */
+  /**
+   * A card of the week's deck as the workstation and its giver show it. The
+   * floor's P1 is resolved when its boss is, by whatever road (beaten, a
+   * deal, the Auditor's handshake, the PA's ending on the hub): the board
+   * follows the floor rather than keeping a state of its own.
+   */
   cardView(index: number): CardView {
     const s = this.save;
     const d = s.deck.cards[index];
     if (d === undefined) throw new Error(`no card ${index}`);
-    return cardView(d, index, { title: `Floor ${floorLabel(s.floor)}: the major incident (${bossName(s.floor)})`, place: `Floor ${floorLabel(s.floor)}` });
+    const dealt = d.id === FLOOR_P1 && p1Resolved(s) ? { ...d, state: 'done' as const } : d;
+    return cardView(dealt, index, { title: `Floor ${floorLabel(s.floor)}: the major incident (${bossName(s.floor)})`, place: `Floor ${floorLabel(s.floor)}` });
   }
 
   /** The week's deck, card by card (the Projects window). */

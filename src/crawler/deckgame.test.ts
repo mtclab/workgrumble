@@ -542,3 +542,33 @@ describe('a deck dealt for a week already under way', () => {
     expect(back.g.save.deck.cards[0]?.id).toBe(FLOOR_P1);
   });
 });
+
+describe('the floor\'s P1 on the board', () => {
+  it('shows Resolved once the floor\'s boss is beaten, back on the hub too', () => {
+    const h = newCareer();
+    const g = h.g;
+    expect(g.deckViews()[0]).toMatchObject({ p1: true, state: 'accepted' });
+    h.pick(press(h, lift(g)).find((l) => l.startsWith('Floor'))!);
+    expect(g.save.location).toBe('office');
+    const boss = g.boss!;
+    boss.hp = 0;
+    resolveActor(g, boss);
+    expect(g.deckViews()[0]?.state, 'on the floor').toBe('done');
+    g.liftToHub();
+    expect(g.save.location).toBe('hub');
+    expect(g.deckViews()[0]?.state, 'and on the hub\'s board').toBe('done');
+  });
+
+  it('shows Resolved when the Auditor settles it with a handshake instead', () => {
+    const h = newCareer();
+    const g = h.g;
+    g.save.week += 1;
+    g.startWeek(3);
+    g.loadHub(false, true);
+    g.loadFloor(3, false, true);
+    expect(g.boss?.resolved).toBe(false);
+    expect(g.deckViews()[0]?.state).toBe('accepted');
+    g.auditorParley('ally');
+    expect(g.deckViews()[0]?.state).toBe('done');
+  });
+});
