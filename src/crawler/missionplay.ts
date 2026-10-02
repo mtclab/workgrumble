@@ -806,8 +806,8 @@ export class MissionPlay {
     return null;
   }
 
-  /** Everything the run keeps across a save. */
-  save(): PlaySave {
+  /** Everything the run keeps across a save; `leaving`: put by at its lift for later (`Game.leaveRun`). */
+  save(leaving = false): PlaySave {
     const people: PersonSave[] = this.crowd.map((a, i) => {
       const w = this.watch.watchers.get(a.id);
       return {
@@ -827,6 +827,7 @@ export class MissionPlay {
       collected: this.scatter.flatMap((c, k) => (c.picked ? [k] : [])), loudDone: this.loudDone, nerve: this.nerve,
       repAtStart: this.repAtStart, managementAtStart: this.standingAtStart.management, staffAtStart: this.standingAtStart.staff,
       detectedAt: this.detectedAt, noticedAt: this.noticedAt, noiseEvents: this.noiseEvents,
+      ...(leaving ? { leftAt: { rep: this.g.save.rep, management: this.g.save.standing.management, staff: this.g.save.standing.staff } } : {}),
     };
   }
 
@@ -844,8 +845,14 @@ export class MissionPlay {
     this.watch.quietT = from.quietT;
     this.watch.unseenT = from.unseenT ?? 0;
     this.nerve = from.nerve;
-    this.repAtStart = from.repAtStart;
-    this.standingAtStart = { management: from.managementAtStart, staff: from.staffAtStart };
+    // Back from the hub to a card left at its lift: whatever moved meanwhile was not the card's doing.
+    const away = from.leftAt;
+    const s = g.save;
+    this.repAtStart = from.repAtStart + (away === undefined ? 0 : s.rep - away.rep);
+    this.standingAtStart = {
+      management: from.managementAtStart + (away === undefined ? 0 : s.standing.management - away.management),
+      staff: from.staffAtStart + (away === undefined ? 0 : s.standing.staff - away.staff),
+    };
     this.detectedAt = from.detectedAt;
     this.noticedAt = from.noticedAt;
     this.noiseEvents = from.noiseEvents;

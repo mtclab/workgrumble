@@ -126,6 +126,7 @@ import {
   type Derived,
   freshFloorState,
   freshMission,
+  type MissionSave,
   freshWeekend,
   hubWeek,
   levelUpReady,
@@ -835,9 +836,10 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
       return;
     }
     if (!fromSave || s.mission === null || s.mission.index !== index) {
-      const left = card.p1 === true && s.p1Run !== null && s.p1Run.index === index ? s.p1Run : null;
+      // A card left before it was done (a P1 left, a card aborted) goes on as it was left: nothing paid is paid twice.
+      const left = s.left.find((r) => r.index === index && r.card === card.id) ?? null;
       s.mission = left ?? freshMission(card.id, index, dealt.seed, dealt.alarm ?? card.alarm, dealt.afterHours);
-      if (card.p1 === true) s.p1Run = null;
+      s.left = s.left.filter((r) => r !== left);
     }
     const m = s.mission;
     if (m === null) throw new Error('no mission');
@@ -891,7 +893,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const dealt = s.deck.cards[index];
     const card = dealt === undefined ? undefined : deckCard(dealt);
     if (dealt === undefined || card === undefined) return;
-    const resuming = card.p1 === true && s.p1Run !== null && s.p1Run.index === index;
+    const resuming = s.left.some((r) => r.index === index && r.card === card.id);
     this.autosave();
     sfx.ding();
     screens.showLoading(this, screens.LOADING_OFFICE, () => {
@@ -918,11 +920,21 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   /** Off a P1 card's map without finishing it (a P1 is never aborted): it waits, as left, for the lift back. */
   leaveP1(): void {
     const s = this.save;
-    this.mission?.note();
-    s.p1Run = s.mission;
+    if (this.mission !== null && s.mission !== null) this.leaveRun(this.mission, s.mission);
     s.mission = null;
     s.location = 'hub';
     this.leaveMission();
+  }
+
+  /**
+   * A card's run, as it is now, put by for the lift back to it (`left`):
+   * everyone and everything on it as they are, and the Rep and standing it
+   * has paid so far, so its results card later counts only the card's own.
+   */
+  private leaveRun(mp: MissionPlay, m: MissionSave): void {
+    const s = this.save;
+    m.run = mp.save(true);
+    s.left = [...s.left.filter((r) => r.index !== m.index), m];
   }
 
   /** Friday straight from a card's lift (the card stays on the board, and Friday settles it). */
@@ -953,6 +965,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     const card = mp.card;
     if (card.objective.kind === 'take') this.takeItem(card.objective.item);
     const dealt = m === null ? undefined : s.deck.cards[m.index];
+    // Aborted: still on the board, and the lift goes back to it as it was left.
+    if (o.finish === 'aborted' && m !== null && dealt?.id === card.id && card.p1 !== true) this.leaveRun(mp, m);
     s.mission = null;
     s.location = 'hub';
     if (dealt === undefined || dealt.id !== card.id) return;
@@ -1050,7 +1064,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   dealWeek(): void {
     const s = this.save;
     s.deck = deal({ careerSeed: s.seed, week: s.week, floor: s.floor, rung: s.rung, previous: handIds(s.deck), exclude: this.deckExclude() });
-    s.p1Run = null;
+    s.left = [];
   }
 
   /**

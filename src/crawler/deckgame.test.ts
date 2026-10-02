@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { resolveActor, standBeforeActor } from './combat';
 import { deal, deckCard, FLOOR_P1, handIds, payRate } from './deck';
-import { pickUp, withDeck } from './deckplay';
+import { liftTo, pickUp, withDeck } from './deckplay';
 import type { Actor } from './entities';
 import type { Game } from './game';
 import { DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
@@ -244,8 +244,9 @@ describe('the lift as mission select', () => {
     h.results!.buttons.get('Back to the hub')!();
     expect(g.save.location).toBe('hub');
     expect(g.save.deck.cards[index(h, 'postits')]?.state, 'still on the board').toBe('accepted');
-    // Again, and this time done.
-    upTo(h, 'postits');
+    // Again, as it was left, and this time done.
+    liftTo(h, 'postits');
+    expect(h.toasts.at(-1)).toBe('Password Hygiene Week: as you left it.');
     pickUp(h, 8);
     expect(g.mission?.run.objectiveDone).toBe(true);
     const rep = g.save.rep;

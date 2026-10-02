@@ -278,6 +278,8 @@ export interface PlaySave {
   readonly repAtStart: number;
   readonly managementAtStart: number;
   readonly staffAtStart: number;
+  /** Left at its lift (aborted, or a P1 left): the Rep and standing then, so what you earn elsewhere meanwhile is not the card's. */
+  readonly leftAt?: { readonly rep: number; readonly management: number; readonly staff: number };
   readonly detectedAt: number | null;
   readonly noticedAt: number | null;
   readonly noiseEvents: number;

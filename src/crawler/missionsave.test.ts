@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Game } from './game';
 import { DT, type Headless, lift, newCareer, press } from './headlessgame';
-import { alertOne, cardIndex, deskWatchers, hide, holdAll, liftTo, reload, withDeck } from './deckplay';
+import { abortCard, alertOne, cardIndex, deskWatchers, hide, holdAll, liftTo, pickUp, reload, withDeck } from './deckplay';
 import { SEARCH_AFTER } from './stealth';
 import type { Actor } from './entities';
 import { findPrompt, interact } from './interact';
@@ -275,5 +275,79 @@ describe('the alarm\'s clocks and memory survive a reload', () => {
     expect(bm.watch.tier).toBe(2);
     alertOne(back, bm.watch.watchers.get(bm.crowd[j]!.id)!);
     expect(bm.watch.tier, 'a second person raised the alarm').toBe(3);
+  });
+});
+
+describe('an aborted card is still the same card', () => {
+  it('sweep part of it, abort, take it again: whoever was dealt with stays dealt with, and nothing already paid (Rep, standing, a manager\'s meeting) can be paid again', () => {
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'stapler', alarm: 'one-way' }]);
+    g.acceptCard(cardIndex(h, 'stapler'));
+    liftTo(h, 'stapler');
+    const m = g.mission!;
+    // One of them resolved in a fight: Rep paid.
+    const user = deskWatchers(h).find((w) => w.actor.kind === 'user')!.actor;
+    const iu = m.crowd.indexOf(user);
+    const rep0 = g.save.rep;
+    user.hp = 0;
+    h.run(DT * 2, keepUp(h));
+    expect(user.resolved).toBe(true);
+    expect(g.save.rep, 'paid for them').toBeGreaterThan(rep0);
+    // The manager at a desk, in a meeting: Management +3.
+    const boss = m.crowd.find((a, k) => a.kind === 'manager' && m.specs[k]?.tag === undefined)!;
+    const ib = m.crowd.indexOf(boss);
+    expect(talksTo(g, boss)).toBe(true);
+    interact(g);
+    const mgmt0 = g.save.standing.management;
+    h.pick(/^Accept the meeting/);
+    while (g.screen === 'dialogue') h.pick(/./);
+    expect(g.save.standing.management, 'the meeting paid').toBeGreaterThanOrEqual(mgmt0 + 3);
+    h.run(5, keepUp(h));
+    abortCard(h);
+    expect(g.save.location).toBe('hub');
+    expect(g.save.deck.cards[cardIndex(h, 'stapler')]?.state, 'still on the board').toBe('accepted');
+    const paid = { rep: g.save.rep, standing: { ...g.save.standing } };
+    const seconds = m.run.seconds;
+    // Back up the lift: the card as it was left.
+    liftTo(h, 'stapler');
+    const said = h.toasts.at(-1);
+    const again = g.mission!;
+    expect(again).not.toBe(m);
+    for (const k of [iu, ib]) {
+      const a = again.crowd[k]!;
+      expect(a.resolved, `${a.name} is still dealt with`).toBe(true);
+      expect(g.actors, `${a.name} is not on the map to be paid for again`).not.toContain(a);
+    }
+    expect(g.save.rep, 'nothing paid twice on the way back').toBe(paid.rep);
+    expect(g.save.standing).toEqual(paid.standing);
+    // Everyone left on it, dealt with now: only they pay, and no meeting is to be had.
+    expect(again.crowd.some((a, k) => a.kind === 'manager' && again.specs[k]?.tag === undefined && !a.resolved), 'no second meeting').toBe(false);
+    expect(again.run.seconds, 'its clock goes on').toBeCloseTo(seconds, 5);
+    expect(said).toBe('The Red Stapler, Recovered: as you left it.');
+  });
+
+  it('copies already picked up stay picked up, and the results card counts only the card\'s own Rep, not what you earned on the hub meanwhile', () => {
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits' }]);
+    g.acceptCard(cardIndex(h, 'postits'));
+    const rep0 = g.save.rep;
+    liftTo(h, 'postits');
+    pickUp(h, 3);
+    expect(g.mission!.run.progress).toBe(3);
+    abortCard(h);
+    g.addRep(50);
+    liftTo(h, 'postits');
+    const m = g.mission!;
+    expect(m.run.progress, 'three still collected').toBe(3);
+    expect(m.scatter.filter((c) => c.picked)).toHaveLength(3);
+    expect(g.pickups.filter((p) => p.id.startsWith('card:')), 'and not lying there again').toHaveLength(9);
+    pickUp(h, 5);
+    expect(m.run.objectiveDone).toBe(true);
+    press(h, lift(g));
+    h.pick('Finish: close the card');
+    const card = g.save.rep - rep0 - 50;
+    expect(h.results?.rows.get('Rep')?.startsWith(`+${card} `), `the card's own ${card}: ${h.results?.rows.get('Rep') ?? ''}`).toBe(true);
   });
 });

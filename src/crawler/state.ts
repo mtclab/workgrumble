@@ -268,6 +268,12 @@ export function normalizeMission(raw: unknown): MissionSave | null {
   return m;
 }
 
+/** The cards left before they were done (`SaveState.left`), checked; a save from before them kept only a P1 left, as `p1Run`. */
+function normalizeLeft(m: { left?: unknown; p1Run?: unknown }): MissionSave[] {
+  const raw = Array.isArray(m.left) ? m.left as unknown[] : [m.p1Run];
+  return raw.map(normalizeMission).filter((x): x is MissionSave => x !== null);
+}
+
 /** The once-a-floor things of where you are at work: the hub's, a mission map's, or the P1 floor's. */
 export function onceHere(s: SaveState): OncePerFloor {
   if (s.location === 'mission' && s.mission !== null) return s.mission;
@@ -373,8 +379,13 @@ export interface SaveState {
   deck: Deck;
   /** The card being played, while on its map (and kept across a reload). */
   mission: MissionSave | null;
-  /** A P1 card's map as you left it (a P1 is never aborted, only left): the lift goes back to it. */
-  p1Run: MissionSave | null;
+  /**
+   * Cards of this week's deck left before they were done, each as it was
+   * left (a P1 left at its lift, a card aborted): the lift goes back to it,
+   * with everyone already dealt with still dealt with and everything already
+   * paid still paid. One per card; Monday's deal clears them.
+   */
+  left: MissionSave[];
   /** How each coworker who hands out cards feels about you (by giver id): a declined card costs a little. */
   rapport: Record<string, number>;
   weekend: WeekendState;
@@ -602,7 +613,7 @@ export function newSave(seed: number, setup?: CharacterSetup): SaveState {
     hub: freshHub(1),
     deck: emptyDeck(),
     mission: null,
-    p1Run: null,
+    left: [],
     rapport: {},
     weekend: freshWeekend(),
     oncall: freshOnCall(),
@@ -731,7 +742,7 @@ export function normalizeSave(raw: unknown): SaveState | null {
     // S1b's fields are additive to v4: a save from before them gets a deck dealt on load (`Game.loadWorld`).
     deck: normalizeDeck((m as Partial<SaveState>).deck),
     mission: normalizeMission((m as Partial<SaveState>).mission),
-    p1Run: normalizeMission((m as Partial<SaveState>).p1Run),
+    left: normalizeLeft(m),
     rapport: normalizeRapport((m as Partial<SaveState>).rapport),
     ammo: { ...fresh.ammo, ...m.ammo },
     standing: { ...fresh.standing, ...m.standing },
@@ -745,7 +756,8 @@ export function normalizeSave(raw: unknown): SaveState | null {
     out.mission = null;
   }
   if (out.location !== 'mission') out.mission = null;
-  if (out.p1Run !== null && (out.deck.week !== out.week || out.deck.cards[out.p1Run.index]?.id !== out.p1Run.card)) out.p1Run = null;
+  // A card left with nothing to go back to (another week's deck, another card there) is gone.
+  out.left = out.left.filter((r, k) => out.deck.week === out.week && out.deck.cards[r.index]?.id === r.card && out.left.findIndex((x) => x.index === r.index) === k);
   for (const k of SKILLS) if (out.skills[k] === undefined) out.skills[k] = { value: 5, progress: 0 };
   for (const a of ATTRIBUTES) if (typeof out.attrs[a] !== 'number') out.attrs[a] = 35;
   if (out.gear.length === 0) out.gear = fresh.gear;
