@@ -115,6 +115,7 @@ import { type Action, BACKPACK_EXTRA, bindingText, extraFree, loadSettings, SNEA
 import * as screens from './screens';
 import { castSpell, cycleSpell, domainAbility, domainCooldown, spellLabel } from './spells';
 import {
+  activityHere,
   adjustStanding,
   applyLevelUp,
   type CharacterSetup,
@@ -2191,7 +2192,7 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
   turnHostile(npc: string, name: string): void { host.turnHostile(this, npc, name); }
   recruitIntern(): void { host.recruitIntern(this); }
   atPeak(): boolean { return bandFor(this.save.bac, this.derivedCache.specials.has('flask')) === 'peak'; }
-  drinksHere(): number { return this.save.floorState.drinksHere; }
+  drinksHere(): number { return activityHere(this.save).drinksHere; }
   maybeStaff(by: string, chance: number): void { maybeStaff(this, by, chance); }
   pushBack(index: number): string { return pushBack(this, index); }
   dropMentoring(index: number): string { return dropMentoring(this, index); }

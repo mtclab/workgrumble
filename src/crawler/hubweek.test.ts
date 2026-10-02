@@ -1,12 +1,12 @@
 import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { dropGear, EXIT_LIT, lastStand, resolveActor } from './combat';
+import { dropGear, EXIT_LIT, lastStand, placeQuestPickup, resolveActor, updatePickups } from './combat';
 import { breach } from './desk';
 import type { Actor } from './entities';
 import { ARRIVAL_LIFT_ID, type Game } from './game';
 import { answering, DT, type Headless, headless, lift, newCareer, press } from './headlessgame';
-import { HUB_EXTRA_BASE, personKey } from './hub';
+import { HUB_EXTRA_BASE, p1Resolved, personKey } from './hub';
 import { interact, standAt } from './interact';
 import * as host from './hosts';
 import { isPracticeTicket } from './induction';
@@ -15,8 +15,12 @@ import { generateLevel, type Interactable, type LevelRecipe } from './level';
 import { plainInstance, uniqueInstance } from './loot';
 import { generateMokki } from './mokki';
 import { Rng } from './rng';
+import { questOf, startStage } from './questing';
+import { QUESTS, talkGiver } from './quests';
 import { readSlot } from './saves';
-import { newSave, normalizeSave, type SaveState } from './state';
+import { activityHere, newSave, normalizeSave, type SaveState } from './state';
+import { CONSUMABLES } from './items';
+import { drink } from './vices';
 
 vi.mock('./textures', async (orig) => ({ ...await orig<typeof import('./textures')>(), textSprite: () => new THREE.Sprite(), disposeSprite: () => undefined }));
 vi.mock('./level', async (orig) => {
@@ -145,6 +149,186 @@ describe('gate 5: the week goes through the hub', () => {
     g.startWeek(1);
     g.loadHub(false, true);
     expect(g.level.interactables.find((x) => x.id === coffee.id)?.used).toBe(false);
+  });
+});
+
+describe('S1a: drinks and quest pickups belong to where you are', () => {
+  function at(location: 'hub' | 'office'): Headless {
+    const h = newCareer();
+    if (location === 'office') h.g.liftToP1();
+    return h;
+  }
+
+  function elsewhere(s: SaveState): SaveState['hub'] | SaveState['floorState'] {
+    return s.location === 'hub' ? s.floorState : s.hub;
+  }
+
+  for (const location of ['hub', 'office'] as const) {
+    it(`drinking on the ${location} leaves the other place unchanged, including its sober boss reward`, () => {
+      const h = at(location);
+      const g = h.g;
+      const other = structuredClone(elsewhere(g.save));
+      drink(g, CONSUMABLES.find((c) => c.id === 'lonkero')!);
+      expect(elsewhere(g.save), 'drinking leaves the other record unchanged').toEqual(other);
+      expect(activityHere(g.save).drinksHere, 'the drink is counted here').toBe(1);
+      if (location === 'hub') g.liftToP1();
+      g.boss!.hp = 0;
+      resolveActor(g, g.boss!);
+      expect(g.save.achievements.includes('sober'), 'only drinks on the P1 cost its sober reward').toBe(location === 'hub');
+      g.liftToHub();
+      expect(g.drinksHere(), 'the hub keeps only its own drinks').toBe(location === 'hub' ? 1 : 0);
+      g.liftToP1();
+      expect(g.drinksHere(), 'the P1 keeps only its own drinks').toBe(location === 'office' ? 1 : 0);
+    });
+
+    it.each([0, 1])(`Dry Week on the ${location} checks the local drink count: %s`, (localDrinks) => {
+      const h = at(location);
+      const g = h.g;
+      activityHere(g.save).drinksHere = localDrinks;
+      elsewhere(g.save).drinksHere = 1 - localDrinks;
+      g.save.questLog = [{ id: 'dryweek', stage: 1, progress: 0, done: false, floor: g.floor }];
+      const rep = g.save.rep;
+      const answer = talkGiver(g, 'dryweek', 'Sanna');
+      expect(answer.mood, 'Sanna judges drinks here').toBe(localDrinks === 0 ? 'good' : 'bad');
+      expect(g.save.rep - rep, 'the dry player gets the promised reward').toBe(localDrinks === 0 ? 120 : 0);
+    });
+
+    it(`loose quest pickups on the ${location} leave the other place unchanged`, () => {
+      const h = at(location);
+      const g = h.g;
+      const other = structuredClone(elsewhere(g.save));
+      placeQuestPickup(g, g.player.pos.x, g.player.pos.z, 'nanmug');
+      updatePickups(g, DT);
+      expect(g.save.questItems, 'the mug can be handed in').toContain('nanmug');
+      expect(g.pickups.some((p) => p.id === 'nanmug'), 'the mug is taken').toBe(false);
+      expect(elsewhere(g.save), 'taking a loose pickup leaves the other record unchanged').toEqual(other);
+      expect(activityHere(g.save).picked, 'the pickup is remembered here').toContain('nanmug');
+    });
+
+    it(`locker quest pickups on the ${location} leave the other place unchanged`, () => {
+      const h = at(location);
+      const g = h.g;
+      const locker = g.level.interactables.find((it) => it.kind === 'locker')!;
+      g.lockerItems.set(locker.id, 'nanmug');
+      g.save.consumables.paperclip = 1;
+      Object.assign(g, { lockpick: { start: (_lock: number, _skill: number, _clips: () => number, _snap: () => void, done: (ok: boolean) => void) => done(true) } });
+      const other = structuredClone(elsewhere(g.save));
+      g.promptTarget = { kind: 'interact', it: locker };
+      interact(g);
+      expect(g.save.questItems, 'the mug can be handed in').toContain('nanmug');
+      expect(g.lockerItems.has(locker.id), 'the locker no longer holds the mug').toBe(false);
+      expect(elsewhere(g.save), 'taking a locker pickup leaves the other record unchanged').toEqual(other);
+      expect(activityHere(g.save).picked, 'the locker pickup is remembered here').toContain('nanmug');
+    });
+
+    it(`quest placement on the ${location} ignores the other place's pickups but remembers its own`, () => {
+      const h = at(location);
+      const g = h.g;
+      const st = { id: 'mug', stage: 0, progress: 0, done: false, floor: g.floor };
+      elsewhere(g.save).picked.push('nanmug');
+      const other = structuredClone(elsewhere(g.save));
+      startStage(g, st);
+      expect(g.pickups.some((p) => p.id === 'nanmug'), 'the other place cannot hide this mug').toBe(true);
+      const mug = g.pickups.find((p) => p.id === 'nanmug')!;
+      g.player.pos.copy(mug.mesh.position).setY(0);
+      updatePickups(g, DT);
+      g.takeItem('nanmug');
+      startStage(g, st);
+      expect(g.pickups.some((p) => p.id === 'nanmug'), 'a mug already taken here does not reappear').toBe(false);
+      expect(elsewhere(g.save)).toEqual(other);
+    });
+  }
+
+  it('drinks and pickups survive saves and lift trips, and the hub starts fresh on Monday', () => {
+    const h = newCareer();
+    const g = h.g;
+    g.save.hub.drinksHere = 2;
+    g.save.hub.picked.push('nanmug');
+    g.save.floorState.drinksHere = 3;
+    g.save.floorState.picked.push('postit');
+    const saved = normalizeSave(JSON.parse(JSON.stringify(g.save)))!;
+    const back = headless(saved);
+    back.g.loadWorld(true);
+    expect(back.g.drinksHere(), 'hub drinks survive Continue').toBe(2);
+    expect(back.g.save.hub.picked, 'hub pickups survive Continue').toEqual(['nanmug']);
+    back.g.liftToP1();
+    expect(back.g.drinksHere(), 'P1 drinks survive the lift').toBe(3);
+    expect(back.g.save.floorState.picked).toEqual(['postit']);
+    back.g.liftToHub();
+    expect(back.g.drinksHere()).toBe(2);
+    expect(back.g.save.hub.picked).toEqual(['nanmug']);
+    back.g.save.week++;
+    back.g.startWeek(1);
+    back.g.loadHub(false, true);
+    expect(back.g.drinksHere(), 'Monday starts a new dry hub week').toBe(0);
+    expect(back.g.save.hub.picked, 'Monday restocks hub quest pickups').toEqual([]);
+    startStage(back.g, { id: 'mug', stage: 0, progress: 0, done: false, floor: back.g.floor });
+    expect(back.g.pickups.some((p) => p.id === 'nanmug'), 'Monday makes the hub mug available again').toBe(true);
+  });
+
+  it('older hub saves get their own fresh drink and pickup records without copying the P1', () => {
+    const s = newSave(1);
+    s.floorState.drinksHere = 3;
+    s.floorState.picked = ['postit'];
+    const old = JSON.parse(JSON.stringify(s)) as { hub: Partial<SaveState['hub']> };
+    delete old.hub.drinksHere;
+    delete old.hub.picked;
+    const loaded = normalizeSave(old)!;
+    expect(loaded.hub).toMatchObject({ bossDone: false, drinksHere: 0, picked: [] });
+    expect(loaded.floorState).toEqual(s.floorState);
+  });
+
+  it.each(['hub', 'office'] as const)('the PA ending on the %s leaves the other record unchanged and keeps Friday open after Continue', (location) => {
+    for (const deal of ['nda', 'parachute'] as const) {
+      const h = newCareer();
+      const g = h.g;
+      g.save.week = 5;
+      g.startWeek(4);
+      g.loadHub(false, true);
+      if (location === 'office') g.liftToP1();
+      const other = structuredClone(elsewhere(g.save));
+      host.bossDeal(g, deal);
+      expect(elsewhere(g.save), 'the PA ending leaves the other record unchanged').toEqual(other);
+      expect(location === 'hub' ? g.save.hub.bossDone : g.save.floorState.bossDone, 'the ending is remembered here').toBe(true);
+      expect(g.save.stats.bosses, 'the major incident is counted once').toBe(1);
+      host.bossDeal(g, deal);
+      expect(g.save.stats.bosses).toBe(1);
+      g.save.questLog = QUESTS.filter((q) => q.id !== 'dryweek').map((q) => ({ id: q.id, stage: 0, progress: 0, done: true, floor: g.floor }));
+      const back = headless(normalizeSave(JSON.parse(JSON.stringify(g.save)))!);
+      back.g.loadWorld(true);
+      expect(p1Resolved(back.g.save), 'the ending still unlocks Friday after Continue').toBe(true);
+      expect(press(back, lift(back.g))).toContain('Friday: to the mökki');
+      back.pick('Not yet.');
+      expect(back.g.actors.some((a) => questOf(a) === 'dryweek'), 'no dry bet is offered after the major incident is resolved').toBe(false);
+      if (location === 'hub') {
+        expect(back.g.save.floorState, 'Continue on the hub still keeps P1 unchanged').toEqual(other);
+        back.g.liftToP1();
+        expect(back.g.boss, 'the settled boss does not return when the lift is taken').toBeNull();
+        expect(back.g.save.floorState.bossDone).toBe(true);
+      }
+      back.g.save.week++;
+      back.g.startWeek(5);
+      back.g.loadHub(false, true);
+      expect(p1Resolved(back.g.save), 'Monday has a new major incident to resolve').toBe(false);
+      expect(back.g.save.hub.bossDone, 'the hub ending belongs to its week').toBe(false);
+    }
+  });
+
+  it('taking a PA ending on the hub after resolving P1 counts the major incident only once', () => {
+    const h = newCareer();
+    const g = h.g;
+    g.save.week = 5;
+    g.startWeek(4);
+    g.loadHub(false, true);
+    g.liftToP1();
+    g.boss!.hp = 0;
+    resolveActor(g, g.boss!);
+    g.liftToHub();
+    const floor = structuredClone(g.save.floorState);
+    host.bossDeal(g, 'nda');
+    expect(g.save.stats.bosses, 'a hub ending cannot count the resolved P1 twice').toBe(1);
+    expect(g.save.floorState).toEqual(floor);
+    expect(g.save.hub.bossDone).toBe(true);
   });
 });
 

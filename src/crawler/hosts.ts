@@ -3,6 +3,7 @@ import { dropGear, EXTRA_BASE, lightExitLift } from './combat';
 import { questProgress } from './desk';
 import { type Actor, say } from './entities';
 import type { Game } from './game';
+import { p1Resolved } from './hub';
 import { ALL_ITEMS, AMMO, CONSUMABLES, itemById, LINING_FOODS } from './items';
 import { type GearInstance, plainInstance, RARITY_INFO, rollGear, sellValue, slotOf, uniqueInstance } from './loot';
 import { bookById } from './books';
@@ -276,9 +277,11 @@ export function bossDeal(g: Game, kind: 'nda' | 'mokki' | 'expose' | 'parachute'
         s.rep += 2000;
         g.journal('I showed the PA the Phoenix file and named a number. Sir Reginald paid it without coming out of his office.');
       }
-      if (!s.floorState.bossDone) {
+      const here = s.location === 'hub' ? s.hub : s.floorState;
+      const alreadyDone = p1Resolved(s);
+      here.bossDone = true;
+      if (!alreadyDone) {
         if (g.boss !== null) resolvePeacefully(g, g.boss, 'meeting');
-        s.floorState.bossDone = true;
         s.stats.bosses++;
         g.elevatorOpen = true;
         lightExitLift(g);

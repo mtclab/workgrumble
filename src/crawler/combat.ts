@@ -27,7 +27,7 @@ import { BOSS_UNIQUES, type GearInstance, RARITY_INFO, RARITY_SHAPE, rollGear, u
 import { questItemMesh } from './meshes';
 import { MAIN, TRANSIENT_ITEMS } from './quests';
 import { fx } from './rng';
-import { adjustStanding, gearDropsHere, noteResolved, onceHere, perk, skill } from './state';
+import { activityHere, adjustStanding, gearDropsHere, noteResolved, onceHere, perk, skill } from './state';
 import { disposeSprite, textSprite } from './textures';
 import { questEvent } from './questing';
 import { questProgress } from './desk';
@@ -1029,7 +1029,7 @@ export function updatePickups(g: Game, dt: number): void {
           // Paperwork is counted by the quest, not carried.
           if (!TRANSIENT_ITEMS.includes(p.id)) {
             if (!s.questItems.includes(p.id)) s.questItems.push(p.id);
-            if (!s.floorState.picked.includes(p.id)) s.floorState.picked.push(p.id);
+            if (!activityHere(s).picked.includes(p.id)) activityHere(s).picked.push(p.id);
           }
           questEvent(g, { type: 'pickup', item: p.id });
           g.autosaveSoon();

@@ -173,6 +173,8 @@ export interface HubArrival {
 export interface HubState {
   /** The week this belongs to. */
   week: number;
+  /** The PA's ending resolved this week's major incident on the hub. */
+  bossDone: boolean;
   hostile: HubHostile[];
   /** Hub spawns resolved this week (the hostile ones, talked down or beaten): back next Monday. */
   resolved: number[];
@@ -180,6 +182,9 @@ export interface HubState {
   ignores: Record<number, number[]>;
   /** Interactable ids used this week. */
   used: number[];
+  /** Quest pickups taken and drinks had on the hub this week. */
+  picked: string[];
+  drinksHere: number;
   /** Seconds of hub play this week, and that clock at the last walk-up. */
   clock: number;
   lastWalkUp: number;
@@ -213,6 +218,11 @@ export interface HubPerson {
 /** The once-a-floor things of where you are at work: the hub's, or the P1 floor's. */
 export function onceHere(s: SaveState): OncePerFloor {
   return s.location === 'hub' ? s.hub.once : s.floorState;
+}
+
+/** Pickups and drinks on the hub this week, or on the P1 floor. */
+export function activityHere(s: SaveState): Pick<FloorState, 'picked' | 'drinksHere'> {
+  return s.location === 'hub' ? s.hub : s.floorState;
 }
 
 export interface WeekendState {
@@ -328,7 +338,7 @@ export function freshFloorState(floor: number): FloorState {
 }
 
 export function freshHub(week: number): HubState {
-  return { week, hostile: [], resolved: [], ignores: {}, used: [], clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [], people: {} };
+  return { week, bossDone: false, hostile: [], resolved: [], ignores: {}, used: [], picked: [], drinksHere: 0, clock: 0, lastWalkUp: 0, gearDrops: [], breaches: [], arrivals: [], nextArrival: HUB_EXTRA_BASE, once: { unbreakableUsed: false, nokiaUsed: false, suo: false, coldSteam: false }, cold: [], people: {} };
 }
 
 /** Monday on the hub: the week's people and props start again; the gear on the floor is still there, and arrivals' indices go on counting. */
@@ -349,10 +359,13 @@ export function normalizeHub(raw: unknown, week: number): HubState {
   const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
   const h: HubState = {
     week: num(o.week, week),
+    bossDone: o.bossDone === true,
     hostile: [],
     resolved: nums(o.resolved),
     ignores: {},
     used: nums(o.used),
+    picked: Array.isArray(o.picked) ? o.picked.filter((x): x is string => typeof x === 'string') : [],
+    drinksHere: Math.max(0, Math.floor(num(o.drinksHere, 0))),
     clock: num(o.clock, 0),
     lastWalkUp: num(o.lastWalkUp, 0),
     gearDrops: Array.isArray(o.gearDrops) ? o.gearDrops as HubState['gearDrops'] : [],

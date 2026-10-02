@@ -9,7 +9,7 @@ import { drankOnDuty } from './questing';
 import { fx } from './rng';
 import { BAND_EFFECTS, bandFor, bacDecay, drinkBac, promille } from './rpg';
 import * as screens from './screens';
-import { adjustStanding, perk, skill } from './state';
+import { activityHere, adjustStanding, perk, skill } from './state';
 
 /**
  * The two tightropes: alcohol (the Ballmer Peak, then the floor starts
@@ -80,7 +80,7 @@ export function drink(g: Game, c: ConsumableDef): void {
   s.dependency = Math.min(100, s.dependency + 3 + c.bac * 0.15);
   s.empties += 1;
   s.stats.drinks++;
-  s.floorState.drinksHere++;
+  activityHere(s).drinksHere++;
   drankOnDuty(g);
   if (s.hangover > 0) {
     s.hangover = 0;

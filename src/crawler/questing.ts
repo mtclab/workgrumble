@@ -31,7 +31,7 @@ import { canDelegate } from './team';
 import { menteeNearby, mentorMarkers, mentorSuffix, mentoringDone, settleMentoring, teamLines } from './teamwork';
 import { pagerMarkers } from './pager';
 import { checkChance } from './rpg';
-import { adjustStanding, perk, skill, workload } from './state';
+import { activityHere, adjustStanding, perk, skill, workload } from './state';
 
 /**
  * Puts the journal quests into the building: evidence for Project Phoenix,
@@ -70,7 +70,7 @@ function randomSpot(g: Game, place: Placement | { readonly room?: string } | und
 /** Put a quest item into the world, where the placement says. */
 function placeItem(g: Game, item: string, place: Placement): void {
   const s = g.save;
-  if (s.questItems.includes(item) || s.floorState.picked.includes(item)) return;
+  if (s.questItems.includes(item) || activityHere(s).picked.includes(item)) return;
   if ([...g.lockerItems.values()].includes(item) || g.pickups.some((p) => p.kind === 'quest' && p.id === item)) return;
   if ('locker' in place) {
     const lockers = g.level.interactables.filter((it) => it.kind === 'locker' && !it.used && !g.lockerItems.has(it.id));
@@ -180,7 +180,7 @@ export function placeQuestContent(g: Game): void {
     if (st.staffed !== true) spawnGiver(g, st.id);
   }
   // New offers: up to three per floor.
-  const offers = sideQuestsFor(f, s.floorState.bossDone).filter((q) => !s.questLog.some((st) => st.id === q.id));
+  const offers = sideQuestsFor(f, incidentResolved(g)).filter((q) => !s.questLog.some((st) => st.id === q.id));
   for (const q of g.levelRng.shuffle(offers).slice(0, 3)) spawnGiver(g, q.id);
   refreshGiverMarkers(g);
 }

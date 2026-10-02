@@ -15,7 +15,7 @@ import { questOf } from './questing';
 import { mentorRequestNode } from './teamwork';
 import { fx } from './rng';
 import * as screens from './screens';
-import { adjustStanding, perk, skill } from './state';
+import { activityHere, adjustStanding, perk, skill } from './state';
 import {
   disciplinary,
   talkAuditor,
@@ -671,7 +671,7 @@ function lootLocker(g: Game, it: Interactable): void {
   if (quest !== undefined && !s.questItems.includes(quest)) {
     g.lockerItems.delete(it.id);
     if (!s.questItems.includes(quest)) s.questItems.push(quest);
-    if (!s.floorState.picked.includes(quest)) s.floorState.picked.push(quest);
+    if (!activityHere(s).picked.includes(quest)) activityHere(s).picked.push(quest);
     got.push(QUEST_ITEMS[quest]?.name ?? quest);
     g.questEvent({ type: 'pickup', item: quest });
   }

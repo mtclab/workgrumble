@@ -130,7 +130,7 @@ export function personRng(careerSeed: number, spawnIndex: number): Rng {
 
 /** Has this week's P1 been resolved (Friday is open)? */
 export function p1Resolved(s: SaveState): boolean {
-  return s.floorState.floor === s.floor && s.floorState.bossDone;
+  return (s.floorState.floor === s.floor && s.floorState.bossDone) || (s.hub.week === s.week && s.hub.bossDone);
 }
 
 /** A floor as the lift's buttons, the floor's name and the announcements say it. */
