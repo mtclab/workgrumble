@@ -996,7 +996,8 @@ export class Game implements GameCtx, OsHost, StoryHost, QuestHost, PagerHost {
     if (f.staff !== 0) this.standing('staff', f.staff);
     const coworker = coworkerCard(card);
     if (coworker) s.rapport[card.giver.id] = (s.rapport[card.giver.id] ?? 0) - 5;
-    if (f.hostile && coworker && !s.hub.failed.some((x) => x.giver === card.giver.id)) s.hub.failed.push({ giver: card.giver.id, card: card.title });
+    // Every failure is answered for, a second from the same giver too (hub.ts `populate`).
+    if (f.hostile && coworker) s.hub.failed.push({ giver: card.giver.id, card: card.title });
     this.hud.toast(`Card failed: ${card.title}. ${f.text}`, 'bad');
     this.journal(`Card failed: ${card.title}. ${f.text}`);
   }

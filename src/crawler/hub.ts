@@ -7,7 +7,7 @@ import { FINAL_FLOOR, type Game } from './game';
 import { cellCenter, freeSpotIn, generateLevel, type Interactable, type Level, lineOfSight, toCell } from './level';
 import { ALARM_WORDS } from './mission';
 import { Rng } from './rng';
-import { GIVERS } from './missions';
+import { giverDef, GIVERS } from './missions';
 import { type HubArrival, type HubArrivalKind, HUB_GIVER_BASE, type HubReason, type QueuedTicket, type SaveState } from './state';
 import { storyBeatDone, storyNpcFor } from './story';
 import { THEMES, type Theme } from './textures';
@@ -272,12 +272,56 @@ export class Hub implements HubCtx {
     const due = s.hub.breaches;
     s.hub.breaches = [];
     for (const q of due) this.breach(q);
-    // Cards you failed for a coworker (S1b): they heard, and they are waiting for you, announced.
+    // Cards you failed for a coworker (S1b): they heard, and they are waiting for you, announced. Resolved
+    // earlier this week, they come back for it; already after you, it waits until they are not. Never dropped.
     const failed = s.hub.failed;
     s.hub.failed = [];
     for (const f of failed) {
-      const a = this.giverActor(f.giver);
-      if (a !== undefined) this.turn(a, 'failed', `${a.name} heard how "${f.card}" went, and has been waiting for you.`, 'You said you would DO it.');
+      const a = this.giverActor(f.giver) ?? this.giverBack(f.giver);
+      if (a === undefined || a.hostile) {
+        s.hub.failed.push(f);
+        continue;
+      }
+      this.turn(a, 'failed', `${a.name} heard how "${f.card}" went, and has been waiting for you.`, 'You said you would DO it.');
+    }
+    this.releaseCards();
+  }
+
+  /**
+   * A card's giver resolved earlier this week, back at their desk (a failed
+   * card of theirs still to answer for). Undefined if they were not resolved,
+   * or there is no desk for them.
+   */
+  private giverBack(giverId: string): Actor | undefined {
+    const g = this.g;
+    const s = g.save;
+    const idx = giverIndex(giverId);
+    const name = giverDef(giverId)?.name;
+    if (idx < 0 || name === undefined || !s.hub.resolved.includes(idx)) return undefined;
+    const at = this.giverDesk(idx);
+    if (at === null) return undefined;
+    s.hub.resolved = s.hub.resolved.filter((x) => x !== idx);
+    const a = g.spawnAt('user', at.x, at.z, -1, false, { colleague: true, spawnIndex: idx }, personRng(s.seed, idx));
+    if (a === null) return undefined;
+    a.name = name;
+    return a;
+  }
+
+  /**
+   * In-person cards whose giver cannot hand them over now (after you,
+   * resolved, cold on you) go to your desk, announced, for the rest of the
+   * week: Accept and Decline are there.
+   */
+  releaseCards(): void {
+    const g = this.g;
+    for (const c of g.save.deck.cards) {
+      if (!c.inPerson || c.state !== 'offered') continue;
+      const card = deckCard(c);
+      if (card === undefined) continue;
+      const a = this.giverActor(card.giver.id);
+      if (a !== undefined && !a.hostile && !a.cold) continue;
+      c.inPerson = false;
+      g.hud.toast(`${card.giver.name} is not handing "${card.title}" over now: it is on your desk.`, 'info');
     }
   }
 
@@ -330,6 +374,7 @@ export class Hub implements HubCtx {
   /** One frame on the hub: its clock, the walk-ups, and the managers' noses. */
   update(dt: number): void {
     const g = this.g;
+    this.releaseCards();
     // Induction day: the morning is Morag's. Nobody comes over or notices anything until it is done.
     if (!g.floorAwake || g.inductionDay !== null) return;
     const h = g.save.hub;

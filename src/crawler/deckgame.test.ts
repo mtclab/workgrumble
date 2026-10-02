@@ -611,3 +611,104 @@ describe('rapport with a coworker shows, and matters', () => {
     expect(g.mission?.rate, 'her card pays nine tenths').toBeCloseTo(hours * 0.9, 10);
   });
 });
+
+describe('a coworker who cannot hand their card over', () => {
+  it('Milton turns on you before handing his card over: it goes to your desk, announced, with Accept and Decline there, for the rest of the week', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'stapler', inPerson: true }, { id: 'phishing' }]);
+    const i = index(h, 'stapler');
+    expect(g.acceptCard(i).ok, 'his to hand over').toBe(false);
+    const milton = giver(h, 'Milton (Basement)')!;
+    g.hub!.assault(milton);
+    expect(milton.hostile).toBe(true);
+    h.run(DT, () => { g.save.sanity = 100; });
+    expect(g.cardView(i).inPerson, 'no "ask him" on the desk').toBe(false);
+    expect(h.toasts).toContain('Milton (Basement) is not handing "The Red Stapler, Recovered" over now: it is on your desk.');
+    // Resolved, and the hub built again: still on the desk.
+    milton.hp = 0;
+    h.run(DT * 2, () => { g.save.sanity = 100; });
+    expect(milton.resolved).toBe(true);
+    const back = headless(normalizeSave(JSON.parse(JSON.stringify(g.save)))!);
+    back.g.loadWorld(true);
+    expect(back.g.cardView(i).inPerson).toBe(false);
+    expect(back.g.acceptCard(i).ok, 'taken at the workstation').toBe(true);
+  });
+
+  it('a save where the giver is gone this week with their card still waiting to be handed over: on load it is on your desk', () => {
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'stapler', inPerson: true }]);
+    const milton = giver(h, 'Milton (Basement)')!;
+    g.save.hub.resolved.push(milton.spawnIndex);
+    const back = headless(normalizeSave(JSON.parse(JSON.stringify(g.save)))!);
+    back.g.loadWorld(true);
+    expect(giver(back, 'Milton (Basement)'), 'not on the floor').toBeUndefined();
+    expect(back.g.cardView(index(back, 'stapler')).inPerson).toBe(false);
+    expect(back.g.acceptCard(index(back, 'stapler')).ok).toBe(true);
+  });
+});
+
+describe('a failed card is always answered for', () => {
+  /** Up the lift to a card already taken, and burned out on it: the card has failed; you wake on the hub. */
+  function burnOn(h: Headless, id: string): void {
+    liftTo(h, id);
+    const page = dom();
+    h.g.save.sanity = 0;
+    h.g.checkBurnout();
+    expect(h.g.save.deck.cards[index(h, id)]?.state).toBe('failed');
+    page.press(/Clock back in/);
+    vi.unstubAllGlobals();
+    slots();
+    expect(h.g.save.location).toBe('hub');
+  }
+
+  /** Beaten on the hub: resolved, for the rest of the week. */
+  function beat(h: Headless, a: Actor): void {
+    a.hp = 0;
+    h.run(DT * 2, () => { h.g.save.sanity = 100; });
+    expect(a.resolved).toBe(true);
+  }
+
+  it('two of Priya\'s cards failed, and she was dealt with in between: she comes back for the second, announced', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits' }, { id: 'phishing' }]);
+    g.acceptCard(index(h, 'postits'));
+    g.acceptCard(index(h, 'phishing'));
+    burnOn(h, 'postits');
+    const priya = giver(h, 'Priya (InfoSec)')!;
+    expect(priya.hostile, 'after you for the first').toBe(true);
+    beat(h, priya);
+    h.toasts.length = 0;
+    burnOn(h, 'phishing');
+    const again = giver(h, 'Priya (InfoSec)');
+    expect(again, 'back at her desk').toBeDefined();
+    expect(again!.hostile, 'after you for the second').toBe(true);
+    expect(h.toasts).toContain('Priya (InfoSec) heard how "Phishing Test Debrief" went, and has been waiting for you.');
+  });
+
+  it('the second failed while she was still after you for the first: once she is dealt with, she is back for it the next time you are on the hub', () => {
+    slots();
+    const h = newCareer();
+    const g = h.g;
+    withDeck(h, [{ id: 'postits' }, { id: 'phishing' }]);
+    g.acceptCard(index(h, 'postits'));
+    g.acceptCard(index(h, 'phishing'));
+    burnOn(h, 'postits');
+    expect(giver(h, 'Priya (InfoSec)')!.hostile).toBe(true);
+    burnOn(h, 'phishing');
+    expect(g.save.hub.failed, 'still to answer for').toEqual([{ giver: 'priya', card: 'Phishing Test Debrief' }]);
+    beat(h, giver(h, 'Priya (InfoSec)')!);
+    h.toasts.length = 0;
+    // Up to the floor and back down: the hub again.
+    g.loadFloor(g.save.floor, false, true);
+    g.liftToHub();
+    const back = giver(h, 'Priya (InfoSec)');
+    expect(back?.hostile, 'back for the second').toBe(true);
+    expect(h.toasts).toContain('Priya (InfoSec) heard how "Phishing Test Debrief" went, and has been waiting for you.');
+    expect(g.save.hub.failed).toEqual([]);
+  });
+});

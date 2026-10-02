@@ -26,8 +26,12 @@ export interface DealtCard {
   readonly alarm: AlarmRule | null;
   /** After hours (D6): half the crowd, dimmer lights, the giver's after-hours pay. */
   readonly afterHours: boolean;
-  /** Handed over in person by its giver on the hub (a "!" over them), not at the workstation. */
-  readonly inPerson: boolean;
+  /**
+   * Handed over in person by its giver on the hub (a "!" over them), not at
+   * the workstation; until the giver cannot (after you, resolved, cold on
+   * you): then it is on your desk for the rest of the week.
+   */
+  inPerson: boolean;
   /** The card's map, the same all week. */
   readonly seed: number;
   state: CardState;
