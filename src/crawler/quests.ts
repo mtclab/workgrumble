@@ -368,7 +368,13 @@ export function currentObjective(st: QuestState): Objective | undefined {
 }
 
 /** Advance a quest on an event. Returns true if its stage changed. */
-export function advance(st: QuestState, e: QuestEvent, floor: number): boolean {
+/**
+ * One event against a quest's current objective. `floor` is the week's
+ * floor (a boss objective's); `place` is where you are, for what is counted
+ * once per place (each computer once): 'hub' on the hub, the floor's number
+ * on a floor.
+ */
+export function advance(st: QuestState, e: QuestEvent, floor: number, place: string = String(floor)): boolean {
   if (!isActive(st)) return false;
   const obj = currentObjective(st);
   if (obj === undefined) return false;
@@ -394,7 +400,8 @@ export function advance(st: QuestState, e: QuestEvent, floor: number): boolean {
     case 'use':
       if (e.type === 'use' && e.what === obj.use) {
         if (e.what === 'terminal' && e.terminal !== undefined) {
-          const key = `${floor}:${e.terminal}`;
+          // The hub's computers are the same all career; a floor's are that floor's.
+          const key = `${place}:${e.terminal}`;
           const terminals = st.terminals ??= [];
           if (terminals.includes(key)) break;
           terminals.push(key);

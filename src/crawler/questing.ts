@@ -261,7 +261,7 @@ export function questEvent(g: Game, e: QuestEvent): void {
     // Mentoring only counts with the person you are mentoring there to see it.
     if (currentObjective(st)?.withMentee === true && !menteeNearby(g, st)) continue;
     const before = st.progress;
-    const moved = advance(st, e, g.floor);
+    const moved = advance(st, e, g.floor, s.location === 'hub' ? 'hub' : String(g.floor));
     const def = questById(st.id);
     if (def === undefined) continue;
     if (!moved) {

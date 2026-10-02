@@ -120,6 +120,8 @@ it('the ergonomic survey counts a computer once across a reload and distinguishe
   const g = host();
   Object.assign(g, { openOs: vi.fn() });
   g.save.questLog.push({ id: 'ergonomics', stage: 0, progress: 0, done: false, floor: 1 });
+  // On the floors (the hub's computers are keyed as the hub's: hubweek.test.ts).
+  g.save.location = 'office';
   const logOn = (id: number): void => {
     g.promptTarget = { kind: 'interact', it: { id, kind: 'terminal' } as Interactable };
     interact(g);

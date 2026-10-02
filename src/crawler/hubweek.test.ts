@@ -599,6 +599,37 @@ describe('S1a: hub people remember the week', () => {
   });
 });
 
+describe('S1a: computers are counted by where they are', () => {
+  it('the Ergonomic Survey counts a hub computer once, this week and next, and a P1 computer with the same id as another', () => {
+    const h = newCareer();
+    const g = h.g;
+    g.acceptQuest('ergonomics');
+    const st = g.save.questLog.find((q) => q.id === 'ergonomics')!;
+    const logOn = (): number => {
+      expect(standAt(g, 'terminal')).toBe(true);
+      const t = g.promptTarget;
+      if (t?.kind !== 'interact') throw new Error('no computer');
+      interact(g);
+      g.close();
+      return t.it.id;
+    };
+    const id = logOn();
+    expect(st.progress).toBe(1);
+    expect(st.terminals).toEqual([`hub:${id}`]);
+    // Next week's hub (the week's P1 floor is a different one): the same computer, not a new one.
+    g.save.floor = 1;
+    g.loadHub(false);
+    expect(logOn()).toBe(id);
+    expect(st.progress, 'the same hub computer counts once').toBe(1);
+    // Upstairs, a computer that happens to have the same id is a different computer.
+    press(h, lift(g));
+    h.pick('Floor 1: the major incident');
+    g.questEvent({ type: 'use', what: 'terminal', terminal: id });
+    expect(st.progress, 'a P1 computer is not the hub\'s').toBe(2);
+    expect(st.terminals).toEqual([`hub:${id}`, `1:${id}`]);
+  });
+});
+
 describe('gate 7: burnout', () => {
   /** A DOM just big enough for the burnout screen: its buttons can be pressed. */
   function dom(): { press(label: RegExp): void } {
