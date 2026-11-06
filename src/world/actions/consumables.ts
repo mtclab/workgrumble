@@ -11,6 +11,7 @@ import {
 import { DAY_OPENS_MINUTE, MINUTES_PER_DAY, SHIFT_END_MINUTE } from '../day';
 import { FIELDS } from '../fields';
 import { METER_CEILING, METER_FLOOR } from '../meters';
+import { PROBATION_WEEK } from '../probation';
 import { HELPDESK_TIER, not } from './helpers';
 import { DAY_ACTIONS } from './ids';
 
@@ -250,12 +251,29 @@ export const CONSUMABLE_ACTION_DATA: readonly ActionData[] = [
         }),
         reason: BEER_TOO_EARLY_REASON,
       },
+      // The belt reads the probation the way the lock now does (#75): a
+      // review that went the right way this week, OR a week past the first at
+      // this shop - the only road there is a pass and a stay, and a stay that
+      // had to wait for Friday all over again would be a probation that never
+      // ended. The unlock is re-derived from the same arc position in
+      // `session.ts`, so the two cannot disagree without somebody at the file.
       {
         when: not({
-          pred: 'field_eq',
-          node: ACTOR,
-          field: FIELDS.reviewOutcome,
-          value: { const: 'passed' },
+          pred: 'any',
+          of: [
+            {
+              pred: 'field_eq',
+              node: ACTOR,
+              field: FIELDS.reviewOutcome,
+              value: { const: 'passed' },
+            },
+            {
+              pred: 'field_at_least',
+              node: ACTOR,
+              field: FIELDS.arcWeek,
+              value: PROBATION_WEEK + 1,
+            },
+          ],
         }),
         reason: BEER_TOOLTIP,
       },

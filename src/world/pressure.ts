@@ -51,6 +51,7 @@
 
 import { arcDate, DAYS_PER_CALENDAR_WEEK } from './hours';
 import { matrixSummary, type PoolStanding } from './pool';
+import { PROBATION_WEEK } from './probation';
 import { WEEK_DAYS } from './week';
 
 /* -- the catalogue --------------------------------------------------------- */
@@ -468,7 +469,7 @@ export interface EmployerArc {
 }
 
 /** The week the player is hired into, which carries nothing by rule. */
-export const PROBATION_WEEK = 1;
+export { PROBATION_WEEK };
 
 /**
  * How many quiet weeks have to pass before the first beat of any season.

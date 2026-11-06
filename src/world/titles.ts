@@ -353,6 +353,23 @@ export interface TitleRow {
  * inherited by whoever builds it. The seam is the column - the day
  * `senior_engineer` is built it brings the SPI 55-70% senior band with it.
  */
+/**
+ * What the junior title carries until the probation is passed (#75).
+ *
+ * The bottom row's title IS the probation, written into it, and for a long time
+ * nothing ever took the qualifier off: a player who passed and stayed was still
+ * "(probationary)" in week ten, and carried it into the next shop. A pass ends
+ * the probation, so `careerAfter` hands on the title without it.
+ */
+export const PROBATION_QUALIFIER = ' (probationary)';
+
+/** A title with the probation taken off it; any other title, unchanged. */
+export function titleAfterProbation(title: string): string {
+  return title.endsWith(PROBATION_QUALIFIER)
+    ? title.slice(0, -PROBATION_QUALIFIER.length)
+    : title;
+}
+
 const TITLE_ROWS: readonly TitleRow[] = [
   {
     id: 'sd_junior',

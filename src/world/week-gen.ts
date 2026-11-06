@@ -76,6 +76,7 @@ import {
   type ContentEntry,
   type DayFragment,
   type EmployerContent,
+  prerequisitesOf,
 } from './pools';
 import { findWorldTicket } from './tickets';
 import {
@@ -1349,6 +1350,82 @@ function admissible(
 }
 
 /**
+ * When a ticket lands in a week, as something that sorts: the day, then the
+ * morning pile before anything dripped, then the drip's own minute. A ticket
+ * raised by a DM, a walk-up or a request is placed by its day alone - those
+ * columns carry their own clocks and no duplicate in the roster hangs off one.
+ */
+function arrivalsIn(week: readonly DayScript[]): ReadonlyMap<string, readonly [number, number]> {
+  const landed = new Map<string, readonly [number, number]>();
+  const note = (id: string, day: number, minute: number): void => {
+    const seen = landed.get(id);
+
+    if (seen === undefined || seen[0] > day || (seen[0] === day && seen[1] > minute)) {
+      landed.set(id, [day, minute]);
+    }
+  };
+
+  for (const script of week) {
+    for (const id of script.inherited) {
+      note(id, script.day, Number.NEGATIVE_INFINITY);
+    }
+
+    for (const slot of script.drip) {
+      note(slot.ticketId, script.day, slot.minute ?? Number.POSITIVE_INFINITY);
+    }
+
+    for (const column of ['dms', 'walkUps', 'requests'] as const) {
+      for (const slot of script[column] ?? []) {
+        note(slot.raises, script.day, Number.NEGATIVE_INFINITY);
+      }
+    }
+  }
+
+  return landed;
+}
+
+/**
+ * No ticket arrives before a ticket its own path needs (#74).
+ *
+ * A duplicate is attached to its parent incident and closed with it; dealt on
+ * the Wednesday while the parent waits for the Friday it is two days of a
+ * ticket nobody can close and an SLA breach for doing nothing wrong. The fold
+ * in `pools.ts` keeps a flood in one entry so the draw cannot split it - this is
+ * the refusal behind it, read off the EMITTED week like every other check in
+ * `gate`, so a table or a spare that deals a child without its parent, or
+ * ahead of it, fails here rather than on somebody's desk.
+ */
+export function assertParentsFirst(
+  employer: string,
+  week: readonly DayScript[],
+  needs: (ticketId: string) => readonly string[] = prerequisitesOf,
+): void {
+  const landed = arrivalsIn(week);
+
+  for (const [ticket, [day, minute]] of landed) {
+    for (const needed of needs(ticket)) {
+      const parent = landed.get(needed);
+
+      if (parent === undefined) {
+        throw new WeekRefused(
+          `${employer} deals ${ticket} on day ${String(day)} and never deals `
+          + `${needed}, which its only way to close needs. A duplicate with no `
+          + 'incident to hang off is a ticket nobody can close.',
+        );
+      }
+
+      if (parent[0] > day || (parent[0] === day && parent[1] > minute)) {
+        throw new WeekRefused(
+          `${employer} deals ${ticket} on day ${String(day)} before ${needed} `
+          + `arrives on day ${String(parent[0])}. A duplicate dealt ahead of `
+          + 'its parent is open and unclosable until the parent turns up.',
+        );
+      }
+    }
+  }
+}
+
+/**
  * The gates every week goes through, drawn or authored.
  *
  * `validateWeek` first, because it is the loader the four hand-written weeks
@@ -1366,6 +1443,8 @@ function gate(
   mix: Mix | null,
 ): readonly DayScript[] {
   const checked = validateWeek(week, content.rooms);
+
+  assertParentsFirst(content.employer, checked);
 
   // The mix, read off the EMITTED week rather than off the plan it came from -
   // the same rule the column quotas keep two paragraphs down. A plan and a

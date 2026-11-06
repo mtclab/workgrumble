@@ -420,6 +420,48 @@ describe('a passed week hands the player the next one at the same desk', () => {
   });
 
   /**
+   * The probation ends when it is passed (#75).
+   *
+   * Every passed-and-stayed run used to stand up week two as "IT Support
+   * Technician (probationary)", and the fridge said "Not during probation" at
+   * the end of every day of it, because the title row IS the probation literal
+   * and the unlock lived in the Friday world the stay throws away. Asserted as
+   * the player meets it: the title on the record, and the beer actually opening
+   * at the end of week two's Monday - not a flag.
+   */
+  it('ends the probation: the title drops "(probationary)" and the beer opens', () => {
+    const { one, two } = twoWeeks();
+
+    // The week that was passed was a probation, and said so.
+    expect(fieldOf(one, COMPANY_IDS.player, FIELDS.title))
+      .toBe('IT Support Technician (probationary)');
+    expect(fieldOf(two, COMPANY_IDS.player, FIELDS.title))
+      .toBe('IT Support Technician');
+
+    two.driver.startShift();
+    runTo(two, shiftEndTick(1));
+    expect(two.driver.state()).toBe('day_end');
+
+    const beer = two.driver.beer();
+    expect(beer.ok, beer.ok ? '' : beer.reason).toBe(true);
+
+    // And it stays over: the next stay carries the plain title onward.
+    playAWeek(two);
+    expect(two.driver.reviewOutcome()).toBe('passed');
+    expect(two.session.stayAnotherWeek().ok).toBe(true);
+
+    const storage = new MemoryStorage();
+    const record = two.switchSlot.peek();
+    expect(record).not.toBeNull();
+    new SwitchSlot(storage).write(record as NonNullable<typeof record>);
+    const three = boot(storage);
+
+    expect(fieldOf(three, COMPANY_IDS.player, FIELDS.arcWeek)).toBe(3);
+    expect(fieldOf(three, COMPANY_IDS.player, FIELDS.title))
+      .toBe('IT Support Technician');
+  }, 120_000);
+
+  /**
    * The 0.31.0 defect class, one version on and now reachable.
    *
    * A save carries a world; the week beside it is resolved from the employer,

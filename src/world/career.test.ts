@@ -30,6 +30,18 @@ describe('the exit -> carry mapping', () => {
     expect(career.trail).toBeNull();
   });
 
+  it('ends the probation on a pass, and only on a pass (#75)', () => {
+    const probationer = { ...STANDING, title: 'IT Support Technician (probationary)' };
+
+    expect(careerAfter('completed', probationer).title).toBe('IT Support Technician');
+    // Leaving without passing passed nothing.
+    expect(careerAfter('resigned', probationer).title).toBe(probationer.title);
+    expect(careerAfter('fired', probationer).title).toBe(probationer.title);
+    // And a title that never carried the qualifier is left exactly as it was.
+    expect(careerAfter('completed', { ...STANDING, title: 'Systems Engineer' }).title)
+      .toBe('Systems Engineer');
+  });
+
   it('carries a resignation with a trail but no reputation hit', () => {
     const career = careerAfter('resigned', STANDING);
 

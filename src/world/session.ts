@@ -592,6 +592,22 @@ function carrySetup(
     },
   ];
 
+  // Past week one of a shop the probation is behind you (#75): the only road
+  // there is a pass and a stay, or a rung hired straight onto a later week, and
+  // neither is on probation. The fridge unlock is otherwise written by the
+  // Friday that passed, into a world the stay then throws away, so it is
+  // re-derived here from the arc position rather than carried as a second fact
+  // that could disagree with it. Week one writes nothing, which keeps every
+  // probation and every retry of it byte-identical.
+  if (carry.arcWeek > PROBATION_WEEK) {
+    ops.push({
+      op: 'setField',
+      id: player,
+      field: FIELDS.beerUnlocked,
+      value: true,
+    });
+  }
+
   // The career, when a switch carried one. These ops are written ONLY when the
   // carry holds a standing to continue, which is the whole of why a fresh
   // probation and a retried one stay byte-identical: with no career on the

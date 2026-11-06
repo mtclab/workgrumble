@@ -52,6 +52,8 @@ import type { InterruptionSlot } from './interruptions';
 import type { OnCallPage } from './on-call';
 import type { LinkedRequestSlot } from './requests';
 import { SPARE_EMPLOYERS, sparesFor } from './spares';
+import { findWorldTicket } from './tickets';
+import { ticketsNeededFor } from './tickets/solvable';
 import {
   arrivesBeforeClose,
   MAX_INHERITED,
@@ -345,6 +347,137 @@ function idOf(column: Column, day: number, order: number): string {
   return `${column}#${String(day)}.${String(order)}`;
 }
 
+/**
+ * The other tickets a ticket's own paths cannot be driven without.
+ *
+ * A duplicate is attached to its parent incident and closed with it, so the
+ * parent has to have been raised first; derived from the steps by
+ * `ticketsNeededFor` rather than declared beside them, so there is no second
+ * list to forget. Empty for a ticket the roster does not ship, which is every
+ * fixture id a test stands up.
+ */
+export function prerequisitesOf(ticketId: string): readonly string[] {
+  const entry = findWorldTicket(ticketId);
+
+  return entry === undefined
+    ? []
+    : ticketsNeededFor(entry).filter((id) => id !== ticketId);
+}
+
+function fragmentCells(fragment: DayFragment, column: Column): readonly unknown[] {
+  return (fragment as Record<string, readonly unknown[] | undefined>)[column] ?? [];
+}
+
+/** The tickets one entry puts on the desk, across every column that raises. */
+function raisedBy(entry: ContentEntry): readonly string[] {
+  return COLUMNS.flatMap((column) => fragmentCells(entry.fragment, column)
+    .flatMap((cell) => ticketsOf(column, cell)));
+}
+
+/**
+ * A duplicate and the incident it hangs off, folded into ONE entry (#74).
+ *
+ * The authored week deals the certificate flood as three drips on one morning,
+ * and decomposed cell by cell that was three loose entries the draw placed
+ * independently - so weeks three and seven at the probation shop dealt Ada's
+ * and Gary's "same expired certificate as everybody else this morning" on the
+ * Wednesday and Thursday while the certificate itself expired on the Friday,
+ * and neither could be closed until then. The fix is at the decomposition and
+ * not in the draw: a child dealt on the same day as the parent it needs IS the
+ * parent's entry, cells and all, so it is drawn, barred by the window and
+ * priced as the flood it is, and it cannot arrive without its incident.
+ *
+ * Only the same day folds, on purpose. A child authored on a different day from
+ * its parent is not a flood, and nothing here guesses at one; `gate` in
+ * `week-gen.ts` refuses any emitted week that deals a child before its parent,
+ * authored or drawn, so such a table fails the reproduction gate and the seed
+ * sweep rather than on somebody's desk.
+ *
+ * Returns the folded entries and, for every child id that no longer exists on
+ * its own, the id of the entry that now carries it - the coupling tables are
+ * written against cell ids and have to keep resolving.
+ */
+function foldFamilies(
+  entries: readonly ContentEntry[],
+  needs: (ticketId: string) => readonly string[],
+): { readonly entries: readonly ContentEntry[]; readonly alias: ReadonlyMap<string, string> } {
+  const alias = new Map<string, string>();
+  const resolve = (id: string): string => {
+    let at = id;
+
+    for (let next = alias.get(at); next !== undefined; next = alias.get(at)) {
+      at = next;
+    }
+
+    return at;
+  };
+  const authored = entries.filter((entry) => entry.homeDay >= 1);
+
+  for (const child of authored) {
+    for (const ticket of raisedBy(child)) {
+      for (const needed of needs(ticket)) {
+        const parent = authored.find(
+          (other) => other !== child
+            && other.homeDay === child.homeDay
+            && raisedBy(other).includes(needed),
+        );
+
+        if (parent !== undefined && resolve(parent.id) !== resolve(child.id)) {
+          alias.set(resolve(child.id), resolve(parent.id));
+        }
+      }
+    }
+  }
+
+  const families = new Map<string, ContentEntry[]>();
+
+  for (const entry of entries) {
+    const root = resolve(entry.id);
+    families.set(root, [...(families.get(root) ?? []), entry]);
+  }
+
+  const folded = entries.flatMap((entry): ContentEntry[] => {
+    const members = families.get(entry.id);
+
+    if (members === undefined) {
+      return [];
+    }
+
+    if (members.length === 1) {
+      return [entry];
+    }
+
+    // The written order inside each column, so the authored week reassembles
+    // exactly as it was found.
+    const ordered = [...members].sort(
+      (left, right) => left.order - right.order,
+    );
+    const fragment: Record<string, unknown[]> = {};
+
+    for (const member of ordered) {
+      for (const column of COLUMNS) {
+        for (const cell of fragmentCells(member.fragment, column)) {
+          (fragment[column] ??= []).push(cell);
+        }
+      }
+    }
+
+    return [{
+      ...entry,
+      order: Math.min(...members.map((member) => member.order)),
+      fragment,
+      allowedDays: entry.allowedDays.filter(
+        (day) => members.every((member) => member.allowedDays.includes(day)),
+      ),
+    }];
+  });
+
+  return {
+    entries: folded,
+    alias: new Map([...alias.keys()].map((id) => [id, resolve(id)])),
+  };
+}
+
 /** The mechanical couplings, as pairs of entry ids to be unioned. */
 function mechanicalPairs(
   week: readonly DayScript[],
@@ -521,13 +654,21 @@ export function contentFrom(
    * and the authored one is the table somebody wrote.
    */
   spare: readonly DayFragment[] = [],
+  /**
+   * What each ticket needs dealt before it, for folding a duplicate into its
+   * parent's entry. The roster's own paths in the product; a test may hand in
+   * its own for fixture ids the roster does not ship.
+   */
+  needs: (ticketId: string) => readonly string[] = prerequisitesOf,
 ): EmployerContent {
-  const entries = [...entriesOf(week), ...spareEntries(spare)];
-  const byId = new Map(entries.map((entry) => [entry.id, entry]));
+  const cells = [...entriesOf(week), ...spareEntries(spare)];
+  const byId = new Map(cells.map((entry) => [entry.id, entry]));
+  const { entries, alias } = foldFamilies(cells, needs);
+  const home = (id: string): string => alias.get(id) ?? id;
   const groups = new Groups();
 
   for (const [left, right] of mechanicalPairs(week)) {
-    groups.union(left, right);
+    groups.union(home(left), home(right));
   }
 
   for (const binding of BINDINGS[employerId] ?? []) {
@@ -542,7 +683,7 @@ export function contentFrom(
     }
 
     for (const id of binding.slice(1)) {
-      groups.union(binding[0] ?? id, id);
+      groups.union(home(binding[0] ?? id), home(id));
     }
   }
 
