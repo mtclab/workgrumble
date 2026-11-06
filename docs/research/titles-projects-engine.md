@@ -1,6 +1,6 @@
 # Thread C: projects as a game mechanic + engine fit
 
-Research + analysis, 2026-08-08. Read-only pass over `/home/kasm-user/repot/workgrumble` at v0.27.0, plus web research.
+Research + analysis, 2026-08-08. Read-only pass over this repository at v0.27.0, plus web research.
 
 Every claim about the repo below is a FACT read off the code at the file:line given. Web claims are labelled FACT (published/cited) or FOLKLORE (widely-repeated practitioner lore, no hard source - still usable as game material, just not as a design justification).
 

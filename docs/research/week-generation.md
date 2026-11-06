@@ -1,6 +1,6 @@
 # E11 spike: the week generator - pools under authored constraints
 
-Research + analysis, 2026-08-09. Read-only pass over `/home/kasm-user/repot/workgrumble` at v0.29.0 (`801c05c`), plus web research.
+Research + analysis, 2026-08-09. Read-only pass over this repository at v0.29.0 (`801c05c`), plus web research.
 
 Spike for E11 (issue #51). Every claim about the repo is a FACT read off the code at the `file:line` given. External claims are labelled **FACT** (published source, URL given) or **FOLKLORE** (practitioner lore / my own reasoning, no hard source). Regular hyphens throughout.
 

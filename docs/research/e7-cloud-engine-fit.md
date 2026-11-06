@@ -1,6 +1,6 @@
 # Thread 2: E7 cloud/devops - engine fit and gap list
 
-Research + analysis, 2026-08-12. Read-only pass over `/home/kasm-user/repot/workgrumble`
+Research + analysis, 2026-08-12. Read-only pass over this repository
 at v0.33.0 (`d15dbfe`), against GitHub issue #8, `docs/ROADMAP.md:18`,
 `docs/research/modern-stack.md` section 4, `docs/SPEC_CORE_RS.md` and
 `docs/design/titles-difficulty.md`.

@@ -33,7 +33,7 @@ import type { CarriedValue } from './carry';
 import { type PlayerTier, playerTierOf } from './fields';
 import { clampMeter } from './meters';
 import { PROBATION_WEEK } from './pressure';
-import { DEFAULT_RUNG, tierFor } from './titles';
+import { DEFAULT_RUNG, tierFor, titleAfterProbation } from './titles';
 import type { WeekCarry } from './session';
 
 /** The three ways a probation ends, as the carry sees them. */
@@ -130,7 +130,12 @@ export function careerAfter(
 
   return {
     reputation,
-    title: standing.title,
+    // A pass ends the probation, and the title says so from here on (#75): a
+    // stay is week two of a job you have, and the next shop hires somebody
+    // who passed one. The other two exits did not pass anything.
+    title: exit === 'completed'
+      ? titleAfterProbation(standing.title)
+      : standing.title,
     // The joke that survives every ending: they take the desk, the lanyard and
     // the reference, and the money towards the farm is still yours.
     farmFund: Math.max(0, standing.farmFund),
@@ -202,7 +207,10 @@ export function carryForAnotherWeek(
     arcWeek,
     employer,
     reputation: career.reputation,
-    title: career.title,
+    // Past week one nobody is on probation, whatever the record says: a stay
+    // written by a build before #75 still holds the qualifier, and this is the
+    // one road every such record takes back into a world.
+    title: arcWeek > PROBATION_WEEK ? titleAfterProbation(career.title) : career.title,
     playerTier: career.tier,
     ...(estate.length === 0 ? {} : { estate }),
   };

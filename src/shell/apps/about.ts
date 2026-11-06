@@ -1,6 +1,7 @@
 import { COMPANY } from '../../world/company';
 import { DEMO_ACTIONS, WORLD_IDS } from '../../world/demo-world';
 import { FIELDS } from '../../world/fields';
+import { PROBATION_QUALIFIER } from '../../world/titles';
 import { formatSimTime } from '../clock-format';
 import { createIcon } from '../icons';
 import type { AppDef, GameApi } from './types';
@@ -60,10 +61,19 @@ const PROPERTY_ROWS: readonly PropertyRow[] = [
   },
   {
     label: 'Registered to',
-    read: (api) => `${text(
-      api.graph.getField(WORLD_IDS.player, FIELDS.name),
-      'Unregistered drone',
-    )}, probationary technician`,
+    // The probation's own joke while there is a probation, and the title on
+    // the record once it is passed (#75) - a sheet that still called a week-six
+    // analyst probationary would be the one screen that never heard.
+    read: (api) => {
+      const title = text(api.graph.getField(WORLD_IDS.player, FIELDS.title), '');
+
+      return `${text(
+        api.graph.getField(WORLD_IDS.player, FIELDS.name),
+        'Unregistered drone',
+      )}, ${title === '' || title.endsWith(PROBATION_QUALIFIER)
+        ? 'probationary technician'
+        : title}`;
+    },
   },
   {
     label: 'Workstation',

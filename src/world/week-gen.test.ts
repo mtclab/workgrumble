@@ -578,3 +578,84 @@ describe('the seam', () => {
       .toEqual([]);
   }, 120_000);
 });
+
+/**
+ * A duplicate and the incident it hangs off (#74).
+ *
+ * Decomposed cell by cell, the probation shop's certificate flood was three
+ * loose entries and the draw placed them independently: weeks three and seven
+ * dealt Ada's and Gary's duplicates on the Wednesday and Thursday and the
+ * expired certificate on the Friday, so neither could be closed for days. The
+ * share outage's duplicate had the same shape. The cross-week sweep in
+ * `tickets/solvability.test.ts` is the outcome gate; these two pin the two
+ * halves of the fix it rests on.
+ */
+describe('a duplicate and the incident it hangs off', () => {
+  const employer = employerFor('workgrumble');
+  const content = contentFor(employer);
+  const entries = [
+    ...content.pool,
+    ...content.beats.flatMap((beat) => beat.members.map((member) => member.entry)),
+  ];
+  const carrying = (ticket: string) => entries.filter(
+    (entry) => (entry.fragment.drip ?? []).some((slot) => slot.ticketId === ticket)
+      || (entry.fragment.inherited ?? []).includes(ticket),
+  );
+
+  it.each([
+    ['ticket:vpn-cert-expired', ['ticket:vpn-cert-dup-ada', 'ticket:vpn-cert-dup-gary']],
+    ['ticket:share-maintenance', ['ticket:share-dup-terry']],
+  ])('are one entry, so no draw can deal %s without its duplicates', (parent, children) => {
+    const [flood, ...others] = carrying(parent);
+
+    expect(others).toEqual([]);
+    expect(flood).toBeDefined();
+
+    for (const child of children) {
+      expect(carrying(child)).toEqual([flood]);
+    }
+  });
+
+  it('refuses a week that deals the duplicates ahead of their incident', () => {
+    // The shipped week with the certificate moved from the Thursday to the
+    // Friday and its two duplicates left where they were - exactly the shape
+    // weeks three and seven came out in.
+    const late = employer.week.map((script) => {
+      if (script.day === 4) {
+        return {
+          ...script,
+          drip: script.drip.filter((slot) => slot.ticketId !== 'ticket:vpn-cert-expired'),
+        };
+      }
+
+      if (script.day === 5) {
+        return {
+          ...script,
+          drip: [...script.drip, { ticketId: 'ticket:vpn-cert-expired', minute: 10 * 60 }],
+        };
+      }
+
+      return script;
+    });
+    const rooms = new Set(employer.channels.map((room) => room.id));
+    // Under ids of their own, because the generator caches a week by the shop's
+    // id and the shipped week is already filed under the real one.
+
+    expect(() => ask(contentFrom('late_flood', late, rooms), AUTHORED_WEEK)).toThrow(
+      /ticket:vpn-cert-dup-(ada|gary) on day 4 before ticket:vpn-cert-expired/,
+    );
+
+    // And one that deals them with no incident at all.
+    const orphaned = employer.week.map((script) => ({
+      ...script,
+      drip: script.drip.filter((slot) => slot.ticketId !== 'ticket:vpn-cert-expired'),
+    }));
+
+    expect(() => ask(contentFrom('orphaned_flood', orphaned, rooms), AUTHORED_WEEK)).toThrow(
+      WeekRefused,
+    );
+    expect(() => ask(contentFrom('orphaned_flood', orphaned, rooms), AUTHORED_WEEK)).toThrow(
+      /never deals ticket:vpn-cert-expired/,
+    );
+  });
+});

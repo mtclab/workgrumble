@@ -1686,5 +1686,62 @@ describe.each([...DRAWN_MATRIX, ...CHURNED_MATRIX])(
       }
     }
   }, DEEP_RUN_MS);
+
+  /**
+   * And no duplicate ahead of the incident it hangs off (#74).
+   *
+   * Weeks three and seven at the probation shop dealt Ada's and Gary's VPN
+   * duplicates on the Wednesday and Thursday while the expired certificate
+   * itself arrived on the Friday, so both sat open and unclosable for days.
+   * Read off the emitted weeks with this file's own arithmetic rather than the
+   * generator's gate, so a gate that stopped biting could not also make this
+   * go quiet: every ticket a path needs has landed by the time the ticket that
+   * needs it lands - an earlier day, or the morning pile, or an earlier minute.
+   */
+  it('and deal no ticket ahead of one its own path needs', () => {
+    const early: string[] = [];
+
+    // The authored week too, where nobody has left: a churned shop's first
+    // week is not a week the product can deal, and is refused as such.
+    const authored = churn.departed === undefined && churn.quiet === undefined
+      ? [{ arcWeek: 1, attempt: 1 }]
+      : [];
+
+    for (const { arcWeek, attempt } of [...authored, ...drawn]) {
+      const week = generateWeek(
+        request(attempt, arcWeek),
+        content,
+        { window: PRODUCT_WINDOW },
+      );
+      const landed = new Map<string, number>();
+
+      for (const script of week) {
+        const at = (minute: number): number => script.day * 10_000 + minute;
+
+        for (const id of script.inherited) {
+          landed.set(id, Math.min(landed.get(id) ?? Infinity, at(-1)));
+        }
+
+        for (const slot of script.drip) {
+          landed.set(
+            slot.ticketId,
+            Math.min(landed.get(slot.ticketId) ?? Infinity, at(slot.minute ?? 9_999)),
+          );
+        }
+      }
+
+      for (const [id, when] of landed) {
+        const entry = findWorldTicket(id);
+
+        for (const needed of entry === undefined ? [] : ticketsNeededFor(entry)) {
+          if (needed !== id && (landed.get(needed) ?? Infinity) > when) {
+            early.push(`week ${String(arcWeek)}: ${id} before ${needed}`);
+          }
+        }
+      }
+    }
+
+    expect(early).toEqual([]);
+  }, DEEP_RUN_MS);
   },
 );
