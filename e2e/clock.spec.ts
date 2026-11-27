@@ -1,6 +1,7 @@
 import { expect, type Page, test } from '@playwright/test';
 
 import { completeLogin, openFromDesktopIcon } from './helpers';
+import { OFFICE } from './office';
 
 /** Real milliseconds per simulation minute (`main.ts`). */
 const TICK_MS = 1_000;
@@ -79,7 +80,7 @@ test('advances the taskbar clock by one sim minute per real second', async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page);
 
   const clock = page.getByTestId('sim-clock-time');
@@ -126,7 +127,7 @@ test('expires a toast on its TTL while the record survives', async ({
   page,
 }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page);
   await openFromDesktopIcon(page, 'about');
 

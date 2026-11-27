@@ -7,6 +7,7 @@ import {
   openFromDesktopIcon,
   openFromStartMenu,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Journey 5: drive every user-reachable surface once and assert the run stays
@@ -44,7 +45,7 @@ test('completes a full session with no console errors and no runtime requests', 
     staticAssets.push(request.url());
   });
 
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.waitForLoadState('networkidle');
   loaded = true;
 

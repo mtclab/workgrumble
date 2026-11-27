@@ -11,6 +11,7 @@ import {
   workUntilMinute,
   SHIFT_MINUTES,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The MSP employer, on the built artifact (0.8.0 + 0.9.0, E5 #26/#27).
@@ -52,7 +53,7 @@ async function arriveAtMsp(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   // Every day-advancing spec installs the fake clock before boot.
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');

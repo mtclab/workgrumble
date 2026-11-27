@@ -45,6 +45,7 @@ import {
   WALK_RUNS,
   type WalkRunId,
 } from '../src/shell/coverage';
+import { OFFICE } from './office';
 
 /**
  * The play-every-function walk.
@@ -457,7 +458,7 @@ test('walks every function of a probation week that goes well', async ({
   // about what the product DOES rather than how it wobbles: shipped
   // reduced-motion path, same as every other cross-day journey here.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   /* -- Monday, 08:00: the boot, the login, and a desk nobody has used ----- */
 
@@ -3290,7 +3291,7 @@ test('walks the week nobody worked, the firing, and the retry', async ({
   test.setTimeout(900_000);
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await beginShift(page);
   // Four times normal speed, before anything walks the clock: the corridor
@@ -3692,7 +3693,7 @@ test('walks the offer taken, and the arrival at the second employer', async ({
   test.setTimeout(900_000);
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await beginShift(page);
 
@@ -3775,7 +3776,7 @@ test('walks the promotion, ssh, and the unix terminal at the MSP', async ({
   );
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   // The arrival rides the update screen; close it if it is up, the way msp.spec
@@ -5419,7 +5420,7 @@ test('walks setenforce 0, and the sweep that puts it in the inbox', async ({
   );
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');
@@ -5948,17 +5949,17 @@ test('walks the door, the badge and the report the tester build adds', async ({
 
     await tester.goto(`/t/${SHARED_TOKEN}`);
     await expect(tester).toHaveURL(/\/$/);
-    await expect(tester.getByTestId('boot-screen')).toBeVisible();
+    await expect(tester).toHaveTitle(/Helldesk/);
 
     // The pass survives the redirect that set it, which is the whole of what
     // a thirty-day cookie is for.
-    await tester.goto('/');
+    await tester.goto(OFFICE);
     await expect(tester.getByTestId('boot-screen')).toBeVisible();
     await invited.close();
   });
 
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
 
   await step('login.badge-refused', async () => {
@@ -6001,6 +6002,10 @@ test('walks the door, the badge and the report the tester build adds', async ({
     const minted = await empty.newPage();
 
     await minted.goto(`/t/${SHARED_TOKEN}`);
+
+    // The link lands on Helldesk; the office has its own address.
+
+    await minted.goto(OFFICE);
     await minted.keyboard.press('Space');
     const unused = await issueBadge(minted);
     await empty.close();
@@ -6010,6 +6015,8 @@ test('walks the door, the badge and the report the tester build adds', async ({
 
     await monday.clock.install();
     await monday.goto(`/t/${SHARED_TOKEN}`);
+    // The link lands on Helldesk; the office has its own address.
+    await monday.goto(OFFICE);
     await monday.keyboard.press('Space');
     await logOnWithBadge(monday, unused);
 
@@ -6075,6 +6082,8 @@ test('walks the door, the badge and the report the tester build adds', async ({
 
     await other.clock.install();
     await other.goto(`/t/${SHARED_TOKEN}`);
+    // The link lands on Helldesk; the office has its own address.
+    await other.goto(OFFICE);
     await other.keyboard.press('Space');
     await logOnWithBadge(other, badge);
 
@@ -6096,6 +6105,8 @@ test('walks the door, the badge and the report the tester build adds', async ({
       window.localStorage.setItem('workgrumble/seen-version', '0.0.1');
     });
     await upgraded.goto(`/t/${SHARED_TOKEN}`);
+    // The link lands on Helldesk; the office has its own address.
+    await upgraded.goto(OFFICE);
     await upgraded.keyboard.press('Space');
 
     await step('boot.installing', async () => {
@@ -6226,7 +6237,7 @@ test('walks the second queue: audited, corrected, billed and written up',
     test.setTimeout(1_800_000);
     await page.clock.install();
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('/');
+    await page.goto(OFFICE);
 
     const boot = page.getByTestId('boot-screen');
 
@@ -6418,7 +6429,7 @@ test('walks the second queue: audited, corrected, billed and written up',
 
       await page.clock.install();
       await page.emulateMedia({ reducedMotion: 'reduce' });
-      await page.goto('/');
+      await page.goto(OFFICE);
       await completeLogin(page, { brief: 'keep' });
       // Nothing pressed: the boot went and got the world AND the screen. The
       // brief is still standing where the clock-off left it, because the

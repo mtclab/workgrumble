@@ -7,6 +7,7 @@ import {
   runToDayEnd,
   runToTelegraph,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Slice 0.2.6 on the built artifact: being caught costs minutes and a line,
@@ -26,7 +27,7 @@ async function startShift(page: Page): Promise<void> {
   // navigation rather than doing it.
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await page.getByTestId('brief-start-shift').click();
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);

@@ -5,6 +5,7 @@ import {
   openFromStartMenu,
   runToDayEnd,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * Slice 0.2.7 on the built artifact, which is a week where NOTHING is
@@ -35,7 +36,7 @@ import {
 async function startShift(page: Page): Promise<void> {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await page.getByTestId('brief-start-shift').click();
   await expect(page.getByTestId('sim-clock-time')).toHaveText(/^09:/);

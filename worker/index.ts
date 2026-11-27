@@ -47,7 +47,7 @@ import {
   issueTitle,
   parseFeedback,
 } from './feedback';
-import { assetHeaders, invitePage, json, refuse } from './http';
+import { assetHeaders, assetPath, invitePage, json, refuse } from './http';
 import { keepAccount, mintedAt, readAccount, touchAccount } from './players';
 import { consumeRate } from './rate-limit';
 import {
@@ -573,7 +573,12 @@ async function serveAsset(
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const response = await env.ASSETS.fetch(request);
+  const target = assetPath(pathname);
+  const response = await env.ASSETS.fetch(
+    target === pathname
+      ? request
+      : new Request(new URL(target, request.url), request),
+  );
   const headers = new Headers(response.headers);
 
   for (const [name, value] of Object.entries(assetHeaders(pathname))) {

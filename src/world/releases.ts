@@ -17,6 +17,9 @@
  */
 
 import { BUILD_VERSION } from '../shared/build';
+import { compareVersions } from '../shared/versions';
+
+export { compareVersions };
 
 export interface ReleaseNote {
   /** `major.minor.patch`, matching the tag the build was cut at. */
@@ -1900,40 +1903,6 @@ export const RELEASES: readonly ReleaseNote[] = Object.freeze([
   },
 ]);
 
-/**
- * Compares two `major.minor.patch` versions.
- *
- * Written out rather than compared as strings, because `'0.10.0' < '0.9.0'` is
- * true alphabetically and false in every other sense - and this decides
- * whether a player is shown an update window, which is the sort of thing that
- * goes unnoticed for exactly nine releases.
- *
- * Anything that is not three whole numbers sorts BELOW everything that is: an
- * unreadable stored version means "older than this build", which shows the
- * notes rather than hiding them.
- */
-export function compareVersions(left: string, right: string): number {
-  const parts = (value: string): readonly number[] => {
-    const matched = /^(\d+)\.(\d+)\.(\d+)$/.exec(value.trim());
-
-    return matched === null
-      ? [-1, -1, -1]
-      : [Number(matched[1]), Number(matched[2]), Number(matched[3])];
-  };
-
-  const a = parts(left);
-  const b = parts(right);
-
-  for (let index = 0; index < 3; index += 1) {
-    const difference = (a[index] ?? 0) - (b[index] ?? 0);
-
-    if (difference !== 0) {
-      return difference < 0 ? -1 : 1;
-    }
-  }
-
-  return 0;
-}
 
 /** The notes, newest first, whatever order they were written in. */
 export function releasesNewestFirst(): readonly ReleaseNote[] {

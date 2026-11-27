@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { issueBadge, logIn, openFromStartMenu } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * "Report a real problem": the one window in the building that is not in
@@ -48,7 +49,7 @@ test('asks for a line rather than filing a blank report', async ({ page }) => {
 test('files a report against a badge and says it has gone', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
   await issueBadge(page);
   await page.getByTestId('login-password').fill('hunter2');

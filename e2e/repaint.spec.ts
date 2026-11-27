@@ -7,6 +7,7 @@ import {
   runSimMinutes,
   workUntil,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The repaint gate: a minute passing must not rebuild the screen.
@@ -42,7 +43,7 @@ async function textOf(target: Locator): Promise<string> {
 async function startShiftWithQueue(page: Page): Promise<void> {
   await page.clock.install();
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
   await page.getByTestId('login-password').fill('hunter2');
   await page.getByTestId('login-submit').click();

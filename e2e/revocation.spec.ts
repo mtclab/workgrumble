@@ -2,6 +2,8 @@ import { execFileSync } from 'node:child_process';
 
 import { expect, test } from '@playwright/test';
 
+import { OFFICE } from './office';
+
 /**
  * Revoking a link, with somebody already inside.
  *
@@ -36,6 +38,8 @@ function cli(args: readonly string[]): string {
 test('revokes a link out from under a browser that is already inside', async ({
   browser,
 }) => {
+  // Every admission lands on Helldesk, which builds a whole floor first.
+  test.slow();
   // Its own link, so the journey never leaves a dead fixture behind and never
   // depends on one somebody else revoked.
   const token = cli([
@@ -57,6 +61,10 @@ test('revokes a link out from under a browser that is already inside', async ({
   const tester = await inside.newPage();
 
   await tester.goto(`/t/${token}`);
+
+  // The link lands on Helldesk; the office has its own address.
+
+  await tester.goto(OFFICE);
   await expect(tester.getByTestId('boot-screen')).toBeVisible();
 
   // A second admission, so the counter has been written at least once before
@@ -65,6 +73,8 @@ test('revokes a link out from under a browser that is already inside', async ({
   const second = await browser.newContext();
   const another = await second.newPage();
   await another.goto(`/t/${token}`);
+  // The link lands on Helldesk; the office has its own address.
+  await another.goto(OFFICE);
   await expect(another.getByTestId('boot-screen')).toBeVisible();
 
   cli(['revoke', token]);

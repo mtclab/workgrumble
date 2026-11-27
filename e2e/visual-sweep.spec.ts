@@ -19,6 +19,7 @@ import {
   runToDayEnd,
   workUntilMinute,
 } from './helpers';
+import { OFFICE } from './office';
 
 const OUT = 'test-results/visual-sweep';
 const SWITCH_KEY = 'workgrumble/switch';
@@ -68,7 +69,7 @@ async function arriveAt(
   );
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');
@@ -84,7 +85,7 @@ async function arriveAt(
 async function freshProbation(page: Page): Promise<void> {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await dismissBrief(page);
 }
@@ -97,7 +98,7 @@ async function shot(page: Page, name: string): Promise<void> {
 test('captures the start select and the engineer boot', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await shot(page, '30-login-ladder');
 
   await page.getByTestId('login-desk').selectOption('systems_engineer');
@@ -146,7 +147,7 @@ test('captures the start-fresh door on a career-carrying browser', async ({
 }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   // A career worth being asked about: the senior desk, which is a fact the
   // seed does not carry and the exact case #61 was found on.
@@ -180,7 +181,7 @@ test('captures the senior rung\'s audit queue', async ({ page }) => {
   test.setTimeout(180_000);
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
 
   await page.getByTestId('login-desk').selectOption('sd_senior');
   await page.getByTestId('login-password').fill('hunter2');

@@ -6,6 +6,7 @@ import {
   runCommand,
   workUntilMinute,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The plan surface, on the built artifact (E10, 0.29.0, slice 2).
@@ -57,7 +58,7 @@ async function arriveAtMsp(page: Page): Promise<void> {
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');

@@ -94,6 +94,27 @@ whoever sent it to you.</p>
  * fetched them for as long as it likes; the HTML that names them may not be
  * kept at all, or a deploy would be invisible until somebody cleared a cache.
  */
+/**
+ * Which built page answers a requested path.
+ *
+ * Helldesk is the front door: the token link lands on `/`, so `/` serves the
+ * crawler's page. The office sim keeps its own address at `/office`. The
+ * targets are the extensionless forms because the asset binding redirects
+ * `/foo.html` to `/foo` (and `/index.html` to `/`) - asking for the `.html`
+ * name here would hand the browser a redirect instead of a page.
+ */
+export function assetPath(pathname: string): string {
+  if (pathname === '/') {
+    return '/crawler';
+  }
+
+  if (pathname === '/office' || pathname === '/office/') {
+    return '/';
+  }
+
+  return pathname;
+}
+
 export function assetHeaders(pathname: string): Record<string, string> {
   return {
     'Cache-Control': pathname.startsWith('/assets/')

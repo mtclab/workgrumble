@@ -4,6 +4,23 @@ Parody IT-career simulator in a fake-OS UI, in the browser. Start as a helpdesk 
 
 (The game is named after its own fictional employer - you do not work at the game, you work at Workgrumble.)
 
+## Helldesk (the dungeon crawler)
+
+`crawler.html` is a second game on the same world: a first/third-person
+IT-career RPG (Doom's pace, old Elder Scrolls' rules) up the floors of
+Workgrumble Ltd. Users throw real tickets at you (or you talk them down),
+managers encumber you, consultants shield each other, office ladies heal you,
+the twelve-rung career ladder from Trainee to Senior Architect is the
+difficulty (with an employer dial and Ironman on top), Friday drinks and
+energy cans are tightropes (the White Monster is king), there is loot with
+rarity, perk trees, Project Phoenix and twenty side quests, management
+staffs you on work whether you have room for it or not, your team runs on
+sweets and energy drinks (and, once you are senior, on your mentoring), and every
+weekend is at the mökki you build up, learning sauna magic. The computers
+still run the fake OS - that is where you work your queue, read the KB, take
+tasks, manage your character and trade with Internal IT. `npm run dev` and
+open `/crawler.html`. Design and code map: `docs/HELLDESK.md`.
+
 - Design: `docs/DESIGN_POC.md`
 - Build plan: `docs/BUILD_PLAN.md`
 - Market case: `docs/spikes/market.md`

@@ -50,6 +50,16 @@ const coreVersion = tomlVersion(
 );
 
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      // Two pages: the office sim (index.html) and Helldesk, the dungeon
+      // crawler built on its tickets (crawler.html).
+      input: {
+        main: new URL('./index.html', import.meta.url).pathname,
+        crawler: new URL('./crawler.html', import.meta.url).pathname,
+      },
+    },
+  },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
     __CORE_VERSION__: JSON.stringify(coreVersion),

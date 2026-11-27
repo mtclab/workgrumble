@@ -9,6 +9,7 @@ import {
   runSimMinutes,
   runToTelegraph,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * M3, on the built artifact: triage that computes a priority, a clock for the
@@ -254,7 +255,7 @@ test('parks a ticket on the evidence in the customer stream', async ({
  */
 test('bounces a thin handoff and passes a complete one', async ({ page }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await startShift(page);
   // The fan is the one you filed about your own desk, and it turns up
   // mid-morning rather than waiting for you at eight.
@@ -330,7 +331,7 @@ test('bounces a thin handoff and passes a complete one', async ({ page }) => {
  */
 test('starts fumbling once the day has gone badly enough', async ({ page }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await startShift(page);
 
   const desktop = page.getByTestId('desktop');
@@ -382,7 +383,7 @@ test('shows the right corridor the moment a paused save is loaded', async ({
   // Day one runs untouched, so day two opens with the player fumbling; this
   // test is about the corridor, not the hands - shipped reduced-motion path.
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('/');
+  await page.goto(OFFICE);
   await startShift(page);
   await hurry(page);
 

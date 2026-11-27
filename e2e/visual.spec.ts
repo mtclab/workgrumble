@@ -6,11 +6,12 @@ import {
   runRealMinutes,
   runSimMinutes,
 } from './helpers';
+import { OFFICE } from './office';
 
 // Overseer visual-review captures - not assertions. Screenshots land in
 // test-results/visual/ and are eyeballed by a human/model reviewer.
 test('captures shell states for visual review', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.screenshot({ path: 'test-results/visual/01-boot.png' });
 
   await logIn(page);
@@ -52,7 +53,7 @@ test('captures helpdesk apps for visual review', async ({ page }) => {
 });
 
 test('captures the day surfaces', async ({ page }) => {
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
   await page.getByTestId('login-password').fill('hunter2');
   await page.getByTestId('login-submit').click();
@@ -70,7 +71,7 @@ test('captures the day surfaces', async ({ page }) => {
  */
 test('captures the pressure surfaces', async ({ page }) => {
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.keyboard.press('Space');
   await page.getByTestId('login-password').fill('hunter2');
   await page.getByTestId('login-submit').click();

@@ -1,0 +1,483 @@
+import * as THREE from 'three';
+import { Rng } from './rng';
+
+/**
+ * Every surface is painted at load time on a canvas: no image assets, so the
+ * whole game stays one bundle. Each floor theme re-tints the same painters.
+ */
+
+export interface Theme {
+  readonly name: string;
+  readonly carpet: string;
+  readonly carpetFleck: string;
+  readonly wall: string;
+  readonly wallTrim: string;
+  readonly ceiling: string;
+  readonly fog: number;
+  readonly light: number;
+  readonly ambient: number;
+}
+
+export const THEMES: readonly Theme[] = [
+  { name: 'Server Basement', carpet: '#3b3f45', carpetFleck: '#2b2e33', wall: '#6d7278', wallTrim: '#3a3f46', ceiling: '#55595e', fog: 0x0b0f14, light: 0x9fc6ff, ambient: 0x283444 },
+  { name: 'Open-Plan Helldesk', carpet: '#4a5a73', carpetFleck: '#38465c', wall: '#c9c2b3', wallTrim: '#8c8474', ceiling: '#d8d6cf', fog: 0x1a1d22, light: 0xfff4dc, ambient: 0x3c3a36 },
+  { name: 'Sales Floor', carpet: '#7a2f36', carpetFleck: '#5c2127', wall: '#d8cfb8', wallTrim: '#9a7a4a', ceiling: '#e0dccf', fog: 0x1f1414, light: 0xffe2b8, ambient: 0x3f2d2a },
+  { name: 'Finance & Procurement', carpet: '#35584a', carpetFleck: '#27443a', wall: '#bfc9c0', wallTrim: '#6b7a6f', ceiling: '#d4dad3', fog: 0x111a16, light: 0xe8fff0, ambient: 0x2c3a34 },
+  { name: 'Executive Suite', carpet: '#5a4632', carpetFleck: '#46362a', wall: '#e9e2d0', wallTrim: '#b08d4a', ceiling: '#f0ece0', fog: 0x1a150e, light: 0xffe9b0, ambient: 0x4a3e2c },
+];
+
+function canvas(size: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d');
+  if (ctx === null) throw new Error('2d canvas unavailable');
+  return [c, ctx];
+}
+
+function toTexture(c: HTMLCanvasElement, repeat = 1): THREE.CanvasTexture {
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(repeat, repeat);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter;
+  t.anisotropy = 4;
+  return t;
+}
+
+export function carpetTexture(theme: Theme, seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = theme.carpet;
+  g.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 1800; i++) {
+    g.fillStyle = r.chance(0.5) ? theme.carpetFleck : 'rgba(255,255,255,0.05)';
+    g.fillRect(r.int(0, 127), r.int(0, 127), 1, 1);
+  }
+  // Carpet tile seams.
+  g.strokeStyle = 'rgba(0,0,0,0.25)';
+  g.strokeRect(0.5, 0.5, 127, 127);
+  // The coffee stain every office floor has.
+  if (r.chance(0.6)) {
+    g.fillStyle = 'rgba(60,35,10,0.18)';
+    g.beginPath();
+    g.arc(r.int(20, 100), r.int(20, 100), r.int(6, 14), 0, Math.PI * 2);
+    g.fill();
+  }
+  return toTexture(c);
+}
+
+export function woodTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  const r = new Rng(21);
+  for (let y = 0; y < 64; y += 8) {
+    const shade = r.int(150, 190);
+    g.fillStyle = `rgb(${shade},${Math.round(shade * 0.72)},${Math.round(shade * 0.45)})`;
+    g.fillRect(0, y, 64, 8);
+    g.fillStyle = 'rgba(60,30,10,0.35)';
+    g.fillRect(0, y + 7, 64, 1);
+    for (let i = 0; i < 6; i++) g.fillRect(r.int(0, 60), y + r.int(1, 6), r.int(4, 14), 1);
+  }
+  return toTexture(c);
+}
+
+export function logTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  for (let y = 0; y < 64; y += 10) {
+    g.fillStyle = '#7a4a26';
+    g.fillRect(0, y, 64, 10);
+    g.fillStyle = '#9a6436';
+    g.fillRect(0, y + 1, 64, 5);
+    g.fillStyle = '#4a2a12';
+    g.fillRect(0, y + 9, 64, 1);
+  }
+  return toTexture(c);
+}
+
+export function grassTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  const r = new Rng(seed);
+  g.fillStyle = '#4f7a36';
+  g.fillRect(0, 0, 64, 64);
+  for (let i = 0; i < 500; i++) {
+    g.fillStyle = r.chance(0.5) ? '#5f8f40' : r.chance(0.8) ? '#3f6a2c' : '#c9b458';
+    g.fillRect(r.int(0, 63), r.int(0, 63), 1, r.int(1, 3));
+  }
+  return toTexture(c);
+}
+
+export function ceilingTexture(theme: Theme): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  g.fillStyle = theme.ceiling;
+  g.fillRect(0, 0, 64, 64);
+  const r = new Rng(7);
+  for (let i = 0; i < 300; i++) {
+    g.fillStyle = 'rgba(0,0,0,0.08)';
+    g.fillRect(r.int(0, 63), r.int(0, 63), 1, 1);
+  }
+  g.strokeStyle = 'rgba(0,0,0,0.35)';
+  g.lineWidth = 2;
+  g.strokeRect(0, 0, 64, 64);
+  return toTexture(c);
+}
+
+export function wallTexture(theme: Theme): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  g.fillStyle = theme.wall;
+  g.fillRect(0, 0, 128, 128);
+  const r = new Rng(3);
+  for (let i = 0; i < 900; i++) {
+    g.fillStyle = r.chance(0.5) ? 'rgba(0,0,0,0.05)' : 'rgba(255,255,255,0.05)';
+    g.fillRect(r.int(0, 127), r.int(0, 127), 2, 2);
+  }
+  // Skirting board and dado rail.
+  g.fillStyle = theme.wallTrim;
+  g.fillRect(0, 116, 128, 12);
+  g.fillRect(0, 70, 128, 3);
+  // Blu-tack marks where a poster used to be.
+  g.fillStyle = 'rgba(80,120,200,0.25)';
+  for (let i = 0; i < 4; i++) g.fillRect(r.int(8, 118), r.int(10, 60), 3, 3);
+  return toTexture(c);
+}
+
+export function rackTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(64);
+  g.fillStyle = '#16181c';
+  g.fillRect(0, 0, 64, 64);
+  const r = new Rng(11);
+  for (let y = 2; y < 64; y += 6) {
+    g.fillStyle = '#2a2e35';
+    g.fillRect(4, y, 56, 4);
+    for (let k = 0; k < 3; k++) {
+      g.fillStyle = r.chance(0.7) ? '#3cff6a' : r.chance(0.5) ? '#ffb020' : '#ff3030';
+      g.fillRect(8 + k * 4, y + 1, 2, 2);
+    }
+  }
+  const t = toTexture(c);
+  return t;
+}
+
+export function screenTexture(lines: readonly string[], bg = '#0a3a8c'): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = '#c0c0c0';
+  g.fillRect(0, 116, 128, 12);
+  g.fillStyle = '#008000';
+  g.fillRect(2, 118, 20, 8);
+  g.fillStyle = '#ffffff';
+  g.font = 'bold 11px monospace';
+  lines.forEach((line, i) => g.fillText(line, 6, 18 + i * 14));
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export function posterTexture(text: string, seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  const hue = r.int(0, 360);
+  g.fillStyle = `hsl(${hue} 50% 35%)`;
+  g.fillRect(0, 0, 128, 128);
+  g.fillStyle = `hsl(${(hue + 180) % 360} 60% 70%)`;
+  g.beginPath();
+  g.arc(64, 50, 28, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#fff';
+  g.font = 'bold 14px sans-serif';
+  g.textAlign = 'center';
+  const words = text.split(' ');
+  let line = '';
+  let y = 96;
+  for (const w of words) {
+    if ((line + w).length > 14) {
+      g.fillText(line.trim(), 64, y);
+      line = '';
+      y += 15;
+    }
+    line += w + ' ';
+  }
+  g.fillText(line.trim(), 64, y);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+export const POSTERS = [
+  'SYNERGY', 'TEAMWORK makes the DREAM work', 'Have you raised a ticket?',
+  'Think before you print', 'Hang in there', 'Is it plugged in?',
+  'Wash your mug', 'Mandatory Fun Friday', 'Passwords are like pants',
+  'Clean desk policy', 'Our people are our greatest asset',
+];
+
+/** A text label sprite: nameplates, speech bubbles, damage numbers. */
+export function textSprite(
+  text: string,
+  opts: { color?: string; bg?: string; size?: number; maxWidth?: number } = {},
+): THREE.Sprite {
+  const size = opts.size ?? 28;
+  const maxWidth = opts.maxWidth ?? 520;
+  const measure = document.createElement('canvas').getContext('2d');
+  if (measure === null) throw new Error('2d canvas unavailable');
+  measure.font = `bold ${size}px "Tahoma", sans-serif`;
+  const words = text.split(' ');
+  const lines: string[] = [];
+  let line = '';
+  for (const w of words) {
+    const test = line.length === 0 ? w : `${line} ${w}`;
+    if (measure.measureText(test).width > maxWidth && line.length > 0) {
+      lines.push(line);
+      line = w;
+    } else {
+      line = test;
+    }
+  }
+  lines.push(line);
+  const width = Math.min(maxWidth, Math.max(...lines.map((l) => measure.measureText(l).width))) + 24;
+  const height = lines.length * (size + 6) + 14;
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(width);
+  c.height = Math.ceil(height);
+  const g = c.getContext('2d');
+  if (g === null) throw new Error('2d canvas unavailable');
+  if (opts.bg !== undefined) {
+    g.fillStyle = opts.bg;
+    g.beginPath();
+    g.roundRect(0, 0, c.width, c.height, 10);
+    g.fill();
+  }
+  g.font = `bold ${size}px "Tahoma", sans-serif`;
+  g.textAlign = 'center';
+  g.textBaseline = 'top';
+  g.lineWidth = 5;
+  g.strokeStyle = 'rgba(0,0,0,0.85)';
+  g.fillStyle = opts.color ?? '#fff';
+  lines.forEach((l, i) => {
+    if (opts.bg === undefined) g.strokeText(l, c.width / 2, 8 + i * (size + 6));
+    g.fillText(l, c.width / 2, 8 + i * (size + 6));
+  });
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: true, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  const scale = 0.0045;
+  sprite.scale.set(c.width * scale, c.height * scale, 1);
+  sprite.renderOrder = 10;
+  return sprite;
+}
+
+export function disposeSprite(s: THREE.Sprite): void {
+  s.material.map?.dispose();
+  s.material.dispose();
+}
+
+/** Hard floors for the rooms that are not carpeted: tiles, lino, raised server floor, parquet. */
+export function tileTexture(a: string, b: string, grout: string, cells: number, seed: number, checker = true): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  const step = 128 / cells;
+  for (let y = 0; y < cells; y++) {
+    for (let x = 0; x < cells; x++) {
+      g.fillStyle = checker && (x + y) % 2 === 1 ? b : a;
+      g.fillRect(x * step, y * step, step, step);
+      // A little variation per tile, so it does not read as a grid of stickers.
+      g.fillStyle = `rgba(${r.chance(0.5) ? '255,255,255' : '0,0,0'},${r.range(0.01, 0.05).toFixed(3)})`;
+      g.fillRect(x * step, y * step, step, step);
+    }
+  }
+  g.strokeStyle = grout;
+  g.lineWidth = 2;
+  for (let i = 0; i <= cells; i++) {
+    g.beginPath();
+    g.moveTo(i * step, 0);
+    g.lineTo(i * step, 128);
+    g.moveTo(0, i * step);
+    g.lineTo(128, i * step);
+    g.stroke();
+  }
+  const t = toTexture(c);
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
+
+export function parquetTexture(): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(5);
+  for (let y = 0; y < 128; y += 16) {
+    for (let x = 0; x < 128; x += 64) {
+      const off = (y / 16) % 2 === 0 ? 0 : 32;
+      const shade = r.int(120, 165);
+      g.fillStyle = `rgb(${shade},${Math.round(shade * 0.68)},${Math.round(shade * 0.42)})`;
+      g.fillRect((x + off) % 128, y, 64, 16);
+      if ((x + off) % 128 > 64) g.fillRect(0, y, ((x + off) % 128) - 64, 16);
+      g.fillStyle = 'rgba(40,20,5,0.4)';
+      g.fillRect((x + off) % 128, y, 1, 16);
+      for (let k = 0; k < 3; k++) g.fillRect((x + off + r.int(2, 60)) % 128, y + r.int(2, 14), r.int(6, 18), 1);
+    }
+    g.fillStyle = 'rgba(40,20,5,0.5)';
+    g.fillRect(0, y + 15, 128, 1);
+  }
+  const t = toTexture(c);
+  t.magFilter = THREE.LinearFilter;
+  return t;
+}
+
+/** A small emissive sign: EXIT, the floor number, a room name. */
+export function signTexture(text: string, fg: string, bg: string): THREE.CanvasTexture {
+  const c = document.createElement('canvas');
+  c.width = 128;
+  c.height = 48;
+  const g = c.getContext('2d');
+  if (g === null) throw new Error('2d canvas unavailable');
+  g.fillStyle = bg;
+  g.fillRect(0, 0, 128, 48);
+  g.fillStyle = fg;
+  g.font = 'bold 28px monospace';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, 64, 25);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+
+// ---------------------------------------------------------------- SUO
+
+/**
+ * The bog under the office (see `vision.ts`). Five-step ramps, dark to light,
+ * warm in the highlights: cut peat, driven timber, moss, bog water and old
+ * bone. Painted once per vision and freed when it ends.
+ */
+const PEAT = ['#2b1d12', '#3d2918', '#50361f', '#664628', '#7d5835'] as const;
+const TIMBER = ['#33241a', '#4a3423', '#62472f', '#7a5c3d', '#94744f'] as const;
+const MOSS = ['#2a3318', '#3b4722', '#4f5d2c', '#667538', '#7d8c46'] as const;
+const WATER = ['#10171a', '#172228', '#213139', '#2e434c', '#3f5a64'] as const;
+const BONE = ['#6e6656', '#8c8270', '#b0a58e', '#cfc6b0', '#e2dac6'] as const;
+
+/** Speckle a canvas with its own ramp, so no surface is one flat colour. */
+function grain(g: CanvasRenderingContext2D, r: Rng, ramp: readonly string[], n: number, size: number): void {
+  for (let i = 0; i < n; i++) {
+    g.fillStyle = ramp[r.int(0, ramp.length - 1)] ?? '#000';
+    g.fillRect(r.int(0, 127), r.int(0, 127), size, size);
+  }
+}
+
+/**
+ * A wall of the bog: the cut face of the peat in strata, timber staves driven
+ * into it, roots reaching down, and a band of standing water along the foot
+ * (the water is always rising). A few walls have bone in the peat instead of
+ * staves.
+ */
+export function peatWallTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = PEAT[2];
+  g.fillRect(0, 0, 128, 128);
+  grain(g, r, PEAT, 700, 2);
+  for (let y = 0; y < 128; y += 11) {
+    g.fillStyle = r.chance(0.5) ? PEAT[1] : PEAT[3];
+    g.fillRect(0, y, 128, r.int(2, 4));
+  }
+  const bones = r.chance(0.25);
+  if (!bones) {
+    for (let i = 0; i < 6; i++) {
+      const x = i * 22 + r.int(0, 4);
+      const w = r.int(13, 16);
+      g.fillStyle = TIMBER[2];
+      g.fillRect(x, 0, w, 128);
+      g.fillStyle = TIMBER[4];
+      g.fillRect(x, 0, 2, 128);
+      g.fillStyle = TIMBER[0];
+      g.fillRect(x + w - 2, 0, 2, 128);
+      g.fillStyle = TIMBER[1];
+      for (let y = 0; y < 128; y += 7) if (r.chance(0.55)) g.fillRect(x + 3, y, w - 6, 1);
+      if (r.chance(0.6)) {
+        g.fillStyle = TIMBER[3];
+        g.fillRect(x + 2, r.int(30, 90), w - 4, 3);
+      }
+    }
+  } else {
+    for (let i = 0; i < 5; i++) {
+      const x = r.int(2, 106);
+      const y = r.int(20, 96);
+      g.fillStyle = BONE[3];
+      g.fillRect(x, y, 16, 4);
+      g.fillStyle = BONE[4];
+      g.fillRect(x, y, 16, 1);
+      g.fillStyle = BONE[2];
+      g.fillRect(x - 1, y - 1, 4, 6);
+      g.fillRect(x + 14, y - 1, 4, 6);
+    }
+  }
+  // Roots, wandering down from the top.
+  for (let i = 0; i < 7; i++) {
+    let x = r.int(0, 127);
+    for (let y = 0; y < r.int(40, 128); y += 3) {
+      g.fillStyle = PEAT[0];
+      g.fillRect(x, y, 2, 3);
+      g.fillStyle = PEAT[1];
+      g.fillRect(x + 2, y, 1, 3);
+      x += r.int(-1, 1);
+    }
+  }
+  g.fillStyle = WATER[1];
+  g.fillRect(0, 108, 128, 20);
+  g.fillStyle = WATER[3];
+  g.fillRect(0, 107, 128, 2);
+  g.fillStyle = MOSS[2];
+  for (let i = 0; i < 12; i++) g.fillRect(r.int(0, 124), r.int(100, 107), r.int(3, 8), 2);
+  return toTexture(c);
+}
+
+/** The floor of the bog: dark wet peat, pools of standing water with a lit rim, sedge. */
+export function bogFloorTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = PEAT[1];
+  g.fillRect(0, 0, 128, 128);
+  grain(g, r, PEAT.slice(0, 3), 800, 2);
+  for (let i = 0; i < 9; i++) {
+    const x = r.int(0, 116);
+    const y = r.int(0, 120);
+    const w = r.int(12, 38);
+    const h = r.int(8, 24);
+    g.fillStyle = WATER[1];
+    g.fillRect(x, y, w, h);
+    g.fillStyle = WATER[3];
+    g.fillRect(x, y, w, 1);
+    g.fillRect(x, y, 1, h);
+  }
+  for (let i = 0; i < 40; i++) {
+    const x = r.int(2, 125);
+    const y = r.int(0, 123);
+    g.fillStyle = MOSS[2];
+    g.fillRect(x, y, 1, 4);
+    g.fillStyle = MOSS[3];
+    g.fillRect(x + 2, y + 1, 1, 3);
+    g.fillStyle = MOSS[1];
+    g.fillRect(x - 2, y + 1, 1, 3);
+  }
+  return toTexture(c);
+}
+
+/** Overhead: the underside of the peat, nearly black, with root trails hanging through it. */
+export function peatCeilingTexture(seed: number): THREE.CanvasTexture {
+  const [c, g] = canvas(128);
+  const r = new Rng(seed);
+  g.fillStyle = PEAT[0];
+  g.fillRect(0, 0, 128, 128);
+  grain(g, r, PEAT.slice(0, 2), 500, 2);
+  g.fillStyle = PEAT[1];
+  for (let i = 0; i < 14; i++) {
+    let x = r.int(0, 127);
+    let y = r.int(0, 127);
+    for (let s = 0; s < 16; s++) {
+      g.fillRect(x & 127, y & 127, 2, 2);
+      x += r.int(-1, 1);
+      y += 2;
+    }
+  }
+  return toTexture(c);
+}

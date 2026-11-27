@@ -7,6 +7,7 @@ import {
   openFromStartMenu,
   runCommand,
 } from './helpers';
+import { OFFICE } from './office';
 
 /**
  * The Linux desktop, on the built artifact (0.27.0 and 0.28.0, E6/E5).
@@ -46,7 +47,7 @@ async function arrive(page: Page): Promise<void> {
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
 
   const arrival = page.getByTestId('window-updates');
@@ -76,7 +77,7 @@ test('the desk is refused its own desktop, and told why', async ({ page }) => {
   // this is a question about a refusal, not about what the day does while it is
   // being asked.
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await completeLogin(page, { brief: 'keep' });
   await dismissBrief(page);
 
@@ -385,7 +386,7 @@ test('the desktop the player chose survives a save and a load', async ({
   // to happen once and stay happened.
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.clock.install();
-  await page.goto('/');
+  await page.goto(OFFICE);
   await page.evaluate(
     ([key, record]) => {
       window.localStorage.setItem(key, JSON.stringify(record));
